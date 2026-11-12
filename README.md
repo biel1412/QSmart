@@ -81,8 +81,8 @@ dotnet run --project tools/DevHost -p:QSmartLocal=true
 ## Publicar
 
 Todo push na branch `main` dispara o workflow [`Publicar no GitHub Pages`](.github/workflows/publicar.yml):
-compila o `QSmart.Web`, ajusta o endereço base para `/QSmart/` e publica no GitHub Pages
-(Settings → Pages → Source: **GitHub Actions**).
+compila o `QSmart.Web`, ajusta o endereço base para `/QSmart/` e grava o site pronto na branch `gh-pages`, que o GitHub Pages serve
+(Settings → Pages → Source: **Deploy from a branch** → `gh-pages` / root).
 
 ## Identidade visual
 

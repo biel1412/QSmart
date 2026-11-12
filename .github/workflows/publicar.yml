@@ -1,22 +1,23 @@
 name: Publicar no GitHub Pages
 
+# Compila o QSmart (Blazor WebAssembly) e publica o site pronto na branch gh-pages.
+# No GitHub: Settings → Pages → Source: "Deploy from a branch" → gh-pages / (root).
+
 on:
   push:
     branches: [main]
   workflow_dispatch:
 
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write
 
 concurrency:
   group: pages
   cancel-in-progress: true
 
 jobs:
-  build:
-    name: Compilar (Blazor WebAssembly)
+  publicar:
+    name: Compilar e publicar
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -25,7 +26,7 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
-      - name: Publicar o QSmart
+      - name: Compilar o QSmart
         run: dotnet publish src/QSmart.Web/QSmart.Web.csproj -c Release -o publicado
 
       - name: Ajustar para o GitHub Pages
@@ -36,24 +37,14 @@ jobs:
           cp index.html 404.html          # rotas internas (ex.: /resumo) abrem direto
           touch .nojekyll                 # sem isso o GitHub Pages esconde a pasta _framework
 
-      - name: Guardar o site compilado
-        uses: actions/upload-artifact@v4
-        with:
-          name: qsmart-site
-          path: publicado/wwwroot
-          retention-days: 7
-
-      - uses: actions/upload-pages-artifact@v4
-        with:
-          path: publicado/wwwroot
-
-  deploy:
-    name: Publicar
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.publicacao.outputs.page_url }}
-    steps:
-      - id: publicacao
-        uses: actions/deploy-pages@v4
+      - name: Publicar na branch gh-pages
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd publicado/wwwroot
+          git init -q -b gh-pages
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "Publicação de ${GITHUB_SHA::7}"
+          git push -f "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" gh-pages
