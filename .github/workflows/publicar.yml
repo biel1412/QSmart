@@ -19,9 +19,9 @@ jobs:
     name: Compilar (Blazor WebAssembly)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: '8.0.x'
 
@@ -36,9 +36,14 @@ jobs:
           cp index.html 404.html          # rotas internas (ex.: /resumo) abrem direto
           touch .nojekyll                 # sem isso o GitHub Pages esconde a pasta _framework
 
-      - uses: actions/configure-pages@v5
+      - name: Guardar o site compilado
+        uses: actions/upload-artifact@v4
+        with:
+          name: qsmart-site
+          path: publicado/wwwroot
+          retention-days: 7
 
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v4
         with:
           path: publicado/wwwroot
 

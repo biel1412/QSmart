@@ -81,7 +81,7 @@
         return aviso == "" ? null : aviso;
     }
 
-    List<LinhaTab>? _cache; int _versao = -1, _v;
+    List<LinhaTab>? _cache; int _versao = -1;
     List<LinhaTab> Linhas()
     {
         var assin = E.CorItens.Count == 0 ? 0 : E.CorItens.Aggregate(17, (h, x) => h * 31 + x.GetHashCode());
