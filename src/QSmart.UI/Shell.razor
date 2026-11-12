@@ -1,0 +1,131 @@
+@inherits LayoutComponentBase
+@implements IDisposable
+@inject Estado E
+@inject NavigationManager Rotas
+
+<div class="app @(E.Prefs.Recolhido ? "recolhido" : "") @(_menuMovel ? "menu-aberto" : "")">
+    <aside class="lateral" aria-label="Menu principal">
+        <div class="marca">
+            <a href="" class="marca-link" title="Início" @onclick="FecharMovel"><Logo Tamanho="36" /></a>
+            <div class="marca-txt"><span class="marca-nome"><b>Q</b>Smart</span><span class="marca-emp">by Insi</span></div>
+        </div>
+        <button class="item recolher" @onclick="E.AlternarMenu" title="@(E.Prefs.Recolhido ? "Expandir menu" : "Recolher menu")">
+            <Icone Nome="@(E.Prefs.Recolhido ? "expandir" : "recolher")" />
+            <span class="item-txt">Recolher menu</span>
+        </button>
+        <nav class="menu">
+            <NavLink class="item" href="" Match="NavLinkMatch.All" title="Início" @onclick="FecharMovel">
+                <Icone Nome="inicio" /><span class="item-txt">Início</span>
+            </NavLink>
+            @foreach (var g in Abas.Grupos)
+            {
+                var itens = Abas.Todas.Where(a => a.Grupo == g && E.AbaAtiva(a.Chave)).ToList();
+                if (itens.Count == 0) continue;
+                <div class="grupo">@g</div>
+                @foreach (var a in itens)
+                {
+                    <NavLink class="item" href="@a.Rota" title="@a.Nome" @onclick="FecharMovel">
+                        <Icone Nome="@a.Icone" /><span class="item-txt">@a.Menu</span>
+                        @if (Indicador(a.Chave)) { <span class="ponto" title="Planilha carregada"></span> }
+                    </NavLink>
+                }
+            }
+        </nav>
+        <div class="lateral-rodape">
+            <button class="item" @onclick="E.AlternarTema" title="@(E.Prefs.Tema == "claro" ? "Modo escuro" : "Modo claro")">
+                <Icone Nome="@(E.Prefs.Tema == "claro" ? "lua" : "sol")" /><span class="item-txt">@(E.Prefs.Tema == "claro" ? "Modo escuro" : "Modo claro")</span>
+            </button>
+            <button class="item" @onclick="Config" title="Configurações">
+                <Icone Nome="config" /><span class="item-txt">Configurações</span>
+            </button>
+            <div class="selo-insi" title="QSmart é um sistema da Insi"><span class="selo-i">Insi</span><span class="item-txt">Sistema da Insi</span></div>
+        </div>
+    </aside>
+    <div class="cortina" @onclick="FecharMovel"></div>
+
+    <div class="principal">
+        <div class="topo-movel">
+            <button class="btn-icone" @onclick="() => _menuMovel = !_menuMovel" aria-label="Abrir menu"><Icone Nome="menu" /></button>
+            <Logo Tamanho="28" /><span class="marca-nome"><b>Q</b>Smart</span>
+        </div>
+        <div class="progresso @(E.Carregando ? "ativo" : "")"><span></span></div>
+        <main class="conteudo">
+            @if (E.Iniciado) { @Body }
+        </main>
+        <footer class="rodape">
+            @foreach (var (nome, arq) in Fontes())
+            {
+                <span class="fonte" title="@(arq ?? "nenhuma planilha carregada")"><i class="@(arq != null ? "on" : "")">●</i> <b>@nome</b> @(arq == null ? "—" : arq.Length <= 22 ? arq : arq[..21] + "…")</span>
+            }
+            <span class="mola"></span>
+            <span class="fonte"><Icone Nome="escudo" Tamanho="14" /> Arquivos processados só neste computador</span>
+            <span class="fonte">@E.UltimoBackupTexto</span>
+        </footer>
+    </div>
+</div>
+<JanelasHost />
+
+@code {
+    bool _menuMovel;
+    DotNetObjectReference<Estado>? _ref;
+
+    protected override async Task OnInitializedAsync()
+    {
+        E.Mudou += Atualizar;
+        Rotas.LocationChanged += AoNavegar;
+        await E.Iniciar();
+        Proteger();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool primeira)
+    {
+        if (primeira)
+        {
+            _ref = DotNetObjectReference.Create(E);
+            await E.Nav.AoOcultar(_ref);
+            await E.Nav.Pronto();
+        }
+    }
+
+    void AoNavegar(object? s, LocationChangedEventArgs e) { Proteger(); InvokeAsync(StateHasChanged); }
+
+    /// <summary>Página de uma aba desativada volta para o início (aplicar_abas do original).</summary>
+    void Proteger()
+    {
+        var rel = Rotas.ToBaseRelativePath(Rotas.Uri).Split('?', '#')[0].Trim('/');
+        var aba = Abas.Todas.FirstOrDefault(a => a.Rota == rel);
+        if (aba != null && E.Iniciado && !E.AbaAtiva(aba.Chave)) Rotas.NavigateTo("");
+    }
+
+    void Atualizar() { InvokeAsync(() => { Proteger(); StateHasChanged(); }); }
+    void FecharMovel() => _menuMovel = false;
+    async Task Config() { _menuMovel = false; await E.Janelas.Configuracoes(); }
+
+    bool Indicador(string chave) => chave switch
+    {
+        "resumo" or "usuarios" => E.Resultado != null,
+        "evolucao" => E.Evolucao != null,
+        "historico" => E.Historico.Count > 0,
+        "pareceres" => E.ParDf != null,
+        "inspecao" => E.IntRes != null,
+        "volume" => E.VolComp != null,
+        "monitor" => E.MonBase != null,
+        "corredor" => E.CorItens.Count > 0 || E.CorPdfs.Count > 0,
+        "depurador" => E.DepRes != null,
+        _ => false,
+    };
+
+    IEnumerable<(string, string?)> Fontes()
+    {
+        yield return ("Aprovações", E.Resultado?.Arquivo);
+        yield return ("Inspeção", E.Evolucao?.Arquivo);
+        yield return ("Pareceres", E.ParDf != null ? E.ParArquivo?.Nome : null);
+    }
+
+    public void Dispose()
+    {
+        E.Mudou -= Atualizar;
+        Rotas.LocationChanged -= AoNavegar;
+        _ref?.Dispose();
+    }
+}

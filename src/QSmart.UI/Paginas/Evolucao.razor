@@ -1,0 +1,129 @@
+@page "/evolucao"
+@inherits PaginaBase
+
+<Pagina Titulo="Evolução" Grupo="@A.Grupo" Sub="@E.SubEvo" Aviso="@Aviso()">
+    <Acoes>
+        <button class="btn btn-hero" @onclick="DesviosCooperativa">Desvios por cooperativa</button>
+        <button class="btn btn-hero" @onclick="() => DesviosColaborador(E.Evolucao)">Desvios por colaborador</button>
+        <button class="btn btn-hero" disabled="@E.Carregando" @onclick="GerarRelatorio"><Icone Nome="pdf" Tamanho="17" /> Relatório PDF</button>
+        <BotaoArquivo Texto="Abrir planilha" Variante="hero" Icone="upload" Aceita=".xlsx,.xlsm" Desativado="E.Carregando" AoEscolher="Carregar"
+                      Dica="Planilha de inspeção (uma aba por inspetor)" />
+        <button class="btn btn-pri" disabled="@E.Carregando" @onclick="Gravar"><Icone Nome="salvar" Tamanho="17" /> Gravar no histórico</button>
+    </Acoes>
+    <Kpis><KpisOrigem Dados="E.Evolucao" RotuloAval="@($"em {N} {(N == 1 ? "aba" : "abas")} de inspetor")" /></Kpis>
+    <ChildContent>
+        <div class="grade-32">
+            <Painel Titulo="Por tipo de autorização" Estilo="min-height:460px">
+                <BarrasEmpilhadas Linhas="LinhasAut(E.Evolucao)" Legenda="Legenda(E.Evolucao)" Vazio="@(E.Evolucao == null ? "Abra a planilha de inspeção" : "Sem desvios")" />
+            </Painel>
+            <Painel Titulo="Desvios por inspetor" Sangrar="true" Estilo="min-height:460px">
+                <Tabela Colunas="_colsInsp" Linhas="LinhasInsp()" Vazio="@(E.Evolucao == null ? "Abra a planilha de inspeção" : "")" />
+            </Painel>
+        </div>
+    </ChildContent>
+</Pagina>
+
+@code {
+    protected override string Chave => "evolucao";
+    int N => E.Evolucao?.Abas.Count ?? 0;
+    readonly List<ColunaTab> _colsInsp = new() { new("Inspetor", 0), new("Aval.", 70, 'c'), new("Desv.", 70, 'c'), new("Int.", 60, 'c'), new("Ext.", 60, 'c'), new("Cham.", 70, 'c') };
+
+    string? Aviso() => E.Evolucao == null || E.Evolucao.Ignoradas.Count == 0 ? null :
+        string.Join("   ", E.Evolucao.Ignoradas.Select(x => $"Aba “{x.dup}” ignorada: cópia idêntica de “{x.orig}” (evita contar em dobro)."));
+
+    public static List<(string, List<(long, string, string)>, long)> LinhasAut(ResultadoInspecao? d) => d == null ? new() :
+        d.PorAut.Select(r => (r.Exibicao, d.Origens.Where(o => r.O(o) > 0).Select(o => (r.O(o), CorOrigem(o), o)).ToList(), r.Total)).ToList();
+
+    public static List<(string, string)> Legenda(ResultadoInspecao? d) => d == null ? new() : d.Origens.Select(o => (o, CorOrigem(o))).ToList();
+
+    List<LinhaTab>? _cacheInsp; object? _refInsp;
+    List<LinhaTab> LinhasInsp()
+    {
+        if (_cacheInsp != null && ReferenceEquals(_refInsp, E.Evolucao)) return _cacheInsp;
+        _refInsp = E.Evolucao;
+        return _cacheInsp = E.Evolucao == null ? new() : E.Evolucao.PorInspetor.Select(r =>
+            LinhaTab.De(r.Nome, r.Aval, r.Desv, r.O("Interno"), r.O("Externo"), r.O("Chamados"))).ToList();
+    }
+
+    void Preencher()
+    {
+        var e = E.Evolucao!;
+        var per = e.Periodo != null ? $", inspeções de {Texto.Dmy(e.Periodo.Value.ini)} a {Texto.Dmy(e.Periodo.Value.fim)}" : "";
+        var n = e.Abas.Count;
+        E.SubEvo = $"{e.Arquivo}, {n} {(n == 1 ? "aba" : "abas")} de inspetor, {Fmt(e.Avaliacoes)} avaliações{per}";
+    }
+
+    async Task Carregar(List<Arquivo> arqs)
+    {
+        var a = arqs[0];
+        await E.Executar(prog => Inspecao.AnalisarEvolucao(a, prog),
+            async r => { E.Evolucao = r; E.ArquivoEvolucao = a; Preencher(); await Task.CompletedTask; },
+            async ex =>
+            {
+                if (E.Evolucao != null) Preencher(); else E.SubEvo = "Falha ao carregar a planilha de inspeção.";
+                await J.Erro("Erro ao ler a planilha de inspeção", Estado.Mensagem(ex));
+            },
+            (s, _) => E.SubEvo = $"Lendo {a.Nome} (todas as abas)… {s}s");
+    }
+
+    async Task GerarRelatorio()
+    {
+        if (E.Evolucao == null) { await J.Info("Relatório PDF", "Carregue a planilha de inspeção primeiro."); return; }
+        byte[] pdf;
+        try { pdf = Core.Pdf.Relatorios.Evolucao(E.Evolucao); }
+        catch (Exception ex) { await J.Erro("Erro ao gerar o PDF", ex.Message); return; }
+        await E.Salvar($"Evolucao_Inspecao_{Path.GetFileNameWithoutExtension(E.Evolucao.Arquivo)}_{Estado.Agora("yyyyMMdd_HHmm")}.pdf", pdf, Navegador.MimePdf, "Relatório gerado");
+    }
+
+    async Task DesviosCooperativa()
+    {
+        var e = E.Evolucao;
+        if (e == null) { await J.Info("Desvios por cooperativa", "Carregue a planilha de inspeção primeiro."); return; }
+        if (!e.TemCoop || e.PorCoop.Count == 0) { await J.Info("Desvios por cooperativa", "Nenhum desvio com cooperativa informada na planilha (coluna COOP)."); return; }
+        var o = e.Origens;
+        var cols = new List<ColunaTab> { new("Cooperativa", 0) };
+        cols.AddRange(o.Select(x => new ColunaTab(x, 100, 'c')));
+        cols.Add(new("Total", 90, 'c'));
+        var linhas = e.PorCoop.Select(r => new LinhaTab { Valores = new object?[] { r.Nome }.Concat(o.Select(x => (object?)r.O(x))).Append(r.Total).ToArray() }).ToList();
+        var tot = e.PorCoop.Sum(r => r.Total);
+        await J.Tabela("Desvios por cooperativa", $"{e.PorCoop.Count} cooperativas com desvios, {Fmt(tot)} desvios ({e.Arquivo})", cols, linhas,
+            "Total   " + string.Join("   ", o.Select(x => $"{x} {Fmt(e.PorCoop.Sum(r => r.O(x)))}")) + $"   Geral {Fmt(tot)}");
+    }
+
+    async Task DesviosColaborador(ResultadoInspecao? e)
+    {
+        if (e == null) { await J.Info("Desvios por colaborador", "Carregue a planilha de inspeção primeiro."); return; }
+        if (!e.TemColab || e.PorColab.Count == 0) { await J.Info("Desvios por colaborador", "A planilha não tem a coluna COLABORADOR."); return; }
+        var o = e.Origens;
+        var cols = new List<ColunaTab> { new("Colaborador", 0), new("Aval.", 80, 'c'), new("Desv.", 80, 'c'), new("%", 80, 'c') };
+        cols.AddRange(o.Select(x => new ColunaTab(x, 90, 'c')));
+        var linhas = e.PorColab.Select(r => new LinhaTab
+        {
+            Valores = new object?[] { r.Nome, r.Aval, r.Desv, r.Aval > 0 ? $"{F1(r.Desv / (double)r.Aval * 100)}%" : "0.0%" }.Concat(o.Select(x => (object?)r.O(x))).ToArray(),
+            Chaves = new object?[] { r.Nome, r.Aval, r.Desv, r.Aval > 0 ? r.Desv / (double)r.Aval : 0 }.Concat(o.Select(x => (object?)r.O(x))).ToArray(),
+        }).ToList();
+        long ta = e.PorColab.Sum(r => r.Aval), td = e.PorColab.Sum(r => r.Desv);
+        await J.Tabela("Desvios por colaborador", $"{e.PorColab.Count} colaboradores avaliados ({e.Arquivo})", cols, linhas,
+            $"Total   {Fmt(ta)} avaliações   {Fmt(td)} desvios ({F1(td / (double)(ta == 0 ? 1 : ta) * 100)}%)", true);
+    }
+
+    async Task Gravar()
+    {
+        var e = E.Evolucao;
+        if (e == null) { await J.Info("Gravar", "Carregue a planilha de inspeção primeiro."); return; }
+        var sug = e.MesSugerido ?? Estado.Agora("yyyy-MM");
+        var mes = await J.Entrada("Gravar no histórico", "Mês de referência desta planilha (AAAA-MM):", sug);
+        if (string.IsNullOrWhiteSpace(mes)) return;
+        mes = mes.Trim();
+        if (!System.Text.RegularExpressions.Regex.IsMatch(mes, @"^\d{4}-(0[1-9]|1[0-2])$")) { await J.Aviso("Gravar", "Formato inválido. Use AAAA-MM, por exemplo 2026-09."); return; }
+        if (E.Historico.Any(r => r.Mes == mes) &&
+            !await J.Pergunta("Mês já gravado", $"{Texto.NomeMes(mes)} já está no histórico.\nDeseja substituir pelos dados atuais?")) return;
+        var regs = E.Historico.Where(r => r.Mes != mes).Append(Historico.RegistroDe(e, mes)).OrderBy(r => r.Mes, StringComparer.Ordinal).ToList();
+        try { await E.Dados.SalvarHistorico(regs); }
+        catch (Exception ex) { await J.Erro("Erro ao gravar", ex.Message); return; }
+        E.Historico = regs;
+        E.Notificar();
+        await E.BackupAuto("histórico gravado");
+        await J.Info("Gravado", $"{Texto.NomeMes(mes)} gravado no histórico.\n\nOs dados ficam guardados neste navegador.");
+    }
+}

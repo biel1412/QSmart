@@ -1,0 +1,40 @@
+@* Moldura comum das janelas *@
+<div class="modal-fundo" @onkeydown="Tecla" tabindex="-1" @ref="_ref">
+    <div class="modal @Classe" role="dialog" aria-modal="true" aria-labelledby="mt@(_id)">
+        <header class="modal-cab">
+            @if (Icone != null) { <span class="modal-icone @IconeClasse"><Icone Nome="@Icone" Tamanho="20" /></span> }
+            <div class="modal-titulos">
+                <h2 id="mt@(_id)">@Titulo</h2>
+                @if (!string.IsNullOrEmpty(Texto)) { <p class="modal-desc">@Texto</p> }
+            </div>
+            <button class="btn-icone" title="Fechar (Esc)" @onclick="() => AoCancelar.InvokeAsync()"><Icone Nome="x" Tamanho="18" /></button>
+        </header>
+        <div class="modal-corpo">@ChildContent</div>
+        @if (Rodape != null) { <footer class="modal-rodape">@Rodape</footer> }
+    </div>
+</div>
+
+@code {
+    [Parameter] public string Titulo { get; set; } = "";
+    [Parameter] public string? Texto { get; set; }
+    [Parameter] public string? Icone { get; set; }
+    [Parameter] public string IconeClasse { get; set; } = "";
+    [Parameter] public string Classe { get; set; } = "";
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public RenderFragment? Rodape { get; set; }
+    [Parameter] public EventCallback AoCancelar { get; set; }
+    [Parameter] public EventCallback AoConfirmar { get; set; }
+    ElementReference _ref;
+    static int _seq;
+    readonly int _id = Interlocked.Increment(ref _seq);
+
+    protected override async Task OnAfterRenderAsync(bool primeira)
+    {
+        if (primeira) { try { await _ref.FocusAsync(); } catch { } }
+    }
+
+    async Task Tecla(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") await AoCancelar.InvokeAsync();
+    }
+}

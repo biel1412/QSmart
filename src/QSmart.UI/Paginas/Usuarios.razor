@@ -1,0 +1,56 @@
+@page "/usuarios"
+@inherits PaginaBase
+@{ var linhas = Linhas(); }
+
+<Pagina Titulo="Usuários" Grupo="@A.Grupo" Sub="@Sub()">
+    <Painel Sangrar="true">
+        <div class="barra-ferr dentro">
+            <div class="campo-busca larga"><Icone Nome="busca" Tamanho="16" />
+                <input class="campo" placeholder="Buscar usuário…" @bind="E.BuscaUsuarios" @bind:event="oninput" />
+                @if (E.BuscaUsuarios != "") { <button class="btn-icone" @onclick="@(() => E.BuscaUsuarios = "")"><Icone Nome="x" Tamanho="15" /></button> }
+            </div>
+            <span class="mola"></span>
+            <span class="rotulo">Ordenar</span>
+            <button class="btn btn-sec @(E.Ordem == "mais" ? "ativo" : "")" @onclick="@(() => E.Ordem = "mais")">Mais devolutivas</button>
+            <button class="btn btn-sec @(E.Ordem == "menos" ? "ativo" : "")" @onclick="@(() => E.Ordem = "menos")">Menos devolutivas</button>
+        </div>
+        <Tabela Colunas="_cols" Linhas="linhas" Altura="calc(100vh - 330px)"
+                Vazio="@(E.Resultado == null ? "Carregue a planilha na aba Resumo." : "Nenhum usuário encontrado para essa busca.")" />
+    </Painel>
+</Pagina>
+
+@code {
+    protected override string Chave => "usuarios";
+    readonly List<ColunaTab> _cols = new()
+    {
+        new("#", 70, 'c'), new("Usuário", 0, 'e'), new("Devolutivas", 130, 'c'), new("Aprovações", 130, 'c'),
+        new("Total de ações", 140, 'c'), new("% devolvidas", 130, 'c'),
+    };
+    List<LinhaTab>? _cache;
+    (object?, string, string)? _chaveCache;
+    int _mostrando, _total;
+
+    string Sub() => E.Resultado == null ? "Carregue a planilha na aba Resumo." : $"Mostrando {_mostrando} de {_total} usuários";
+
+    List<LinhaTab> Linhas()
+    {
+        var k = ((object?)E.Resultado, E.Ordem, E.BuscaUsuarios);
+        if (_cache != null && _chaveCache.Equals(k)) return _cache;
+        _chaveCache = k;
+        if (E.Resultado == null) { _mostrando = _total = 0; return _cache = new(); }
+        var todos = E.Resultado.Todos;
+        var ord = E.Ordem == "menos"
+            ? todos.OrderBy(x => x.Devolutivas).ThenByDescending(x => x.Acoes).ThenBy(x => x.Usuario, StringComparer.Ordinal)
+            : todos.OrderByDescending(x => x.Devolutivas).ThenByDescending(x => x.Acoes).ThenBy(x => x.Usuario, StringComparer.Ordinal);
+        var lista = ord.Select((x, i) => (x, pos: i + 1)).ToList();
+        _total = lista.Count;
+        var termos = Texto.NormalizarBusca(E.BuscaUsuarios).Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (termos.Length > 0) lista = lista.Where(t => termos.All(tt => t.x.Busca.Contains(tt))).ToList();
+        _mostrando = lista.Count;
+        return _cache = lista.Select(t => new LinhaTab
+        {
+            Valores = new object?[] { t.pos, t.x.Usuario, t.x.Devolutivas, t.x.Aprovacoes, t.x.Acoes, $"{F1(t.x.Taxa * 100)}%" },
+            Chaves = new object?[] { t.pos, t.x.Usuario, t.x.Devolutivas, t.x.Aprovacoes, t.x.Acoes, t.x.Taxa },
+        }).ToList();
+    }
+}

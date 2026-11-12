@@ -1,0 +1,352 @@
+@page "/pareceres"
+@inherits PaginaBase
+
+<Pagina Titulo="Pareceres" Grupo="@A.Grupo" Sub="@E.SubPar" Aviso="@AvisoFiltro()">
+    <Acoes>
+        <BotaoArquivo Texto="Filtrar usuários" Variante="hero" Icone="filtro" Aceita=".xlsx,.xlsm" Desativado="E.Carregando" AoEscolher="CarregarFiltro" />
+        <button class="btn btn-hero" disabled="@(E.ParUsuariosFiltro == null)" @onclick="LimparFiltro">Limpar filtro</button>
+        <button class="btn btn-hero" disabled="@(E.ParRes == null)" @onclick="Exportar"><Icone Nome="download" Tamanho="17" /> Exportar resultado</button>
+        <BotaoArquivo Texto="Anexar documento de pareceres" Variante="hero" Icone="pareceres" Aceita=".docx,.pdf" AoEscolher="ImportarDocumento" />
+        <BotaoArquivo Texto="Abrir planilha de pareceres" Variante="pri" Icone="upload" Aceita=".xlsx,.xlsm" Desativado="E.Carregando" AoEscolher="Abrir" />
+    </Acoes>
+    <Kpis>
+        <Kpi Titulo="Pareceres no dia" Cor="muted" Valor="@(_r ? Fmt(_total) : "—")" Detalhe="@(_r ? "parecer(es) no período" : "")" />
+        <Kpi Titulo="No padrão" Cor="green" Valor="@(_r ? Fmt(_ok) : "—")" Detalhe="@(_r ? "iguais ao padrão" : "")" />
+        <Kpi Titulo="Divergentes" Cor="red" Valor="@(_r ? Fmt(_total - _ok) : "—")" Detalhe="@(_r ? "fora do padrão" : "")" />
+        <Kpi Titulo="Conformidade" Cor="blue" Valor="@(_r ? Fv(_total > 0 ? _ok * 100.0 / _total : 0) + "%" : "—")" Detalhe="@(_r ? "de conformidade" : "")" />
+        <Kpi Titulo="Usuários afetados" Cor="amber" Valor="@(_r ? _usrErr.ToString() : "—")" Detalhe="@(_r ? $"de {_usrTot} que usaram parecer" : "")" />
+    </Kpis>
+    <ChildContent>
+        <div class="barra-ferr">
+            <span class="rotulo">Dia</span>
+            <select class="campo" style="min-width:130px" value="@E.ParDia" @onchange="MudarDia">
+                <option value="Todos">Todos</option>
+                @foreach (var d in Dias()) { <option value="@d">@d</option> }
+            </select>
+            @{ var nFora = E.ParProcExcluidos.Count; }
+            <button class="btn btn-sec @(nFora > 0 ? "ativo" : "")" @onclick="EscolherProc">@(nFora > 0 ? $"Procedimentos ({nFora} fora)" : "Procedimentos")</button>
+            <label class="marcar"><input type="checkbox" checked="@E.ParAcento" @onchange="MudarAcento" /> Ignorar acentos na comparação</label>
+        </div>
+        <BarraProporcao Ok="_ok" Err="@(_total - _ok)" />
+        <div>
+            <SeletorAbas Itens="_abas" Ativa="_aba" AtivaChanged="i => _aba = i" />
+            <div class="aba-conteudo">
+                @switch (_aba)
+                {
+                    case 0:
+                        <Painel Sangrar="true"><Tabela Colunas="_colsTipos" Linhas="_linhasTipos" Altura="calc(100vh - 470px)" Vazio="@Vazio()" /></Painel>
+                        break;
+                    case 1:
+                        <p class="muted">Dê um duplo clique em um usuário para ver as divergências dele.</p>
+                        <Painel Sangrar="true"><Tabela Colunas="_colsUser" Linhas="_linhasUser" Altura="calc(100vh - 500px)" AoDuploClique="VerUsuario" Vazio="@Vazio()" /></Painel>
+                        break;
+                    case 2:
+                        <div class="barra-ferr">
+                            <span class="rotulo">Usuário</span>
+                            <select class="campo" style="min-width:220px" value="@_fu" @onchange="MudarFu">
+                                <option value="Todos">Todos</option>
+                                @foreach (var u in _usuariosDiv) { <option value="@u">@u</option> }
+                            </select>
+                            <div class="campo-busca" style="width:300px"><Icone Nome="busca" Tamanho="16" /><input class="campo" placeholder="Buscar nas divergências…" @bind="_busca" @bind:event="oninput" /></div>
+                            <span class="mola"></span>
+                            <span class="muted">@LinhasDiv().Count divergência(s)</span>
+                        </div>
+                        <Painel Sangrar="true"><Tabela Colunas="_colsDiv" Linhas="LinhasDiv()" Altura="calc(100vh - 520px)" Vazio="@Vazio()" /></Painel>
+                        break;
+                    default:
+                        <div class="grade-padrao">
+                            <Painel Sangrar="true">
+                                <Tabela Colunas="_colsPad" Linhas="_linhasPad" Selecao="varias" @bind-Selecionadas="_selPad" Altura="calc(100vh - 470px)"
+                                        Vazio="Nenhum parecer padrão. Anexe o documento de pareceres." />
+                            </Painel>
+                            <Painel Estilo="width:340px">
+                                <h3 class="painel-titulo">Adicionar parecer padrão</h3>
+                                <input class="campo" placeholder="Texto do parecer (sem os dois pontos)" @bind="_novo" @bind:event="oninput" @onkeydown="TeclaNovo" />
+                                <button class="btn btn-sec" @onclick="AdicionarPadrao"><Icone Nome="mais" Tamanho="16" /> Adicionar</button>
+                                <button class="btn btn-sec" @onclick="RemoverPadrao"><Icone Nome="lixo" Tamanho="16" /> Remover selecionados</button>
+                                <p class="muted" style="white-space:pre-line;margin:8px 0 0">@TextoDoc()</p>
+                                <BotaoArquivo Texto="Anexar documento (.docx ou .pdf)" Icone="pareceres" Aceita=".docx,.pdf" AoEscolher="ImportarDocumento" />
+                                <div class="rotulo mt">Ignorar (expressão regular, uma por linha)</div>
+                                <textarea class="campo area mono" rows="4" @bind="E.ParIgnorarTexto" @bind:event="oninput"></textarea>
+                                <button class="btn btn-pri" @onclick="Gravar"><Icone Nome="salvar" Tamanho="16" /> Gravar documento</button>
+                            </Painel>
+                        </div>
+                        break;
+                }
+            </div>
+        </div>
+    </ChildContent>
+</Pagina>
+
+@code {
+    protected override string Chave => "pareceres";
+    static readonly string[] ColsDiv = { "Usuário", "Tipo de parecer", "Motivo", "Sugestão (padrão mais próximo)", "Procedimento", "Data", "Justificativa" };
+    readonly List<string> _abas = new() { "Tipos mais utilizados", "Por usuário", "Divergências", "Pareceres padrão" };
+    readonly List<ColunaTab> _colsTipos = new() { new("#", 60, 'c'), new("Tipo de parecer", 0), new("Qtde", 100, 'c'), new("% do total", 110, 'c'), new("Situação", 170) };
+    readonly List<ColunaTab> _colsUser = new() { new("Usuário", 0), new("Pareceres", 110, 'c'), new("Corretos", 110, 'c'), new("Divergentes", 120, 'c'), new("% divergência", 130, 'c') };
+    readonly List<ColunaTab> _colsDiv = new() { new("Usuário", 160), new("Tipo de parecer", 220), new("Motivo", 170), new("Sugestão (padrão mais próximo)", 230),
+        new("Procedimento", 150), new("Data", 90), new("Justificativa", 0) };
+    readonly List<ColunaTab> _colsPad = new() { new("Parecer padrão (texto até os dois pontos)", 0) };
+    int _aba;
+    bool _r;
+    int _total, _ok, _usrErr, _usrTot;
+    List<LinhaTab> _linhasTipos = new(), _linhasUser = new(), _linhasPad = new();
+    List<string> _usuariosDiv = new();
+    HashSet<LinhaTab> _selPad = new();
+    string _fu = "Todos", _busca = "", _novo = "";
+
+    protected override void Entrar()
+    {
+        AtualizarPadroes();
+        Processar();
+    }
+
+    string Vazio() => E.ParDf == null ? "Abra a planilha de pareceres." : E.ParPadroes.Count == 0 ? "Anexe o documento de pareceres para comparar." : "";
+
+    string? AvisoFiltro() => E.ParUsuariosFiltro == null ? null :
+        $"Filtro de usuários ativo na exportação: {E.ParUsuariosFiltro.Count} usuário(s), {E.ParArquivoFiltro}";
+
+    List<string> Dias() => E.ParDf == null ? new() : E.ParDf.Data.Where(d => d != "").Distinct().OrderBy(d => d[6..] + d[3..5] + d[..2], StringComparer.Ordinal).ToList();
+
+    void AtualizarSub(string extra = "")
+    {
+        E.SubPar = E.ParDf == null ? "Nenhuma planilha de pareceres carregada." :
+            $"{E.ParArquivo?.Nome}, {Fmt(E.ParDf.N)} linhas" + (extra != "" ? $", {extra}" : "");
+    }
+
+    async Task Abrir(List<Arquivo> arqs)
+    {
+        var a = arqs[0];
+        await E.Executar(prog => Pareceres.Preparar(a, prog),
+            async df =>
+            {
+                E.ParDf = df; E.ParArquivo = a; E.ParDia = "Todos";
+                Processar();
+                await Task.CompletedTask;
+            },
+            async ex => { AtualizarSub(); await J.Erro("Erro ao ler planilha", Estado.Mensagem(ex)); },
+            (s, _) => E.SubPar = $"Lendo {a.Nome}… {s}s (arquivos grandes podem levar alguns segundos)");
+    }
+
+    void MudarDia(ChangeEventArgs e) { E.ParDia = e.Value?.ToString() ?? "Todos"; Processar(); }
+    void MudarAcento(ChangeEventArgs e) { E.ParAcento = (bool)e.Value!; Processar(); }
+    void MudarFu(ChangeEventArgs e) => _fu = e.Value?.ToString() ?? "Todos";
+
+    /// <summary>_par_processar: aplica dia e procedimentos, compara com os padrões e preenche as tabelas.</summary>
+    void Processar()
+    {
+        var df = E.ParDf;
+        if (df == null) { _r = false; return; }
+        var excl = E.ParProcExcluidos.Select(Pareceres.NormProc).ToHashSet();
+        var linhas = Enumerable.Range(0, df.N).Where(i => (E.ParDia == "Todos" || df.Data[i] == E.ParDia) && !excl.Contains(Pareceres.NormProc(df.Procedimento[i]))).ToList();
+        if (E.ParPadroes.Count == 0)
+        {
+            E.ParRes = null; _r = false;
+            AtualizarSub("anexe o documento de pareceres para comparar");
+            _linhasTipos = new(); _linhasUser = new(); _usuariosDiv = new();
+            return;
+        }
+        var (res, _, _) = Pareceres.Analisar(df, linhas, E.ParPadroes, E.ParIgnorar, E.ParAcento);
+        E.ParRes = res;
+        _r = true;
+        _total = res.Count;
+        _ok = res.Count(x => x.Status == "Correto");
+        _usrErr = res.Where(x => x.Status == "Divergente").Select(x => x.Usuario).Distinct().Count();
+        _usrTot = res.Select(x => x.Usuario).Distinct().Count();
+        AtualizarSub();
+        // tipos: Counter.most_common (empates na ordem de aparição); situação = do último visto
+        var cont = new Dictionary<string, int>(); var ordem = new List<string>(); var situ = new Dictionary<string, string>();
+        foreach (var x in res)
+        {
+            if (!cont.ContainsKey(x.TipoParecer)) { cont[x.TipoParecer] = 0; ordem.Add(x.TipoParecer); }
+            cont[x.TipoParecer]++;
+            situ[x.TipoParecer] = x.Status;
+        }
+        _linhasTipos = ordem.Select((t, i) => (t, i)).OrderByDescending(x => cont[x.t]).ThenBy(x => x.i).Select((x, i) =>
+        {
+            var q = cont[x.t];
+            var s = situ[x.t] == "Correto" ? "No padrão" : "Fora do padrão";
+            return new LinhaTab
+            {
+                Valores = new object?[] { i + 1, x.t, q, _total > 0 ? Fv(q * 100.0 / _total) + "%" : "0%", s },
+                Chaves = new object?[] { i + 1, x.t, q, q / (double)Math.Max(1, _total), s }, Erro = s != "No padrão",
+            };
+        }).ToList();
+        _linhasUser = res.GroupBy(x => x.Usuario).Select(g => (u: g.Key, tot: g.Count(), ok: g.Count(x => x.Status == "Correto")))
+            .OrderByDescending(x => x.tot - x.ok).ThenByDescending(x => x.tot)
+            .Select(x => new LinhaTab
+            {
+                Valores = new object?[] { x.u, x.tot, x.ok, x.tot - x.ok, Fv((x.tot - x.ok) * 100.0 / x.tot) + "%" },
+                Chaves = new object?[] { x.u, x.tot, x.ok, x.tot - x.ok, (x.tot - x.ok) / (double)x.tot }, Tag = x.u,
+            }).ToList();
+        _usuariosDiv = res.Where(x => x.Status == "Divergente").Select(x => x.Usuario).Distinct().OrderBy(x => x, StringComparer.Ordinal).ToList();
+        if (!_usuariosDiv.Contains(_fu)) _fu = "Todos";
+        _cacheDiv = null;
+    }
+
+    List<LinhaTab>? _cacheDiv; (object?, string, string)? _chDiv;
+    List<LinhaTab> LinhasDiv()
+    {
+        var k = ((object?)E.ParRes, _fu, _busca);
+        if (_cacheDiv != null && _chDiv.Equals(k)) return _cacheDiv;
+        _chDiv = k;
+        if (E.ParRes == null) return _cacheDiv = new();
+        var d = E.ParRes.Where(x => x.Status == "Divergente");
+        if (_fu != "Todos") d = d.Where(x => x.Usuario == _fu);
+        var b = Texto.CaseFold(_busca.Trim());
+        if (b != "") d = d.Where(x => Texto.CaseFold(string.Join(" ", x.Usuario, x.Data, x.Processo, x.Procedimento, x.TipoParecer, x.Status, x.Motivo, x.Sugestao, x.Justificativa)).Contains(b));
+        return _cacheDiv = d.Select(x => LinhaTab.De(x.Usuario, x.TipoParecer, x.Motivo, x.Sugestao, x.Procedimento, x.Data, x.Justificativa)).ToList();
+    }
+
+    void VerUsuario(LinhaTab l)
+    {
+        _fu = (string)l.Tag!;
+        _cacheDiv = null;
+        _aba = 2;
+    }
+
+    async Task EscolherProc()
+    {
+        if (E.ParDf == null) { await J.Info("Procedimentos", "Carregue a planilha de pareceres primeiro."); return; }
+        var excl = E.ParProcExcluidos.Select(Pareceres.NormProc).ToHashSet();
+        var procs = E.ParDf.Procedimento.Select(p => p.Trim()).Where(p => p != "").Distinct().OrderBy(p => p, StringComparer.Ordinal).ToList();
+        var atuais = procs.Where(p => !excl.Contains(Texto.SemAcento(p).ToUpperInvariant())).ToHashSet();
+        var res = await J.Multi("Procedimentos considerados", procs.Select(p => (p, p)), atuais, "Marque os procedimentos que entram na análise. Os desmarcados ficam de fora.");
+        if (res == null) return;
+        var visiveis = procs.Select(p => Texto.SemAcento(p).ToUpperInvariant()).ToHashSet();
+        var mantidos = E.ParProcExcluidos.Where(p => !visiveis.Contains(Pareceres.NormProc(p))).ToList();
+        E.ParProcExcluidos = mantidos.Concat(procs.Where(p => !res.Contains(p))).ToList();
+        await E.SalvarConfigPareceres();
+        Processar();
+    }
+
+    async Task CarregarFiltro(List<Arquivo> arqs)
+    {
+        var a = arqs[0];
+        try
+        {
+            var f = (await LeitorXlsx.Ler(a.Dados, new OpcoesLeitura { SemCabecalho = true, SoPrimeira = true })).FirstOrDefault();
+            if (f == null || f.N == 0 || f.Colunas.Count == 0) { await J.Aviso("Lista vazia", "A planilha selecionada não possui usuários."); return; }
+            var cab = new HashSet<string> { "USUARIO", "USUÁRIO", "USUARIOS", "USUÁRIOS", "NOME", "LOGIN" };
+            var usuarios = f.Coluna(0).Where(c => c.Tem).Select(c => c.Texto!.Trim()).Where(u => !cab.Contains(u.ToUpperInvariant()) && u != "").ToList();
+            var lista = usuarios.Select(Texto.CaseFold).ToHashSet();
+            if (lista.Count == 0) { await J.Aviso("Lista vazia", "Nenhum usuário válido foi encontrado na primeira coluna."); return; }
+            E.ParUsuariosFiltro = lista;
+            E.ParArquivoFiltro = a.Nome;
+            await J.Info("Filtro carregado", $"{lista.Count} usuário(s) carregado(s).\nA exportação incluirá somente esses usuários.");
+        }
+        catch (Exception ex) { await J.Erro("Erro ao carregar filtro", Estado.Mensagem(ex)); }
+    }
+
+    void LimparFiltro() { E.ParUsuariosFiltro = null; E.ParArquivoFiltro = ""; }
+
+    async Task Exportar()
+    {
+        if (E.ParRes == null) { await J.Aviso("Sem análise", "Carregue uma planilha e aguarde a análise antes de exportar."); return; }
+        try
+        {
+            var res = E.ParRes.ToList();
+            if (E.ParUsuariosFiltro != null)
+            {
+                res = res.Where(x => E.ParUsuariosFiltro.Contains(Texto.CaseFold(x.Usuario.Trim()))).ToList();
+                if (res.Count == 0) { await J.Aviso("Nenhum resultado", "Nenhum parecer dos usuários selecionados foi encontrado na análise."); return; }
+            }
+            var wb = new XlsxWriter();
+            var t = wb.Planilha("Tipos");
+            t.Cabecalho("Tipo de parecer", "Status", "Qtde");
+            foreach (var g in res.GroupBy(x => (x.TipoParecer, x.Status)).Select(g => (g.Key, n: g.Count()))
+                         .OrderBy(x => x.Key.TipoParecer, StringComparer.Ordinal).ThenBy(x => x.Key.Status, StringComparer.Ordinal).OrderByDescending(x => x.n))
+                t.Linha(g.Key.TipoParecer, g.Key.Status, g.n);
+            var u = wb.Planilha("Por usuário");
+            u.Cabecalho("Usuário", "Pareceres", "Corretos", "Divergentes", "% divergência");
+            foreach (var g in res.GroupBy(x => x.Usuario).OrderBy(g => g.Key, StringComparer.Ordinal).Select(g => (g.Key, tot: g.Count(), ok: g.Count(x => x.Status == "Correto")))
+                         .OrderByDescending(x => x.tot - x.ok))
+                u.Linha(g.Key, g.tot, g.ok, g.tot - g.ok, Texto.PyRound((g.tot - g.ok) / (double)g.tot, 4));
+            var cab = new object?[] { "Usuário", "Data", "Processo", "Procedimento", "Tipo de parecer", "Status", "Motivo", "Sugestão (padrão mais próximo)", "Justificativa" };
+            object?[] L(ResultadoParecer x) => new object?[] { x.Usuario, x.Data, x.Processo, x.Procedimento, x.TipoParecer, x.Status, x.Motivo, x.Sugestao, x.Justificativa };
+            var dv = wb.Planilha("Divergências");
+            dv.Cabecalho(cab);
+            foreach (var x in res.Where(x => x.Status == "Divergente")) dv.Linha(L(x));
+            var td = wb.Planilha("Todos os pareceres");
+            td.Cabecalho(cab);
+            foreach (var x in res) td.Linha(L(x));
+            foreach (var s in wb.Planilhas) { s.NegritoLinha(0); s.Congelar(1, 0); s.AutoLargura(10, 60); }
+            await E.Nav.Baixar("resultado_pareceres.xlsx", wb.Salvar(), Navegador.MimeXlsx);
+            E.SubPar = "Resultado exportado para resultado_pareceres.xlsx";
+            await J.Info("Exportado", "Resultado exportado com sucesso.");
+        }
+        catch (Exception ex) { await J.Erro("Erro ao exportar", $"Não foi possível gerar o Excel. Detalhes: {ex.GetType().Name}: {ex.Message}"); }
+    }
+
+    // ----- pareceres padrão -----
+    void AtualizarPadroes()
+    {
+        _linhasPad = E.ParPadroes.OrderBy(p => Texto.CaseFold(p), StringComparer.Ordinal).Select(p => new LinhaTab { Valores = new object?[] { p }, Tag = p }).ToList();
+        _selPad = new();
+    }
+
+    string TextoDoc() => E.ParDocumento == "" ? "Nenhum documento anexado. Anexe o documento de pareceres para poder comparar."
+        : $"Documento: {E.ParDocumento}\n{E.ParPadroes.Count} pareceres" + (E.ParDocGravado ? ", gravado" : ", ainda não gravado");
+
+    void TeclaNovo(KeyboardEventArgs e) { if (e.Key == "Enter") _ = AdicionarPadrao(); }
+
+    async Task AdicionarPadrao()
+    {
+        var p = _novo.Trim().TrimEnd(':').Trim();
+        if (p == "") return;
+        if (E.ParPadroes.Any(x => Texto.CaseFold(x) == Texto.CaseFold(p))) { await J.Info("Já existe", "Esse parecer padrão já está cadastrado."); return; }
+        E.ParPadroes.Add(p);
+        _novo = "";
+        AtualizarPadroes();
+        StateHasChanged();
+    }
+
+    void RemoverPadrao()
+    {
+        var sel = _selPad.Select(l => (string)l.Tag!).ToHashSet();
+        if (sel.Count == 0) return;
+        E.ParPadroes = E.ParPadroes.Where(p => !sel.Contains(p)).ToList();
+        AtualizarPadroes();
+    }
+
+    async Task ImportarDocumento(List<Arquivo> arqs)
+    {
+        var a = arqs[0];
+        List<string> novos;
+        try
+        {
+            if (a.Extensao == ".pdf") novos = Pareceres.ExtrairDeLinhas(await E.Nav.PdfLinhas(a.Dados));
+            else if (a.Extensao == ".docx") novos = Pareceres.ExtrairDocx(a.Dados);
+            else throw new InvalidDataException("Formato não suportado. Use .docx (Word) ou .pdf. Arquivos .doc antigos: salve como .docx.");
+        }
+        catch (Exception ex) { await J.Erro("Erro ao ler o documento", Estado.Mensagem(ex)); return; }
+        if (novos.Count == 0)
+        {
+            await J.Aviso("Nenhum parecer encontrado", "Não encontrei linhas no formato \"Parecer: texto\" nesse documento.\nSe for PDF, ele precisa ter texto selecionável (não pode ser imagem escaneada).");
+            return;
+        }
+        E.ParPadroes = novos;
+        E.ParDocumento = a.Nome;
+        E.ParDocGravado = false;
+        AtualizarPadroes();
+        Processar();
+        if (await J.Pergunta("Gravar documento", $"{novos.Count} pareceres encontrados em {E.ParDocumento}.\n\nGravar para não precisar anexar de novo?")) await Gravar();
+    }
+
+    async Task Gravar()
+    {
+        var ign = E.ParIgnorarTexto.Split('\n').Select(l => l.Trim()).Where(l => l != "").ToList();
+        try { foreach (var r in ign) Pareceres.Compilar(r); }
+        catch (Exception ex) { await J.Erro("Regex inválida", ex.Message); return; }
+        E.ParIgnorar = ign;
+        if (E.ParPadroes.Count == 0) { await J.Info("Gravar documento", "Anexe o documento de pareceres antes de gravar."); return; }
+        if (await E.SalvarConfigPareceres())
+        {
+            E.ParDocGravado = true;
+            AtualizarPadroes();
+            Processar();
+            await E.BackupAuto("pareceres gravados");
+            await J.Info("Gravado", "Documento gravado neste navegador.\nNa próxima vez ele será carregado automaticamente.");
+        }
+    }
+}

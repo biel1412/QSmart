@@ -1,0 +1,186 @@
+@page "/inspecao"
+@inherits PaginaBase
+
+@{ Calcular(); }
+<Pagina Titulo="Inspeção" Grupo="@A.Grupo" Sub="@E.SubInt" Aviso="@_aviso">
+    <Acoes>
+        <button class="btn btn-hero" disabled="@(E.IntRes == null || E.Carregando)" @onclick="Exportar"><Icone Nome="download" Tamanho="17" /> Exportar Excel</button>
+        <button class="btn btn-hero" disabled="@E.Carregando" @onclick="UsarEvolucao">Usar a planilha da Evolução</button>
+        <BotaoArquivo Texto="Abrir planilha" Variante="pri" Icone="upload" Aceita=".xlsx,.xlsm" Desativado="E.Carregando" AoEscolher="a => Carregar(a[0])" />
+    </Acoes>
+    <Kpis>
+        @if (_s == null)
+        {
+            <Kpi Titulo="Inspeções internas" Cor="blue" /><Kpi Titulo="Dias com inspeção" Cor="muted" /><Kpi Titulo="Média por dia" Cor="green" />
+            <Kpi Titulo="Média por inspetor/dia" Cor="purple" /><Kpi Titulo="Com desvio" Cor="red" />
+        }
+        else
+        {
+            var alvo = _insp != "" ? $" de {_insp}" : "";
+            <Kpi Titulo="Inspeções internas" Cor="blue" Valor="@Fmt(_s.Total)" Detalhe="@($"tipo Interno{alvo}, com ou sem desvio")" />
+            <Kpi Titulo="Dias com inspeção" Cor="muted" Valor="@Fmt(_s.Dias.Count)" Detalhe="@(_s.Dias.Count > 0 ? $"{Texto.Dm(_s.Dias[0])} a {Texto.Dmy(_s.Dias[^1])}" : "sem datas")" />
+            <Kpi Titulo="Média por dia" Cor="green" Valor="@Fv(_s.MediaDia)" Detalhe="inspeções internas por dia com inspeção" />
+            <Kpi Titulo="Média por inspetor/dia" Cor="purple" Valor="@Fv(_s.MediaInspDia)" Detalhe="por inspetor, nos dias em que inspecionou" />
+            <Kpi Titulo="Com desvio" Cor="red" Valor="@Fmt(_s.Desvios)" Detalhe="@($"{F1(_s.Total > 0 ? _s.Desvios / (double)_s.Total * 100 : 0)}% das internas")" />
+        }
+    </Kpis>
+    <ChildContent>
+        <div class="barra-ferr">
+            <span class="rotulo">Mês</span>
+            <select class="campo" style="min-width:190px" value="@_mes" @onchange="MudarMes">
+                <option value="">Todos os meses</option>
+                @foreach (var (a, m) in _meses) { <option value="@($"{a}-{m}")">@($"{Texto.MesesPt[m - 1]}/{a}")</option> }
+            </select>
+            <span class="rotulo">Inspetor</span>
+            <select class="campo" style="min-width:190px" value="@_insp" @onchange="MudarInsp">
+                <option value="">Todos os inspetores</option>
+                @foreach (var n in E.IntRes?.Inspetores ?? new()) { <option value="@n">@n</option> }
+            </select>
+        </div>
+        @if (E.IntRes != null) { <p class="muted">Conta só as linhas com “INTERNO OU EXTERNO” = Interno em cada aba de inspetor, com ou sem desvio. Duplo clique num inspetor filtra o gráfico.</p> }
+        <Painel Titulo="Inspeções internas por dia" Estilo="min-height:320px">
+            <Colunas Cols="_cols" Legenda="_legenda" Altura="260px" Vazio="@(E.IntRes == null ? "Abra a planilha de inspeção" : "Nenhuma inspeção interna com data")" />
+        </Painel>
+        <Painel Titulo="Por inspetor" Sangrar="true">
+            <Tabela Colunas="_colsInsp" Linhas="_linhasInsp" Altura="460px" AoDuploClique="FiltrarInspetor" Vazio="@(E.IntRes == null ? "Abra a planilha de inspeção" : "")" />
+        </Painel>
+        <Painel Titulo="Inspetor × dia (quantidade de inspeções internas)" Sangrar="true">
+            <div class="matriz"><Tabela Colunas="_colsMat" Linhas="_linhasMat" Altura="520px" Compacta="true" Vazio="@(E.IntRes == null ? "Abra a planilha de inspeção" : "Sem inspeções com data")" /></div>
+        </Painel>
+    </ChildContent>
+</Pagina>
+
+@code {
+    protected override string Chave => "inspecao";
+    readonly List<ColunaTab> _colsInsp = new() { new("Inspetor", 0), new("Internas", 90, 'c'), new("Com desvio", 100, 'c'), new("Dias", 70, 'c'),
+        new("Média/dia", 95, 'c'), new("Máx. num dia", 120, 'c'), new("Última", 105, 'c') };
+    readonly List<(string, string)> _legenda = new() { ("Sem desvio", "var(--blue)"), ("Com desvio", "var(--red)") };
+    string _mes = "", _insp = "";
+    List<(int a, int m)> _meses = new();
+    ResumoInternos? _s;
+    string? _aviso, _ass;
+    object? _resRef;
+    List<(string, List<(long, string, string)>, string)> _cols = new();
+    List<LinhaTab> _linhasInsp = new(), _linhasMat = new();
+    List<ColunaTab> _colsMat = new() { new("Inspetor", 200) };
+
+    protected override void Entrar()
+    {
+        // aproveita a planilha já aberta na Evolução
+        if (E.IntRes == null && E.ArquivoEvolucao != null && !E.Carregando) _ = Carregar(E.ArquivoEvolucao);
+    }
+
+    async Task UsarEvolucao()
+    {
+        if (E.ArquivoEvolucao == null) { await J.Info("Planilha da Evolução", "Nenhuma planilha de inspeção foi aberta na Evolução ainda."); return; }
+        await Carregar(E.ArquivoEvolucao);
+    }
+
+    async Task Carregar(Arquivo a)
+    {
+        await E.Executar(async prog => Internos.Analisar(await Inspecao.LerTodasAbas(a, prog), a.Nome),
+            async r => { E.IntRes = r; _resRef = null; await Task.CompletedTask; },
+            async ex =>
+            {
+                if (E.IntRes == null) E.SubInt = "Falha ao carregar a planilha de inspeção.";
+                await J.Erro("Erro ao ler a planilha de inspeção", Estado.Mensagem(ex));
+            },
+            (s, _) => E.SubInt = $"Lendo {a.Nome} (todas as abas)… {s}s");
+    }
+
+    List<LinhaInterna> FiltroMes()
+    {
+        var df = E.IntRes!.Df;
+        if (_mes == "") return df;
+        var p = _mes.Split('-');
+        int a = int.Parse(p[0]), m = int.Parse(p[1]);
+        return df.Where(x => x.Dia is DateOnly d && d.Year == a && d.Month == m).ToList();
+    }
+
+    void Calcular()
+    {
+        var r = E.IntRes;
+        if (r == null) { _s = null; _cols = new(); _linhasInsp = new(); _linhasMat = new(); _aviso = null; return; }
+        if (!ReferenceEquals(_resRef, r))
+        {
+            _resRef = r;
+            _meses = r.Df.Where(x => x.Dia != null).Select(x => (x.Dia!.Value.Year, x.Dia!.Value.Month)).Distinct().OrderBy(x => x).ToList();
+            _mes = _meses.Count > 1 ? $"{_meses[^1].a}-{_meses[^1].m}" : "";      // começa no mês mais recente
+            _insp = "";
+            _ass = null;
+        }
+        var ass = $"{_mes}|{_insp}";
+        if (ass == _ass) return;
+        _ass = ass;
+        var dfMes = FiltroMes();
+        var geral = Internos.Resumo(dfMes);
+        var df = _insp != "" ? dfMes.Where(x => x.Inspetor == _insp).ToList() : dfMes;
+        _s = Internos.Resumo(df);
+        var outros = r.Origens.Where(kv => kv.Key != "Interno").Sum(kv => kv.Value);
+        E.SubInt = $"{r.Arquivo}  ·  {r.Inspetores.Count} abas de inspetor  ·  {Fmt(r.Origens.GetValueOrDefault("Interno"))} linhas internas e {Fmt(outros)} de outros tipos (não contam)";
+        var avisos = new List<string>();
+        if (_s.SemData > 0) avisos.Add($"{Fmt(_s.SemData)} inspeção(ões) interna(s) sem DATA DA INSPECAO válida: entram no total, mas não no gráfico por dia");
+        if (r.Copias.Count > 0) avisos.Add("abas copiadas ignoradas: " + string.Join(", ", r.Copias.Select(c => $"{c.dup} (= {c.orig})")));
+        _aviso = avisos.Count > 0 ? string.Join(" · ", avisos) : null;
+        _cols = _s.PorDia.Select(x => (Texto.Dm(x.dia), new List<(long, string, string)> { (x.n - x.d, "var(--blue)", "Sem desvio"), (x.d, "var(--red)", "Com desvio") }, Texto.DiaSemana(x.dia))).ToList();
+        _linhasInsp = geral.Inspetores.Select(x => new LinhaTab
+        {
+            Valores = new object?[] { x.Inspetor, Fmt(x.Total), Fmt(x.Desvios), x.Dias, Fv(x.Media), x.Max > 0 ? $"{x.Max} ({x.DiaMax})" : "—", x.Ultimo != "" ? x.Ultimo : "—" },
+            Chaves = new object?[] { x.Inspetor, x.Total, x.Desvios, x.Dias, x.Media, x.Max, x.Ultimo.Length == 10 ? x.Ultimo[6..] + x.Ultimo[3..5] + x.Ultimo[..2] : "" },
+            Tag = x.Inspetor,
+        }).ToList();
+        // matriz inspetor × dia (mapa de calor)
+        _colsMat = new List<ColunaTab> { new("Inspetor", 200) };
+        _colsMat.AddRange(geral.Dias.Select(d => new ColunaTab(Texto.Dm(d), 58, 'c')));
+        _colsMat.Add(new("Total", 70, 'c'));
+        var mx = geral.Matriz.Count > 0 ? geral.Matriz.Max(m => m.valores.DefaultIfEmpty(0).Max()) : 0;
+        _linhasMat = new();
+        foreach (var (nome, v) in geral.Matriz)
+        {
+            var l = new LinhaTab
+            {
+                Valores = new object?[] { nome }.Concat(v.Select(x => (object?)(x > 0 ? x.ToString() : "·"))).Append(Fmt(v.Sum())).ToArray(),
+                Chaves = new object?[] { nome }.Concat(v.Select(x => (object?)x)).Append(v.Sum()).ToArray(),
+                Celulas = new(),
+            };
+            for (int j = 0; j < v.Length; j++)
+                l.Celulas[j + 1] = v[j] > 0 && mx > 0
+                    ? new EstiloCelula(Fundo: $"color-mix(in srgb, var(--blue) {(8 + 42.0 * v[j] / mx).ToString("0.#", CultureInfo.InvariantCulture)}%, transparent)")
+                    : new EstiloCelula(Cor: "var(--muted)");
+            _linhasMat.Add(l);
+        }
+        if (geral.Matriz.Count > 0)
+        {
+            var tot = geral.Dias.Select((_, j) => geral.Matriz.Sum(m => m.valores[j])).ToArray();
+            _linhasMat.Add(new LinhaTab
+            {
+                Valores = new object?[] { "Total do dia" }.Concat(tot.Select(x => (object?)x.ToString())).Append(Fmt(tot.Sum())).ToArray(),
+                Chaves = new object?[] { "~" }.Concat(tot.Select(x => (object?)x)).Append(tot.Sum()).ToArray(),
+                Negrito = true,
+            });
+        }
+    }
+
+    void MudarMes(ChangeEventArgs e) { _mes = e.Value?.ToString() ?? ""; _ass = null; }
+    void MudarInsp(ChangeEventArgs e) { _insp = e.Value?.ToString() ?? ""; _ass = null; }
+
+    void FiltrarInspetor(LinhaTab l)
+    {
+        var nome = (string)l.Tag!;
+        _insp = _insp == nome ? "" : nome;
+        _ass = null;
+    }
+
+    async Task Exportar()
+    {
+        if (E.IntRes == null) return;
+        var df = FiltroMes();
+        var mes = _mes == "" ? "todos" : $"{Texto.MesesPt[int.Parse(_mes.Split('-')[1]) - 1]}-{_mes.Split('-')[0]}";
+        var s = Internos.Resumo(df);
+        byte[]? bytes = null;
+        await E.Executar(_ => Task.FromResult(Internos.Exportar(df, s)), b => { bytes = b; return Task.CompletedTask; },
+            ex => J.Erro("Exportar", ex.Message), (t, _) => E.SubInt = $"Gravando… {t}s");
+        _ass = null;
+        if (bytes != null) await E.Salvar($"Inspecoes_internas_{mes}.xlsx", bytes, Navegador.MimeXlsx);
+    }
+}

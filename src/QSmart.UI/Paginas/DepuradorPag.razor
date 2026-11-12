@@ -1,0 +1,530 @@
+@page "/depurador"
+@inherits PaginaBase
+
+@{ var r = E.DepRes; var nInc = r?.Inconsistencias.Count ?? 0; }
+<Pagina Titulo="Depurador de leitura" Grupo="@A.Grupo" Sub="@E.SubDep" Aviso="@Aviso()">
+    <Acoes>
+        @if (nInc > 0) { <button class="btn btn-hero" @onclick="() => _aba = 4"><Icone Nome="alerta" Tamanho="16" /> Ver inconsistências (@Fmt(nInc))</button> }
+        <button class="btn btn-hero" disabled="@(r == null || E.Carregando)" @onclick="Exportar"><Icone Nome="download" Tamanho="17" /> Exportar diagnóstico</button>
+        <button class="btn btn-hero" disabled="@E.Carregando" @onclick="Carregadas">Planilhas já carregadas ▾</button>
+        <BotaoArquivo Texto="Abrir planilha" Variante="pri" Icone="upload" Aceita=".xlsx,.xlsm,.csv,.txt" Desativado="E.Carregando" AoEscolher="a => Carregar(a[0])" />
+    </Acoes>
+    <Kpis>
+        @if (r == null)
+        {
+            <Kpi Titulo="Abas lidas" Cor="muted" /><Kpi Titulo="Linhas aproveitadas" Cor="green" /><Kpi Titulo="Com alerta" Cor="amber" />
+            <Kpi Titulo="Descartadas" Cor="red" /><Kpi Titulo="Colunas usadas" Cor="blue" />
+        }
+        else
+        {
+            var t = r.Total; var n = Math.Max(1, r.Linhas); var aprov = t["lida"] + t["fora"] + t["alerta"];
+            <Kpi Titulo="Abas lidas" Cor="muted" Valor="@($"{r.AbasLidas} de {r.Abas.Count}")" Detalhe="abas aproveitadas" />
+            <Kpi Titulo="Linhas aproveitadas" Cor="green" Valor="@Fmt(aprov)" Detalhe="@($"{F1(aprov * 100.0 / n)}% das linhas" + (t["fora"] > 0 ? $", {Fmt(t["fora"])} fora da comparação" : ""))" />
+            <Kpi Titulo="Com alerta" Cor="amber" Valor="@Fmt(t["alerta"])" Detalhe="entram na conta, mas merecem conferência" />
+            <Kpi Titulo="Descartadas" Cor="red" Valor="@Fmt(t["descartada"])" Detalhe="@($"{F1(t["descartada"] * 100.0 / n)}% não entram na conta")" />
+            <Kpi Titulo="Colunas usadas" Cor="blue" Valor="@($"{r.ColunasUsadas} de {r.ColunasTotal}")" Detalhe="nas abas lidas / no arquivo" />
+        }
+    </Kpis>
+    <ChildContent>
+        <div class="barra-ferr">
+            <span class="rotulo">Ler como</span>
+            @foreach (var (chave, nome) in Depurador.Modos)
+            {
+                <button class="chip @(E.DepModo == chave ? "ativo" : "")" title="@(chave == "auto" ? "Detecta pelo formato do arquivo" : $"Lê do mesmo jeito que a aba {Depurador.OndeModo[chave]}")"
+                        @onclick="() => DefinirModo(chave)">@nome</button>
+            }
+            <span class="mola"></span>
+            <span class="rotulo">Ler</span>
+            <select class="campo" value="@E.DepLimite" @onchange="MudarLimite">
+                @for (int i = 0; i < Depurador.Limites.Length; i++) { <option value="@i">@Depurador.Limites[i].nome</option> }
+            </select>
+        </div>
+        <div class="legenda-dep">
+            <span><i style="color:var(--green)">■</i> lida</span><span><i style="color:var(--muted)">■</i> lida, fora da comparação</span>
+            <span><i style="color:var(--amber)">■</i> lida com alerta</span><span><i style="color:var(--red)">■</i> descartada</span>
+            <span><i style="color:color-mix(in srgb, var(--amber) 60%, transparent)">■</i> célula com problema (passe o mouse)</span>
+            <span><b>✓</b> coluna usada</span><span><b>◆</b> coluna conferida</span><span><b>✕</b> coluna ignorada</span>
+            <span style="color:var(--accent)">→ valor como o programa entende</span>
+        </div>
+        <div class="grade-dep-lay">
+            <Painel Titulo="Abas do arquivo" Sangrar="true" Estilo="width:300px;flex:none">
+                <div class="lista-abas-dep">
+                    @if (r == null) { <div class="g-vazio">—</div> }
+                    else
+                    {
+                        @foreach (var a in r.Abas)
+                        {
+                            var ab = a;
+                            var c = a.Contagem;
+                            var sit = a.Status switch { "lida" => "lida", "parcial" => "lida em parte", _ => "ignorada" };
+                            var det = a.Status == "ignorada" ? a.Motivo : $"{Fmt(c["lida"] + c["fora"] + c["alerta"])} lidas · {Fmt(c["descartada"])} descartadas";
+                            <div class="item-aba-dep @(E.DepAba == a.Nome ? "sel" : "")" title="@det" @onclick="() => MostrarAba(ab.Nome)">
+                                <span class="bol" style="background:@CorAba(a.Status)"></span>
+                                <div><div class="t1">@a.Nome</div><div class="t2">@sit: @Fmt(a.N) linhas</div><div class="t3">@det</div></div>
+                            </div>
+                        }
+                    }
+                </div>
+            </Painel>
+            <div class="dep-direita">
+                <SeletorAbas Itens="TitulosAbas()" Ativa="_aba" AtivaChanged="i => _aba = i" />
+                <div class="aba-conteudo">
+                    @switch (_aba)
+                    {
+                        case 0:
+                            @AbaLinhas()
+                            break;
+                        case 1:
+                            @AbaColunas()
+                            break;
+                        case 2:
+                            @AbaValores()
+                            break;
+                        case 3:
+                            @AbaAlertas()
+                            break;
+                        default:
+                            @AbaInc()
+                            break;
+                    }
+                </div>
+            </div>
+        </div>
+    </ChildContent>
+</Pagina>
+
+@code {
+    protected override string Chave => "depurador";
+    int _aba;
+    string _filtro = "todas", _busca = "", _buscaAplicada = "";
+    bool _ign = true, _prob;
+    int _selRow = -1;
+    string _valor = "";
+    string _incCat = "", _incAba = "";
+
+    protected override void Entrar()
+    {
+        if (E.DepBruto != null && E.DepCtxUsado != E.CtxDepurador().Assinatura()) _ = Recalcular();   // regras mudaram em outra aba
+    }
+
+    string? Aviso()
+    {
+        var r = E.DepRes;
+        if (r == null) return null;
+        var erro = r.Alertas.FirstOrDefault(a => a.nivel == "erro");
+        if (erro.texto != null) return erro.texto;
+        if (r.Inconsistencias.Count > 0) return $"{Fmt(r.Inconsistencias.Count)} linha(s) com preenchimento inconsistente (ex.: “Sem erro” marcado como desvio). Veja a aba Inconsistências.";
+        return null;
+    }
+
+    List<string> TitulosAbas()
+    {
+        var r = E.DepRes;
+        var a = Aba();
+        var cols = a == null ? "Colunas" : $"Colunas ({a.Colunas.Count(x => x.Status is "obrigatoria" or "usada")} usadas de {a.Colunas.Count(x => x.Status != "faltando")})";
+        var nAl = r?.Alertas.Count(x => x.nivel != "info") ?? 0;
+        var nInc = r?.Inconsistencias.Count ?? 0;
+        return new() { "Linhas", cols, "Valores lidos", nAl > 0 ? $"Alertas ({nAl})" : "Alertas", nInc > 0 ? $"⚠ Inconsistências ({Fmt(nInc)})" : "Inconsistências" };
+    }
+
+    static string CorAba(string st) => st switch { "lida" => "var(--green)", "parcial" => "var(--amber)", _ => "var(--red)" };
+    static string CorStatus(string st) => st switch { "lida" => "var(--green)", "fora" => "var(--muted)", "alerta" => "var(--amber)", _ => "var(--red)" };
+    static string CorCol(string st) => st switch { "obrigatoria" => "var(--green)", "usada" => "var(--blue)", "sem_uso" => "var(--amber)", "faltando" => "var(--red)", "conferencia" => "var(--purple)", _ => "var(--muted)" };
+    static string Mix(string cor, double alfa) => $"color-mix(in srgb, {cor} {(alfa * 100).ToString("0", CultureInfo.InvariantCulture)}%, transparent)";
+
+    AbaDep? Aba() => E.DepRes?.Abas.FirstOrDefault(a => a.Nome == E.DepAba);
+
+    // ================= carregar =================
+    async Task Carregar(Arquivo a, string? modo = null)
+    {
+        if (E.DepArquivo == null || E.DepArquivo.Nome != a.Nome || E.DepArquivo.Dados.Length != a.Dados.Length) { E.DepIncDesvio = null; E.DepIncGrav = null; }
+        if (modo != null) E.DepModo = modo;
+        var limite = Depurador.Limites[Math.Max(0, E.DepLimite)].limite;
+        var m = E.DepModo;
+        var ctx = E.CtxDepurador();
+        await E.Executar(async prog =>
+        {
+            var br = await Depurador.LerBruto(a, limite, prog);
+            prog.Msg = "analisando";
+            await prog.Talvez();
+            return (br, Depurador.Depurar(br, m, ctx));
+        },
+        async x =>
+        {
+            (E.DepBruto, E.DepRes) = x;
+            E.DepArquivo = a;
+            E.DepCtxUsado = ctx.Assinatura();
+            E.DepAba = null;
+            Preencher();
+            await Task.CompletedTask;
+        },
+        async ex =>
+        {
+            if (E.DepRes != null) Preencher(); else E.SubDep = "Abra uma planilha para ver, linha a linha, o que o programa lê e o que fica de fora.";
+            await J.Erro("Erro ao ler a planilha", $"O arquivo não pôde ser aberto nem como planilha:\n\n{Estado.Mensagem(ex)}");
+        },
+        (s, _) => E.SubDep = $"Lendo {a.Nome} (todas as abas e colunas)… {s}s");
+    }
+
+    async Task Recalcular()
+    {
+        if (E.DepBruto == null || E.Carregando) return;
+        var br = E.DepBruto; var m = E.DepModo; var ctx = E.CtxDepurador();
+        await E.Executar(_ => Task.FromResult(Depurador.Depurar(br, m, ctx)),
+            async r => { E.DepRes = r; E.DepCtxUsado = ctx.Assinatura(); Preencher(); await Task.CompletedTask; },
+            ex => J.Erro("Depurador", ex.Message),
+            (s, _) => E.SubDep = $"Analisando como {Depurador.NomeModo(m)}… {s}s");
+    }
+
+    void MudarLimite(ChangeEventArgs e)
+    {
+        E.DepLimite = int.TryParse(e.Value?.ToString(), out var i) ? i : 0;
+        if (E.DepArquivo != null && !E.Carregando) _ = Carregar(E.DepArquivo);
+    }
+
+    async Task DefinirModo(string m) { E.DepModo = m; await Recalcular(); }
+
+    async Task Carregadas()
+    {
+        var ops = new List<(string, string)>();
+        if (E.ArquivoResumo != null && E.Resultado != null) ops.Add(("volume|r", $"Resumo (volume): {E.ArquivoResumo.Nome}"));
+        if (E.ArquivoEvolucao != null && E.Evolucao != null) ops.Add(("inspecao|e", $"Evolução (inspeção): {E.ArquivoEvolucao.Nome}"));
+        if (E.ParDf != null && E.ParArquivo != null) ops.Add(("pareceres|p", $"Pareceres: {E.ParArquivo.Nome}"));
+        if (ops.Count == 0) { await J.Info("Planilhas já carregadas", "Nenhuma planilha foi aberta nas outras abas ainda."); return; }
+        var v = await J.Um("Depurar planilha carregada", ops, "", "Escolha a planilha; ela é lida do mesmo jeito que a aba de origem lê.", "Cancelar");
+        if (string.IsNullOrEmpty(v)) return;
+        var (modo, qual) = (v.Split('|')[0], v.Split('|')[1]);
+        var arq = qual == "r" ? E.ArquivoResumo! : qual == "e" ? E.ArquivoEvolucao! : E.ParArquivo!;
+        await Carregar(arq, modo);
+    }
+
+    void Preencher()
+    {
+        var r = E.DepRes;
+        if (r == null) return;
+        var modo = Depurador.NomeModo(r.Modo) + (r.ModoPedido != "auto" ? "" : " (detectado)");
+        E.SubDep = $"{r.Arquivo}  ·  lido como {modo}, igual à aba {Depurador.OndeModo[r.Modo]}  ·  {Fmt(r.Linhas)} linhas em {r.Abas.Count} aba(s)  ·  {r.Info}";
+        if (E.DepAba == null || r.Abas.All(a => a.Nome != E.DepAba))
+            E.DepAba = (r.Abas.FirstOrDefault(a => a.Status != "ignorada") ?? r.Abas.FirstOrDefault())?.Nome;
+        if (_valor == "" || r.Valores.All(v => v.Titulo != _valor)) _valor = r.Valores.FirstOrDefault()?.Titulo ?? "";
+        _gradeRef = null;
+        _selRow = -1;
+    }
+
+    void MostrarAba(string nome) { E.DepAba = nome; _gradeRef = null; _selRow = -1; }
+
+    // ================= Linhas =================
+    sealed record ColGrade(string Titulo, string Tipo, string?[] Valores, string?[]? Celulas, string Dica, int Largura);
+    List<ColGrade> _gcols = new();
+    int[] _pos = Array.Empty<int>();
+    object? _gradeRef;
+    string _gradeChave = "";
+
+    void Grade()
+    {
+        var a = Aba();
+        var chave = $"{_filtro}|{_buscaAplicada}|{_ign}|{_prob}";
+        if (ReferenceEquals(_gradeRef, a) && chave == _gradeChave) return;
+        _gradeRef = a; _gradeChave = chave;
+        if (a == null) { _gcols = new(); _pos = Array.Empty<int>(); return; }
+        var n = a.N;
+        var est = a.Estado.Select(x => (string?)x).ToArray();
+        var cols = new List<ColGrade>
+        {
+            new("Linha", "linha", a.Linhas.Select(x => (string?)x.ToString()).ToArray(), null, "Número da linha no Excel (o cabeçalho é a linha 1)", 64),
+            new("Status", "status", est, null, "Como o programa tratou a linha", 150),
+            new("Motivo", "motivo", a.MotivoLinha.Select(x => (string?)x).ToArray(), null, "Por que a linha foi descartada ou tem alerta", 340),
+        };
+        foreach (var (nome, vals) in a.Derivadas)
+            cols.Add(new("→ " + nome, "der", vals, a.Celulas.GetValueOrDefault(nome), "Valor como o programa entende (calculado a partir das colunas da planilha)", 160));
+        var stCol = new Dictionary<string, ColDep>();
+        foreach (var c in a.Colunas) stCol.TryAdd(c.Original, c);
+        var usadas = new List<ColGrade>(); var outras = new List<ColGrade>();
+        for (int j = 0; j < a.Dados.Colunas.Count; j++)
+        {
+            var nomeCol = a.Dados.Colunas[j];
+            var info = stCol.GetValueOrDefault(nomeCol) ?? new ColDep { Status = "ignorada" };
+            bool usada = info.Status is "obrigatoria" or "usada" or "sem_uso" or "conferencia";
+            var marca = info.Status is "obrigatoria" or "usada" ? "✓ " : info.Status == "conferencia" ? "◆ " : usada ? "◐ " : "✕ ";
+            var item = new ColGrade(marca + nomeCol, usada ? "raw" : "ign", a.Dados.ColunaTexto(j), a.Celulas.GetValueOrDefault(nomeCol),
+                $"{Depurador.StatusCol[info.Status]}: {info.Papel}", 150);
+            (usada ? usadas : outras).Add(item);
+        }
+        _gcols = cols.Concat(usadas).Concat(_ign ? outras : new()).ToList();
+        IEnumerable<int> idx = Enumerable.Range(0, n);
+        if (_filtro != "todas") idx = idx.Where(i => a.Estado[i] == _filtro);
+        if (_prob) idx = idx.Where(i => a.Celulas.Values.Any(s => s[i] != null));
+        var termo = Texto.CaseFold(_buscaAplicada.Trim());
+        if (termo != "")
+        {
+            var busc = _gcols.Where(c => c.Tipo != "linha").ToList();
+            idx = idx.Where(i => busc.Any(c => { var v = c.Tipo == "status" ? Depurador.NomeStatus(a.Estado[i]) : c.Valores[i]; return v != null && Texto.CaseFold(v).Contains(termo); }));
+        }
+        _pos = idx.ToArray();
+    }
+
+    string Celula(ColGrade c, int i, AbaDep a)
+    {
+        if (c.Tipo == "status") return Depurador.NomeStatus(a.Estado[i]);
+        var v = c.Valores[i];
+        if (v == null) return c.Tipo is "raw" or "ign" ? "∅" : "";
+        v = v.Replace("\n", " ⏎ ");
+        return v.Length > 300 ? v[..300] : v;
+    }
+
+    string EstiloCel(ColGrade c, int i, AbaDep a)
+    {
+        var st = a.Estado[i];
+        var msg = c.Celulas?[i];
+        if (msg != null) return "background:" + Mix(CorStatus(st == "lida" ? "alerta" : st), .42);
+        if (c.Tipo == "status") return "background:" + Mix(CorStatus(st), .30);
+        return "background:" + Mix(CorStatus(st), st is "lida" or "fora" ? .10 : .15);
+    }
+
+    string ClasseCel(ColGrade c, int i)
+    {
+        if (c.Tipo == "ign") return "ign";
+        if (c.Tipo == "raw" && c.Valores[i] == null) return "nulo";
+        if (c.Tipo == "der") return "der";
+        if (c.Tipo is "status" or "linha") return "forte" + (c.Tipo == "linha" ? " al-d" : "");
+        return "";
+    }
+
+    string? DicaCel(ColGrade c, int i, AbaDep a)
+    {
+        var partes = new List<string>();
+        var msg = c.Celulas?[i];
+        if (msg != null) partes.Add("⚠ " + msg);
+        if (c.Tipo is "status" or "motivo" or "linha" && a.MotivoLinha[i] != "") partes.Add(a.MotivoLinha[i]);
+        var v = c.Valores[i];
+        if (c.Tipo is "raw" or "ign" or "der" && v != null && v.Length > 40) partes.Add(v.Length > 1200 ? v[..1200] : v);
+        if (c.Tipo == "ign") partes.Add("Coluna ignorada por este leitor");
+        return partes.Count > 0 ? string.Join("\n", partes) : null;
+    }
+
+    void TeclaBusca(KeyboardEventArgs e) { if (e.Key == "Enter") { _buscaAplicada = _busca; } }
+    void MudouBusca(ChangeEventArgs e) { _busca = e.Value?.ToString() ?? ""; if (_busca == "") _buscaAplicada = ""; }
+    void MudarFiltro(ChangeEventArgs e) => _filtro = e.Value?.ToString() ?? "todas";
+
+    RenderFragment AbaLinhas() => __builder =>
+    {
+        Grade();
+        var a = Aba();
+        if (a == null)
+        {
+            <div class="painel"><h3 class="painel-titulo">Nenhuma planilha aberta</h3><p class="muted">Use “Abrir planilha” ou “Planilhas já carregadas” para começar.</p></div>
+            return;
+        }
+        var sit = a.Status switch { "lida" => "Lida", "parcial" => "Lida em parte", _ => "Ignorada" };
+        var partes = new List<string> { $"{Fmt(a.N)} linhas" };
+        partes.AddRange(a.Contagem.Where(kv => kv.Value > 0).Select(kv => $"{Depurador.NomeStatus(kv.Key).ToLowerInvariant()}: {Fmt(kv.Value)}"));
+        if (a.Status == "ignorada") partes.Insert(0, "Motivo: " + a.Motivo);
+        var totc = Math.Max(1, a.Contagem.Values.Sum());
+        <div><div class="forte" style="font-size:15px">@a.Nome  ·  @sit</div><div class="muted">@string.Join("  ·  ", partes)</div></div>
+        <div class="barra-status" title="@string.Join("  ·  ", a.Contagem.Where(kv => kv.Value > 0).Select(kv => $"{Depurador.NomeStatus(kv.Key)}: {Fmt(kv.Value)}"))">
+            @foreach (var (k, _) in Depurador.StatusDep)
+            {
+                var v = a.Contagem[k];
+                if (v > 0) { <span style="width:@((v * 100.0 / totc).ToString("0.###", CultureInfo.InvariantCulture))%;background:@CorStatus(k)"></span> }
+            }
+        </div>
+        <div class="barra-ferr">
+            <select class="campo" value="@_filtro" @onchange="MudarFiltro">
+                <option value="todas">Todas as linhas</option>
+                @foreach (var (k, nome) in Depurador.StatusDep) { <option value="@k">Só: @nome.ToLowerInvariant()</option> }
+            </select>
+            <div class="campo-busca" style="width:260px"><Icone Nome="busca" Tamanho="16" /><input class="campo" placeholder="Procurar texto nas linhas… (Enter)" value="@_busca" @oninput="MudouBusca" @onkeydown="TeclaBusca" /></div>
+            <label class="marcar"><input type="checkbox" @bind="_ign" /> Mostrar colunas ignoradas</label>
+            <label class="marcar"><input type="checkbox" @bind="_prob" /> Só células com problema</label>
+            <span class="mola"></span>
+            <span class="muted">@Fmt(_pos.Length) de @Fmt(a.N) linhas</span>
+        </div>
+        <div class="grade-dep" id="grade-dep" style="height:calc(100vh - 470px)">
+            <table style="width:@(_gcols.Sum(c => c.Largura))px">
+                <colgroup>@foreach (var c in _gcols) { <col style="width:@(c.Largura)px" /> }</colgroup>
+                <thead><tr>@foreach (var c in _gcols) { <th title="@c.Dica">@c.Titulo</th> }</tr></thead>
+                <tbody>
+                    <Virtualize Items="_pos" ItemSize="28" OverscanCount="30" SpacerElement="tr" Context="i">
+                        <tr class="@(_selRow == i ? "sel" : "")" @onclick="() => _selRow = i">
+                            @foreach (var c in _gcols)
+                            {
+                                <td class="@ClasseCel(c, i)" style="@EstiloCel(c, i, a)" title="@DicaCel(c, i, a)">@Celula(c, i, a)</td>
+                            }
+                        </tr>
+                    </Virtualize>
+                </tbody>
+            </table>
+            @if (_pos.Length == 0) { <div class="g-vazio">Nenhuma linha com esse filtro.</div> }
+        </div>
+        <div class="detalhe-dep">
+            @if (_selRow < 0 || _selRow >= a.N) { <span>Clique numa linha para ver o detalhe.</span> }
+            else
+            {
+                var st = a.Estado[_selRow];
+                var probs = _gcols.Where(c => c.Celulas?[_selRow] != null).Select(c => $"{c.Titulo.TrimStart('✓', '◐', '◆', '✕', '→', ' ')}: {c.Celulas![_selRow]}").Take(6).ToList();
+                <b>Linha @a.Linhas[_selRow]</b><span>&nbsp; </span><b style="color:@CorStatus(st)">@Depurador.NomeStatus(st)</b>
+                <span> — @(a.MotivoLinha[_selRow] != "" ? a.MotivoLinha[_selRow] : "entra normalmente na conta")</span>
+                @foreach (var p in probs) { <div>• @p</div> }
+            }
+        </div>
+    };
+
+    // ================= Colunas =================
+    RenderFragment AbaColunas() => __builder =>
+    {
+        var a = Aba();
+        var ordem = new Dictionary<string, int> { ["obrigatoria"] = 0, ["usada"] = 1, ["conferencia"] = 2, ["sem_uso"] = 3, ["faltando"] = 4, ["ignorada"] = 5 };
+        var linhas = a == null ? new List<LinhaTab>() : a.Colunas.Select((x, k) => (x, k)).OrderBy(t => ordem[t.x.Status]).ThenBy(t => t.k).Select(t =>
+        {
+            var x = t.x;
+            var cor = CorCol(x.Status);
+            var l = new LinhaTab
+            {
+                Valores = new object?[] { x.Original, x.Normalizada, Depurador.StatusCol[x.Status], x.Papel, Fmt(x.Preenchidas), Fmt(x.Vazias), x.Exemplo },
+                Chaves = new object?[] { x.Original, x.Normalizada, ordem[x.Status], x.Papel, x.Preenchidas, x.Vazias, x.Exemplo },
+                Celulas = new() { [2] = new EstiloCelula(Fundo: Mix(cor, .12), Cor: cor, Negrito: true) },
+            };
+            if (x.Status == "ignorada") foreach (var c in new[] { 0, 1, 3, 6 }) l.Celulas[c] = new EstiloCelula(Cor: "var(--muted)");
+            if (x.Status == "faltando") for (int c = 0; c < 7; c++) if (c != 2) l.Celulas[c] = new EstiloCelula(Fundo: Mix("var(--red)", .08));
+            return l;
+        }).ToList();
+        <Painel Sangrar="true"><Tabela Colunas="_colsCols" Linhas="linhas" Altura="calc(100vh - 400px)" Vazio="—" /></Painel>
+    };
+    readonly List<ColunaTab> _colsCols = new() { new("Coluna na planilha", 210), new("Reconhecida como", 200), new("Situação", 130, 'c'), new("Para que serve", 0),
+        new("Preenchidas", 100, 'd'), new("Vazias", 80, 'd'), new("Exemplo", 180) };
+
+    // ================= Valores =================
+    RenderFragment AbaValores() => __builder =>
+    {
+        var r = E.DepRes;
+        var v = r?.Valores.FirstOrDefault(x => x.Titulo == _valor);
+        <div class="barra-ferr">
+            <span class="rotulo">Campo</span>
+            <select class="campo" style="min-width:240px" value="@_valor" @onchange="e => _valor = e.Value?.ToString() ?? string.Empty">
+                @foreach (var x in r?.Valores ?? new()) { <option value="@x.Titulo">@x.Titulo</option> }
+            </select>
+            <span class="muted">@(r == null ? "" : v == null ? "Sem valores (nenhuma aba foi aproveitada)." : $"{Fmt(v.Linhas.Count)} valores distintos" + (v.Nota != "" ? $"  ·  {v.Nota}" : ""))</span>
+        </div>
+        @if (v != null)
+        {
+            var cols = v.Colunas.Select(c => new ColunaTab(c.Titulo, c.Largura, c.Alinhamento[0])).ToList();
+            var linhas = v.Linhas.Select(l => new LinhaTab { Valores = l.Select(x => (object?)x).ToArray() }).ToList();
+            <Painel Sangrar="true"><Tabela Colunas="cols" Linhas="linhas" Altura="calc(100vh - 420px)" /></Painel>
+        }
+    };
+
+    // ================= Alertas =================
+    RenderFragment AbaAlertas() => __builder =>
+    {
+        var al = E.DepRes?.Alertas ?? new();
+        var linhas = al.Select(x => new LinhaTab
+        {
+            Valores = new object?[] { x.nivel switch { "erro" => "Erro", "aviso" => "Atenção", _ => "Info" }, x.aba != "" ? x.aba : "(arquivo)", x.texto },
+            Chaves = new object?[] { x.nivel switch { "erro" => 0, "aviso" => 1, _ => 2 }, x.aba, x.texto },
+            Erro = x.nivel == "erro",
+            Celulas = new() { [0] = new EstiloCelula(Cor: x.nivel switch { "erro" => "var(--red)", "aviso" => "var(--amber)", _ => "var(--blue)" }, Negrito: true) },
+        }).ToList();
+        <Painel Sangrar="true"><Tabela Colunas="_colsAl" Linhas="linhas" Altura="calc(100vh - 400px)" Vazio="Sem alertas." /></Painel>
+    };
+    readonly List<ColunaTab> _colsAl = new() { new("Nível", 100, 'c'), new("Aba", 180), new("O que aconteceu", 0) };
+
+    // ================= Inconsistências =================
+    void MudarIncDesvio(ChangeEventArgs e) { E.DepIncDesvio = ValorInc(e); _ = Recalcular(); }
+    void MudarIncGrav(ChangeEventArgs e) { E.DepIncGrav = ValorInc(e); _ = Recalcular(); }
+    static string? ValorInc(ChangeEventArgs e) { var v = e.Value?.ToString() ?? "__auto"; return v == "__auto" ? null : v == "__nenhuma" ? "" : v; }
+    static string OpcaoInc(string? v) => v == null ? "__auto" : v == "" ? "__nenhuma" : v;
+
+    RenderFragment AbaInc() => __builder =>
+    {
+        var r = E.DepRes;
+        var inc = r?.Inconsistencias ?? new();
+        var insp = r != null && r.Modo == "inspecao";
+        var cats = inc.GroupBy(x => x.Categoria).Select(g => (g.Key, (long)g.Count())).OrderByDescending(x => x.Item2).ToList();
+        var abas = inc.GroupBy(x => x.Aba).Select(g => (g.Key, (long)g.Count())).OrderByDescending(x => x.Item2).ToList();
+        var colabs = inc.GroupBy(x => x.Colaborador != "" ? x.Colaborador : "(não informado)").Select(g => (g.Key, (long)g.Count())).OrderByDescending(x => x.Item2).ToList();
+        var vazio = insp ? "Nenhuma inconsistência" : "—";
+        var itCats = cats.Select(x => (x.Key, x.Item2, (string?)"var(--red)")).ToList();
+        var itAbas = abas.Select(x => (x.Key, x.Item2, (string?)"var(--amber)")).ToList();
+        var itColabs = colabs.Select(x => (x.Key, x.Item2, (string?)"var(--purple)")).ToList();
+        if (!insp)
+        {
+            <p class="muted">A conferência de preenchimento vale para a planilha de inspeção: use <b>Ler como › Inspeção</b>.</p>
+        }
+        else
+        {
+            <p class="muted" style="margin:0">Confere se o inspetor preencheu de forma coerente (ex.: “Sem erro” mas desvio = Sim). O programa conta o desvio só pelo TIPO DE ERRO.</p>
+            @foreach (var (aba, cols) in r!.IncCols)
+            {
+                <div class="muted pequeno"><b>@aba</b>: TIPO DE ERRO × @(cols.desvio != null ? $"desvio “{cols.desvio}”" : "sem coluna de desvio") × @(cols.gravidade != null ? $"gravidade “{cols.gravidade}”" : "sem coluna de gravidade")</div>
+            }
+        }
+        <div class="barra-ferr">
+            <span class="rotulo">Coluna de desvio</span>
+            <select class="campo" style="min-width:190px" disabled="@(!insp)" value="@OpcaoInc(E.DepIncDesvio)" @onchange="MudarIncDesvio" title="Automático: procura pelo nome da coluna (ex.: DESVIO, GRAVIDADE) e pelo conteúdo (Sim/Não, Grave…)">
+                <option value="__auto">Automático</option><option value="__nenhuma">Nenhuma</option>
+                @foreach (var c in r?.Candidatas ?? new()) { <option value="@c">@c</option> }
+            </select>
+            <span class="rotulo">Coluna de gravidade</span>
+            <select class="campo" style="min-width:190px" disabled="@(!insp)" value="@OpcaoInc(E.DepIncGrav)" @onchange="MudarIncGrav">
+                <option value="__auto">Automático</option><option value="__nenhuma">Nenhuma</option>
+                @foreach (var c in r?.Candidatas ?? new()) { <option value="@c">@c</option> }
+            </select>
+        </div>
+        <div class="grade-3">
+            <Painel Titulo="Por tipo de inconsistência" Estilo="height:230px"><BarrasLista Itens="itCats" Total="inc.Count" Vazio="@vazio" Altura="170px" /></Painel>
+            <Painel Titulo="Por aba (inspetor)" Estilo="height:230px"><BarrasLista Itens="itAbas" Total="inc.Count" Vazio="@vazio" Altura="170px" /></Painel>
+            <Painel Titulo="Por colaborador" Estilo="height:230px"><BarrasLista Itens="itColabs" Total="inc.Count" Vazio="@vazio" Altura="170px" /></Painel>
+        </div>
+        var sel = inc.Where(x => (_incCat == "" || x.Categoria == _incCat) && (_incAba == "" || x.Aba == _incAba)).ToList();
+        var linhas = sel.Select(x => new LinhaTab
+        {
+            Valores = new object?[] { x.Aba, x.Linha, x.Celulas, x.Colaborador, x.Tipo != "" ? x.Tipo : "(vazio)", x.Desvio != "" ? x.Desvio : "—", x.Gravidade != "" ? x.Gravidade : "—", x.Programa, x.Categoria, x.Problema },
+            Celulas = new() { [8] = new EstiloCelula(Cor: "var(--red)", Dica: x.Problema), [9] = new EstiloCelula(Dica: x.Problema) },
+            Tag = x,
+        }).ToList();
+        <div class="barra-ferr">
+            <select class="campo" style="min-width:260px" value="@_incCat" @onchange="e => _incCat = e.Value?.ToString() ?? string.Empty">
+                <option value="">Todos os tipos</option>
+                @foreach (var c in Depurador.CategoriasInc.Where(c => cats.Any(x => x.Key == c))) { <option value="@c">@c</option> }
+            </select>
+            <select class="campo" style="min-width:160px" value="@_incAba" @onchange="e => _incAba = e.Value?.ToString() ?? string.Empty">
+                <option value="">Todas as abas</option>
+                @foreach (var a in abas.Select(x => x.Key).OrderBy(x => x, StringComparer.Ordinal)) { <option value="@a">@a</option> }
+            </select>
+            <span class="muted">Duplo clique numa linha para vê-la destacada na aba Linhas.</span>
+            <span class="mola"></span>
+            <span class="muted">@(inc.Count > 0 ? $"{Fmt(sel.Count)} de {Fmt(inc.Count)} linhas" : "")</span>
+        </div>
+        <Painel Sangrar="true"><Tabela Colunas="_colsInc" Linhas="linhas" Altura="420px" AoDuploClique="IrLinha" Vazio="@vazio" /></Painel>
+    };
+    readonly List<ColunaTab> _colsInc = new() { new("Aba", 130), new("Linha", 70, 'd'), new("Células", 120), new("Colaborador", 150), new("Tipo de erro", 170),
+        new("Desvio marcado", 120, 'c'), new("Gravidade", 110, 'c'), new("Programa conta", 150, 'c'), new("Inconsistência", 230), new("Detalhe", 0) };
+
+    async Task IrLinha(LinhaTab l)
+    {
+        var x = (Inconsistencia)l.Tag!;
+        _filtro = "todas"; _busca = ""; _buscaAplicada = ""; _prob = false;
+        MostrarAba(x.Aba);
+        _aba = 0;
+        var a = Aba();
+        if (a == null) return;
+        var i = Array.IndexOf(a.Linhas, x.Linha);
+        _selRow = i;
+        StateHasChanged();
+        await Task.Delay(60);
+        Grade();
+        var pos = Array.IndexOf(_pos, i);
+        if (pos >= 0) await E.Nav.RolarLinha("grade-dep", pos);
+    }
+
+    async Task Exportar()
+    {
+        var r = E.DepRes;
+        if (r == null) { await J.Info("Exportar diagnóstico", "Abra uma planilha primeiro."); return; }
+        byte[]? bytes = null;
+        await E.Executar(_ => Task.FromResult(Depurador.Exportar(r)), b => { bytes = b; return Task.CompletedTask; },
+            ex => J.Erro("Exportar diagnóstico", ex.Message), (s, _) => E.SubDep = $"Gravando diagnóstico… {s}s");
+        Preencher();
+        if (bytes != null) await E.Salvar($"Diagnostico_{Path.GetFileNameWithoutExtension(r.Arquivo)}_{Estado.Agora("yyyyMMdd_HHmm")}.xlsx", bytes, Navegador.MimeXlsx, "Diagnóstico salvo");
+    }
+}

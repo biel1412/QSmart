@@ -1,0 +1,12 @@
+<nav class="abas-tab" role="tablist">
+    @for (int i = 0; i < Itens.Count; i++)
+    {
+        var k = i;
+        <button role="tab" class="@(Ativa == k ? "ativa" : "")" @onclick="() => AtivaChanged.InvokeAsync(k)">@Itens[k]</button>
+    }
+</nav>
+@code {
+    [Parameter] public List<string> Itens { get; set; } = new();
+    [Parameter] public int Ativa { get; set; }
+    [Parameter] public EventCallback<int> AtivaChanged { get; set; }
+}

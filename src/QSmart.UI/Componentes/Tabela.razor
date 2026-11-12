@@ -1,0 +1,121 @@
+@* Tabela limpa e ordenável (clique no título da coluna), com rolagem virtual para muitas linhas *@
+<div class="tabela-rolagem @(Compacta ? "compacta" : "")" id="@Id" style="@(Altura != null ? $"max-height:{Altura}" : "")">
+    <table class="tabela" style="min-width:@(Colunas.Sum(c => c.Largura > 0 ? c.Largura : 220))px">
+        <colgroup>
+            @foreach (var c in Colunas)
+            {
+                <col style="@(c.Largura > 0 ? $"width:{c.Largura}px" : "")" />
+            }
+        </colgroup>
+        <thead>
+            <tr>
+                @for (int i = 0; i < Colunas.Count; i++)
+                {
+                    var c = Colunas[i];
+                    var idx = i;
+                    <th class="al-@c.Alinh @(Ordenavel ? "ordenavel" : "")" title="@c.Dica" @onclick="() => Ordenar(idx)">
+                        <span>@c.Titulo</span>
+                        @if (_col == idx) { <span class="seta-ord">@(_asc ? "▲" : "▼")</span> }
+                    </th>
+                }
+            </tr>
+        </thead>
+        <tbody>
+            @if (_linhas.Count > 150)
+            {
+                <Virtualize Items="_linhas" ItemSize="@(Compacta ? 28 : 34)" OverscanCount="20" SpacerElement="tr" Context="l">
+                    @Linha(l)
+                </Virtualize>
+            }
+            else
+            {
+                @foreach (var l in _linhas) { @Linha(l) }
+            }
+        </tbody>
+    </table>
+    @if (_linhas.Count == 0 && !string.IsNullOrEmpty(Vazio))
+    {
+        <div class="tabela-vazia">@Vazio</div>
+    }
+</div>
+
+@code {
+    [Parameter] public List<ColunaTab> Colunas { get; set; } = new();
+    [Parameter] public List<LinhaTab> Linhas { get; set; } = new();
+    [Parameter] public string? Altura { get; set; }
+    [Parameter] public string? Id { get; set; }
+    [Parameter] public string? Vazio { get; set; }
+    [Parameter] public bool Ordenavel { get; set; } = true;
+    [Parameter] public bool Compacta { get; set; }
+    /// <summary>"nenhuma", "uma" ou "varias".</summary>
+    [Parameter] public string Selecao { get; set; } = "uma";
+    [Parameter] public HashSet<LinhaTab>? Selecionadas { get; set; }
+    [Parameter] public EventCallback<HashSet<LinhaTab>> SelecionadasChanged { get; set; }
+    [Parameter] public EventCallback<LinhaTab> AoDuploClique { get; set; }
+    [Parameter] public EventCallback<LinhaTab> AoClicar { get; set; }
+
+    List<LinhaTab> _linhas = new();
+    List<LinhaTab>? _origem;
+    int _col = -1;
+    bool _asc = true;
+    HashSet<LinhaTab> _sel = new();
+
+    protected override void OnParametersSet()
+    {
+        if (!ReferenceEquals(_origem, Linhas))
+        {
+            _origem = Linhas;
+            _col = -1;                 // preencher de novo zera a ordenação (como no original)
+            _linhas = Linhas.ToList();
+            _sel = new();
+        }
+        if (Selecionadas != null) _sel = Selecionadas;
+    }
+
+    void Ordenar(int c)
+    {
+        if (!Ordenavel) return;
+        _asc = _col == c ? !_asc : true;
+        _col = c;
+        var ord = _linhas.Select((l, i) => (l, i)).OrderBy(x => x.l.Chave(c), ComparadorChave.I).ThenBy(x => x.i).Select(x => x.l).ToList();
+        if (!_asc) { ord = _linhas.Select((l, i) => (l, i)).OrderByDescending(x => x.l.Chave(c), ComparadorChave.I).ThenBy(x => x.i).Select(x => x.l).ToList(); }
+        _linhas = ord;
+    }
+
+    async Task Clicar(MouseEventArgs e, LinhaTab l)
+    {
+        if (Selecao != "nenhuma")
+        {
+            if (Selecao == "varias" && (e.CtrlKey || e.MetaKey)) { if (!_sel.Remove(l)) _sel.Add(l); }
+            else if (Selecao == "varias" && e.ShiftKey && _sel.Count > 0)
+            {
+                var a = _linhas.IndexOf(_sel.Last());
+                var b = _linhas.IndexOf(l);
+                for (int i = Math.Min(a, b); i <= Math.Max(a, b); i++) _sel.Add(_linhas[i]);
+            }
+            else { _sel.Clear(); _sel.Add(l); }
+            await SelecionadasChanged.InvokeAsync(_sel);
+        }
+        await AoClicar.InvokeAsync(l);
+    }
+
+    static string EstiloDe(EstiloCelula? e) => e == null ? "" : (e.Fundo != null ? "background:" + e.Fundo + ";" : "") + (e.Cor != null ? "color:" + e.Cor + ";" : "");
+    string ClasseDe(int c, EstiloCelula? e) => "al-" + Colunas[c].Alinh + (e?.Negrito == true ? " negrito" : "");
+
+    RenderFragment Linha(LinhaTab l) => __builder =>
+    {
+        <tr class="@(l.Erro ? "erro" : "") @(l.Negrito ? "negrito" : "") @(_sel.Contains(l) ? "sel" : "")"
+            @onclick="e => Clicar(e, l)" @ondblclick="() => AoDuploClique.InvokeAsync(l)">
+            @for (int c = 0; c < Colunas.Count; c++)
+            {
+                EstiloCelula? est = null;
+                l.Celulas?.TryGetValue(c, out est);
+                var txt = l.Texto(c);
+                var estilo = EstiloDe(est);
+                var classe = ClasseDe(c, est);
+                var dica = est?.Dica ?? (txt.Length > 28 ? txt : null);
+                <td class="@classe" style="@estilo" title="@dica">@txt</td>
+            }
+        </tr>
+    };
+}

@@ -1,0 +1,149 @@
+@page "/volume"
+@inherits PaginaBase
+
+@{ Calcular(); }
+<Pagina Titulo="Volume por usuário" Grupo="@A.Grupo" Sub="@E.SubVol">
+    <Acoes>
+        <button class="btn btn-hero" disabled="@(E.VolRes == null || E.Carregando)" @onclick="Exportar"><Icone Nome="download" Tamanho="17" /> Exportar Excel</button>
+        <button class="btn btn-hero" @onclick="ColarLista">Colar lista</button>
+        <BotaoArquivo Texto="Anexar lista de usuários" Variante="hero" Icone="usuarios" Aceita=".xlsx,.xls,.csv,.txt" AoEscolher="AbrirLista" />
+        <BotaoArquivo Texto="Anexar compilado(s)" Variante="pri" Icone="upload" Aceita=".xlsx,.xlsm,.csv" Varios="true" Desativado="E.Carregando" AoEscolher="AbrirCompilado" />
+    </Acoes>
+    <Kpis>
+        @{ var r = E.VolRes; var n = E.VolLista.Count; }
+        <Kpi Titulo="Usuários na lista" Cor="muted" Valor="@(n > 0 ? Fmt(n) : "—")" Detalhe="@(r != null ? E.VolListaNome : "")" />
+        <Kpi Titulo="Encontrados" Cor="green" Valor="@(r != null ? Fmt(r.Encontrados) : "—")"
+             Detalhe="@(r == null ? "" : "com pelo menos 1 registro" + (r.ZeradosNoDia.Count > 0 ? $" · {r.ZeradosNoDia.Count} sem registro neste dia" : ""))" />
+        <Kpi Titulo="Não encontrados" Cor="red" Valor="@(r != null ? Fmt(r.Nao.Count) : "—")" Detalhe="@(r == null ? "" : r.Nao.Count > 0 ? "não aparecem no compilado" : "todos encontrados")" />
+        <Kpi Titulo="Total executado" Cor="blue" Valor="@(r != null ? Fmt(r.Total) : "—")" Detalhe="@(r != null ? $"{Fv(n > 0 ? r.Total / (double)n : 0)} por usuário da lista" : "")" />
+        <Kpi Titulo="Participação no compilado" Cor="purple" Valor="@(r != null ? Fv(r.TotalBase > 0 ? r.Total * 100.0 / r.TotalBase : 0) + "%" : "—")" Detalhe="@(r != null ? "das linhas do compilado" : "")" />
+    </Kpis>
+    <ChildContent>
+        <p class="muted">
+            <b>Compilado:</b> @(E.VolComp == null ? "nenhum anexado" : string.Join(", ", E.VolComp.Arquivos.Select(x => $"{x.nome} ({Fmt(x.linhas)} linhas)")) + $" · {Fmt(E.VolComp.Usuarios)} usuários no total")
+            &nbsp;·&nbsp; <b>Lista:</b> @(E.VolLista.Count > 0 ? $"{E.VolListaNome} ({Fmt(E.VolLista.Count)} usuários)" : "nenhuma (anexe uma planilha com os usuários ou cole a lista)")
+        </p>
+        <div class="barra-ferr">
+            <span class="rotulo">Dia</span>
+            <select class="campo" style="min-width:170px" value="@_dia" @onchange="MudarDia">
+                @if (E.VolComp == null) { <option value="">—</option> }
+                else if (E.VolComp.Dias.Count == 1) { <option value="">@Texto.Dmy(E.VolComp.Dias[0])</option> }
+                else
+                {
+                    <option value="">Todos os dias</option>
+                    @foreach (var d in E.VolComp.Dias) { <option value="@d.ToString("yyyy-MM-dd")">@($"{Texto.Dmy(d)} ({Texto.DiaSemana(d)})")</option> }
+                }
+            </select>
+            <span class="mola"></span>
+            <label class="marcar"><input type="checkbox" @bind="_comLinhas" /> Exportar também as linhas de cada usuário</label>
+        </div>
+        <div class="grade-32">
+            <Painel Titulo="Executado por usuário" Estilo="height:340px">
+                <BarrasLista Itens="_top" Total="@(_top.Count > 0 ? _top.Max(x => x.Item2) : 1)" Altura="270px"
+                             Vazio="@(E.VolComp == null ? "Falta o compilado" : E.VolLista.Count == 0 ? "Falta a lista de usuários" : "Nenhum usuário da lista no compilado")" />
+            </Painel>
+            <Painel Titulo="Não encontrados no compilado" Sangrar="true" Estilo="height:340px">
+                <Tabela Colunas="_colsNao" Linhas="_linhasNao" Altura="280px" />
+            </Painel>
+        </div>
+        <Painel Titulo="Por usuário" Nota="clique no título de uma coluna para ordenar" Sangrar="true">
+            <Tabela Colunas="_cols" Linhas="_linhas" Altura="560px" />
+        </Painel>
+    </ChildContent>
+</Pagina>
+
+@code {
+    protected override string Chave => "volume";
+    readonly List<ColunaTab> _colsNao = new() { new("Usuário da lista", 0), new("Parecido no compilado", 200) };
+    string _dia = "";
+    bool _comLinhas;
+    string? _ass;
+    List<(string, long, string?)> _top = new();
+    List<LinhaTab> _linhasNao = new(), _linhas = new();
+    List<ColunaTab> _cols = new();
+
+    DateOnly? Dia() => _dia == "" ? null : DateOnly.Parse(_dia, CultureInfo.InvariantCulture);
+    void MudarDia(ChangeEventArgs e) { _dia = e.Value?.ToString() ?? ""; _ass = null; }
+
+    void Calcular()
+    {
+        var ass = $"{E.VolComp?.GetHashCode()}|{string.Join(",", E.VolLista)}|{_dia}";
+        if (ass == _ass) return;
+        _ass = ass;
+        var comp = E.VolComp;
+        if (comp == null || E.VolLista.Count == 0)
+        {
+            E.VolRes = null;
+            if (!E.Carregando) E.SubVol = "Anexe o compilado e a lista de usuários: o programa mostra quanto cada um executou.";
+            _top = new(); _linhasNao = new(); Tabela(null);
+            return;
+        }
+        var r = E.VolRes = Compilados.VolumeUsuarios(comp, E.VolLista, Dia());
+        E.SubVol = $"Cruzamento de {Fmt(E.VolLista.Count)} usuários com {Fmt(r.TotalBase)} linhas do compilado" + (Dia() is DateOnly d ? $" · dia {Texto.Dmy(d)}" : "");
+        _top = r.Linhas.Where(x => x.Total > 0).Select(x => (x.Usuario, x.Total, (string?)"var(--blue)")).ToList();
+        _linhasNao = r.Nao.Select(x => LinhaTab.De(x.Usuario, x.Sugestao != "" ? x.Sugestao : "—")).ToList();
+        Tabela(r);
+    }
+
+    void Tabela(ResultadoVolumeUsuarios? r)
+    {
+        var procs = r?.Procs ?? new();
+        _cols = new() { new("Usuário", 0), new("Total", 90, 'c') };
+        _cols.AddRange(procs.Select(p => new ColunaTab(Texto.Lower(p).Length > 0 ? char.ToUpperInvariant(p[0]) + Texto.Lower(p)[1..] : p, Math.Max(110, 9 * p.Length + 24), 'c')));
+        _cols.AddRange(new ColunaTab[] { new("Dias", 60, 'c'), new("Média/dia", 90, 'c'), new("Situação", 190) });
+        _linhas = r == null ? new() : r.Linhas.Select(x =>
+        {
+            var sit = x.Total > 0 ? "OK" : x.Achado ? "Sem registro neste dia" : "Não encontrado";
+            var l = new LinhaTab
+            {
+                Valores = new object?[] { x.Usuario, Fmt(x.Total) }.Concat(procs.Select(p => (object?)Fmt(x.Procs.GetValueOrDefault(p))))
+                    .Concat(new object?[] { x.Dias, Fv(x.Media), sit }).ToArray(),
+                Chaves = new object?[] { x.Usuario, x.Total }.Concat(procs.Select(p => (object?)x.Procs.GetValueOrDefault(p)))
+                    .Concat(new object?[] { x.Dias, x.Media, sit }).ToArray(),
+                Erro = sit == "Não encontrado",
+                Celulas = new() { [1] = new EstiloCelula(Negrito: true) },
+            };
+            return l;
+        }).ToList();
+    }
+
+    async Task AbrirCompilado(List<Arquivo> cs)
+    {
+        await E.Executar(prog => Compilados.Preparar(cs, prog),
+            async b => { E.VolComp = b; _dia = ""; _ass = null; await Task.CompletedTask; },
+            async ex => { _ass = null; await J.Erro("Erro ao ler o compilado", Estado.Mensagem(ex)); },
+            (s, _) => E.SubVol = $"Lendo {cs.Count} compilado(s)… {s}s");
+    }
+
+    async Task AbrirLista(List<Arquivo> arqs)
+    {
+        var a = arqs[0];
+        List<string> lista;
+        try { lista = await Compilados.LerListaUsuarios(a); }
+        catch (Exception ex) { await J.Erro("Erro ao ler a lista", Estado.Mensagem(ex)); return; }
+        if (lista.Count == 0) { await J.Aviso("Lista de usuários", "Não achei nenhum usuário nessa planilha."); return; }
+        E.VolLista = lista; E.VolListaNome = a.Nome; _ass = null;
+    }
+
+    async Task ColarLista()
+    {
+        var txt = await J.Entrada("Colar lista de usuários", "Um usuário por linha (ex.: gabriel.militz). Vírgula ou ponto e vírgula também servem.", string.Join("\n", E.VolLista), true);
+        if (txt == null) return;
+        E.VolLista = Compilados.ExtrairUsuarios(new[] { txt });
+        E.VolListaNome = "lista colada";
+        _ass = null;
+    }
+
+    async Task Exportar()
+    {
+        var r = E.VolRes;
+        if (r == null || E.VolComp == null) return;
+        var suf = Dia() is DateOnly d ? d.ToString("yyyyMMdd") : Estado.Agora("yyyyMMdd");
+        byte[]? bytes = null;
+        var comp = E.VolComp; var nome = E.VolListaNome; var linhas = _comLinhas;
+        await E.Executar(_ => Task.FromResult(Compilados.ExportarVolumeUsuarios(r, comp, nome, linhas)), b => { bytes = b; return Task.CompletedTask; },
+            ex => J.Erro("Exportar", ex.Message), (s, _) => E.SubVol = $"Gravando… {s}s");
+        _ass = null;
+        if (bytes != null) await E.Salvar($"Volume_usuarios_{suf}.xlsx", bytes, Navegador.MimeXlsx);
+    }
+}

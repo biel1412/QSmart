@@ -1,0 +1,27 @@
+<Modal Titulo="@Titulo" Texto="@Rotulo" Classe="@(Multilinha ? "" : "estreita")" AoCancelar="() => Fechar(null)">
+    <ChildContent>
+        @if (Multilinha)
+        {
+            <textarea class="campo area" rows="12" @bind="Valor" @bind:event="oninput" id="dlg-campo"></textarea>
+        }
+        else
+        {
+            <input class="campo" @bind="Valor" @bind:event="oninput" id="dlg-campo" @onkeydown="Tecla" />
+        }
+    </ChildContent>
+    <Rodape>
+        <button class="btn btn-sec" @onclick="() => Fechar(null)">Cancelar</button>
+        <button class="btn btn-pri" @onclick="() => Fechar(Valor)">OK</button>
+    </Rodape>
+</Modal>
+
+@code {
+    [Parameter] public string Titulo { get; set; } = "";
+    [Parameter] public string Rotulo { get; set; } = "";
+    [Parameter] public string Valor { get; set; } = "";
+    [Parameter] public bool Multilinha { get; set; }
+    [Parameter] public Action<object?> Fechar { get; set; } = _ => { };
+    [Inject] Navegador Nav { get; set; } = null!;
+    protected override async Task OnAfterRenderAsync(bool primeira) { if (primeira) await Nav.Focar("dlg-campo"); }
+    void Tecla(KeyboardEventArgs e) { if (e.Key == "Enter") Fechar(Valor); }
+}

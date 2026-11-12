@@ -1,0 +1,26 @@
+@* Cabeçalho da página (título, subtítulo, aviso, ações e indicadores) + corpo *@
+<div class="pagina">
+    <header class="hero">
+        <div class="hero-topo">
+            <div class="hero-texto">
+                <div class="hero-trilha">@Grupo</div>
+                <h1 class="hero-titulo">@Titulo</h1>
+                <p class="hero-sub">@Sub</p>
+                @if (!string.IsNullOrEmpty(Aviso)) { <p class="hero-aviso"><Icone Nome="alerta" Tamanho="15" /> @Aviso</p> }
+            </div>
+            <div class="hero-acoes">@Acoes</div>
+        </div>
+        @if (Kpis != null) { <div class="kpis">@Kpis</div> }
+    </header>
+    <div class="corpo">@ChildContent</div>
+</div>
+
+@code {
+    [Parameter] public string Titulo { get; set; } = "";
+    [Parameter] public string Grupo { get; set; } = "";
+    [Parameter] public string Sub { get; set; } = "";
+    [Parameter] public string? Aviso { get; set; }
+    [Parameter] public RenderFragment? Acoes { get; set; }
+    [Parameter] public RenderFragment? Kpis { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

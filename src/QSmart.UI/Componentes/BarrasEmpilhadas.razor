@@ -1,0 +1,33 @@
+@* Uma linha por categoria, barra dividida por origem (Interno/Externo/Chamados) e total à direita *@
+<div class="g-emp" style="@(Altura != null ? $"max-height:{Altura}" : "")">
+    @if (Linhas.Count == 0)
+    {
+        <div class="g-vazio">@Vazio</div>
+    }
+    else
+    {
+        <div class="g-legenda">@foreach (var (n, c) in Legenda) { <span><i style="background:@c"></i>@n</span> }</div>
+        var maximo = Math.Max(1, Linhas.Max(x => x.total));
+        foreach (var (rot, segs, tot) in Linhas)
+        {
+            <div class="g-linha @(tot == 0 ? "apagada" : "")">
+                <span class="g-rot" title="@rot">@rot</span>
+                <span class="g-trilho grosso">
+                    @foreach (var (v, cor, nome) in segs.Where(s => s.valor > 0))
+                    {
+                        var w = Math.Max(v / (double)maximo * 100, 0.8);
+                        <span class="g-seg" style="width:@(w.ToString("0.###", CultureInfo.InvariantCulture))%;background:@cor" title="@($"{rot}, {nome}: {v}")">@(w >= 5 ? v.ToString() : "")</span>
+                    }
+                </span>
+                <span class="g-val">@Texto.Fmt(tot)</span>
+            </div>
+        }
+    }
+</div>
+
+@code {
+    [Parameter] public List<(string rotulo, List<(long valor, string cor, string nome)> segs, long total)> Linhas { get; set; } = new();
+    [Parameter] public List<(string nome, string cor)> Legenda { get; set; } = new();
+    [Parameter] public string Vazio { get; set; } = "Sem dados";
+    [Parameter] public string? Altura { get; set; }
+}

@@ -1,0 +1,14 @@
+<div class="kpi" style="--kpi-cor: var(--@Cor)">
+    <div class="kpi-topo"><span class="kpi-marca"></span><span class="kpi-rotulo">@Titulo</span></div>
+    <div class="kpi-valor" style="font-size:@(Math.Min(Tamanho, 28))px" title="@Valor">@Valor</div>
+    <div class="kpi-detalhe">@Detalhe</div>
+</div>
+
+@code {
+    [Parameter] public string Titulo { get; set; } = "";
+    /// <summary>Nome da cor (green, red, blue, amber, purple, ink, accent).</summary>
+    [Parameter] public string Cor { get; set; } = "accent";
+    [Parameter] public string Valor { get; set; } = "—";
+    [Parameter] public string Detalhe { get; set; } = "";
+    [Parameter] public int Tamanho { get; set; } = 28;
+}

@@ -1,0 +1,122 @@
+@page "/resumo"
+@inherits PaginaBase
+
+<Pagina Titulo="Resumo" Grupo="@A.Grupo" Sub="@E.SubResumo">
+    <Acoes>
+        <button class="btn btn-hero" disabled="@E.Carregando" @onclick="GerarRelatorio"><Icone Nome="pdf" Tamanho="17" /> Relatório PDF</button>
+        <BotaoArquivo Texto="@(E.Resultado != null ? "Abrir outra planilha" : "Abrir planilha")" Variante="pri" Icone="upload"
+                      Aceita=".xlsx,.xlsm,.csv" Desativado="E.Carregando" AoEscolher="Carregar" />
+    </Acoes>
+    <Kpis>
+        @{ var r = E.Resultado; }
+        <Kpi Titulo="Decisões analisadas" Cor="blue" Valor="@(r != null ? Fmt(r.Aprov + r.Reprov) : "—")"
+             Detalhe="@(r == null ? "" : r.Outros != 0 ? $"{Fmt(r.Outros)} fora da comparação" : "aprovações + reprovações")" />
+        <Kpi Titulo="Aprovações" Cor="green" Valor="@(r != null ? Fmt(r.Aprov) : "—")" Detalhe="@(r != null ? $"{F1(r.PctAprov)}% das decisões" : "")" />
+        <Kpi Titulo="Reprovações" Cor="red" Valor="@(r != null ? Fmt(r.Reprov) : "—")" Detalhe="@(r != null ? $"{F1(r.PctReprov)}% das decisões" : "")" />
+        @if (r != null && r.Tipos.Count > 0)
+        {
+            var t = r.Tipos[0];
+            <Kpi Titulo="Motivo mais frequente" Cor="purple" Valor="@Texto.Rotulo(t.tipo)" Tamanho="18"
+                 Detalhe="@($"{t.qtd} ocorrências, {F1(t.qtd / (double)(r.Reprov == 0 ? 1 : r.Reprov) * 100)}%")" />
+        }
+        else
+        {
+            <Kpi Titulo="Motivo mais frequente" Cor="purple" Valor="—" Tamanho="18" Detalhe="@(r != null ? "Sem reprovações" : "")" />
+        }
+    </Kpis>
+    <ChildContent>
+        <div class="barra-ferr">
+            <button class="btn btn-sec" @onclick="Classificar"><Icone Nome="tabela" Tamanho="16" /> Classificar procedimentos</button>
+            @foreach (var (chave, rot) in new[] { ("usuarios", "Usuários"), ("segmentos", "Segmentos"), ("dias", "Dias") })
+            {
+                var n = E.FiltrosResumo.Get(chave).Count;
+                <button class="btn btn-sec @(n > 0 ? "ativo" : "")" @onclick="() => Escolher(chave, rot)"><Icone Nome="filtro" Tamanho="15" /> @(n > 0 ? $"{rot} ({n})" : rot)</button>
+            }
+            <button class="btn btn-sec" disabled="@(!E.FiltrosResumo.Algum)" @onclick="Limpar">Limpar filtros</button>
+        </div>
+        @if (!string.IsNullOrEmpty(E.Resultado?.FiltrosTexto))
+        {
+            <p class="muted">Filtros ativos: @E.Resultado.FiltrosTexto</p>
+        }
+        <div class="grade-2">
+            <Painel Titulo="Tipos de reprovação mais frequentes" Estilo="min-height:420px">
+                <BarrasLista Itens="Tipos()" Total="@(E.Resultado?.Reprov ?? 0)" Vazio="@(E.Resultado == null ? "Abra uma planilha para começar" : "Sem reprovações")" />
+            </Painel>
+            <Painel Titulo="Devolutivas por segmento" Estilo="min-height:420px">
+                <BarrasLista Itens="Segmentos()" Total="@(E.Resultado?.Reprov ?? 0)" Vazio="@(E.Resultado == null ? "Abra uma planilha para começar" : "Sem devolutivas")" />
+            </Painel>
+        </div>
+    </ChildContent>
+</Pagina>
+
+@code {
+    protected override string Chave => "resumo";
+
+    List<(string, long, string?)> Tipos() => E.Resultado == null ? new() :
+        E.Resultado.Tipos.Take(8).Select(t => (Texto.Rotulo(t.tipo), t.qtd, (string?)null)).ToList();
+
+    List<(string, long, string?)> Segmentos() => E.Resultado == null ? new() :
+        E.Resultado.Segmentos.Where(s => s.Dev > 0).Select(s => (s.Nome, s.Dev, (string?)null)).ToList();
+
+    async Task Carregar(List<Arquivo> arqs)
+    {
+        var a = arqs[0];
+        var classes = new Dictionary<string, string>(E.ClassesProc);
+        await E.Executar(async prog =>
+        {
+            var cubo = await Volume.Carregar(new[] { a }, prog);
+            var op = Volume.Opcoes(cubo);
+            var r = Volume.CalcularResumo(cubo, classes, new FiltrosVolume(), a.Nome);
+            return (cubo, op, r);
+        },
+        async x =>
+        {
+            (E.CuboResumo, E.OpcoesResumo, E.Resultado) = x;
+            E.FiltrosResumo = new();
+            E.ArquivoResumo = a;
+            E.AtualizarSubResumo();
+            await Task.CompletedTask;
+        },
+        async ex =>
+        {
+            if (E.Resultado != null) E.AtualizarSubResumo(); else E.SubResumo = "Falha ao carregar a planilha.";
+            await J.Erro("Erro ao ler a planilha", Estado.Mensagem(ex));
+        },
+        (s, _) => E.SubResumo = $"Lendo {a.Nome}… {s}s (planilhas grandes podem levar um tempo)");
+    }
+
+    async Task GerarRelatorio()
+    {
+        if (E.Resultado == null) { await J.Info("Relatório PDF", "Carregue uma planilha primeiro."); return; }
+        byte[] pdf;
+        try { pdf = Core.Pdf.Relatorios.Resumo(E.Resultado); }
+        catch (Exception ex) { await J.Erro("Erro ao gerar o PDF", ex.Message); return; }
+        var nome = $"Relatorio_Qualidade_{Path.GetFileNameWithoutExtension(E.Resultado.Arquivo)}_{Estado.Agora("yyyyMMdd_HHmm")}.pdf";
+        await E.Salvar(nome, pdf, Navegador.MimePdf, "Relatório gerado");
+    }
+
+    async Task Classificar()
+    {
+        if (E.CuboResumo == null) { await J.Info("Classificar procedimentos", "Carregue a planilha primeiro."); return; }
+        var novo = await J.Classes(E.OpcoesResumo!.Procedimentos, E.ClassesProc);
+        if (novo != null) await E.AplicarClasses(novo);
+    }
+
+    async Task Escolher(string chave, string titulo)
+    {
+        if (E.CuboResumo == null) { await J.Info("Filtro", "Carregue a planilha primeiro."); return; }
+        var ops = chave switch { "usuarios" => E.OpcoesResumo!.Usuarios, "segmentos" => E.OpcoesResumo!.Segmentos, _ => E.OpcoesResumo!.Dias };
+        var res = await J.Multi(titulo, ops.Select(v => (v, v)), E.FiltrosResumo.Get(chave), "Marque um ou mais itens. Sem nada marcado, todos entram.");
+        if (res == null) return;
+        E.FiltrosResumo.Set(chave, res);
+        E.RecalcularResumo();
+        E.Notificar();
+    }
+
+    void Limpar()
+    {
+        E.FiltrosResumo = new();
+        E.RecalcularResumo();
+        E.Notificar();
+    }
+}

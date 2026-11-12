@@ -1,0 +1,29 @@
+<Modal Titulo="@Titulo" Icone="@IconeNome" IconeClasse="@($"tom-{Tipo}")" Classe="estreita" AoCancelar="Cancelar">
+    <ChildContent><p class="modal-texto">@Texto</p></ChildContent>
+    <Rodape>
+        @if (Tipo == "pergunta")
+        {
+            <button class="btn btn-sec" @onclick="() => Fechar(false)">Não</button>
+            <button class="btn btn-pri" id="dlg-sim" @onclick="() => Fechar(true)">Sim</button>
+        }
+        else
+        {
+            <button class="btn btn-pri" id="dlg-ok" @onclick="() => Fechar(null)">OK</button>
+        }
+    </Rodape>
+</Modal>
+
+@code {
+    [Parameter] public string Tipo { get; set; } = "info";
+    [Parameter] public string Titulo { get; set; } = "";
+    [Parameter] public string Texto { get; set; } = "";
+    [Parameter] public Action<object?> Fechar { get; set; } = _ => { };
+    [Inject] Navegador Nav { get; set; } = null!;
+    void Cancelar() => Fechar(Tipo == "pergunta" ? false : null);
+    string IconeNome => Tipo switch { "erro" => "x", "aviso" => "alerta", "pergunta" => "info", _ => "check" };
+
+    protected override async Task OnAfterRenderAsync(bool primeira)
+    {
+        if (primeira) await Nav.Focar(Tipo == "pergunta" ? "dlg-sim" : "dlg-ok");
+    }
+}

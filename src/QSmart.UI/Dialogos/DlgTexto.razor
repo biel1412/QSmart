@@ -1,0 +1,22 @@
+@* Mensagem editável (usada para o Teams) *@
+<Modal Titulo="@Titulo" Texto="@Subtitulo" Classe="larga" AoCancelar="() => Fechar(null)">
+    <ChildContent><textarea class="campo area mono" rows="18" @bind="Texto" @bind:event="oninput"></textarea></ChildContent>
+    <Rodape>
+        <span class="status-ok">@_status</span>
+        <span class="mola"></span>
+        @foreach (var (rot, variante, acao) in Acoes)
+        {
+            <button class="btn btn-@variante" @onclick="async () => _status = await acao(Texto.Trim())">@rot</button>
+        }
+        <button class="btn btn-sec" @onclick="() => Fechar(null)">Fechar</button>
+    </Rodape>
+</Modal>
+
+@code {
+    [Parameter] public string Titulo { get; set; } = "";
+    [Parameter] public string Subtitulo { get; set; } = "";
+    [Parameter] public string Texto { get; set; } = "";
+    [Parameter] public List<(string rotulo, string variante, Func<string, Task<string>> acao)> Acoes { get; set; } = new();
+    [Parameter] public Action<object?> Fechar { get; set; } = _ => { };
+    string _status = "";
+}

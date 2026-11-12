@@ -1,0 +1,36 @@
+@* Define, procedimento a procedimento, se conta como Aprovação, Reprovação ou fica fora da comparação *@
+<Modal Titulo="Classificar procedimentos" Classe="larga"
+       Texto="Escolha como cada procedimento da planilha entra na comparação. Exemplo: marque “CANCELAR FLUXO” como Reprovação para somá-lo ao total de reprovações. A escolha fica salva."
+       AoCancelar="() => Fechar(null)">
+    <ChildContent>
+        <div class="lista-classes">
+            @foreach (var (p, n) in Procs)
+            {
+                <div class="linha-classe">
+                    <div><div class="forte">@p</div><div class="muted">@Texto.Fmt(n) registros</div></div>
+                    <div class="segmentado">
+                        @foreach (var (chave, rot) in new[] { (Classes.Aprov, "Aprovação"), (Classes.Reprov, "Reprovação"), (Classes.Fora, "Fora da comparação") })
+                        {
+                            <button class="seg @(_esc[p] == chave ? "on c-" + chave : "")" @onclick="() => _esc[p] = chave">@rot</button>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    </ChildContent>
+    <Rodape>
+        <button class="btn btn-sec" @onclick="Restaurar">Restaurar padrão</button>
+        <span class="mola"></span>
+        <button class="btn btn-sec" @onclick="() => Fechar(null)">Cancelar</button>
+        <button class="btn btn-pri" @onclick="() => Fechar(new Dictionary<string, string>(_esc))">Aplicar</button>
+    </Rodape>
+</Modal>
+
+@code {
+    [Parameter] public List<(string proc, long n)> Procs { get; set; } = new();
+    [Parameter] public IReadOnlyDictionary<string, string> ClassesAtuais { get; set; } = new Dictionary<string, string>();
+    [Parameter] public Action<object?> Fechar { get; set; } = _ => { };
+    Dictionary<string, string> _esc = new();
+    protected override void OnInitialized() => _esc = Procs.ToDictionary(p => p.proc, p => Classes.De(p.proc, ClassesAtuais));
+    void Restaurar() { foreach (var p in _esc.Keys.ToList()) _esc[p] = Classes.Padrao(p); }
+}

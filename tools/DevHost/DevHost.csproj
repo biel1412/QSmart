@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <!-- Servidor local só para desenvolvimento (Blazor Server). O site publicado usa src/QSmart.Web (WebAssembly). -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <QSmartLocal>true</QSmartLocal>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\QSmart.UI\QSmart.UI.csproj" AdditionalProperties="QSmartLocal=true" />
+  </ItemGroup>
+</Project>

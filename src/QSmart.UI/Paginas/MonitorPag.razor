@@ -1,0 +1,296 @@
+@page "/monitor"
+@inherits PaginaBase
+
+<Pagina Titulo="Monitor de ociosidade" Grupo="@A.Grupo" Sub="@Sub()">
+    <Acoes>
+        <button class="btn btn-hero" disabled="@(E.MonRes == null || E.Carregando)" @onclick="Exportar"><Icone Nome="download" Tamanho="17" /> Exportar Excel</button>
+        <BotaoArquivo Texto="Anexar planilha(s)" Variante="pri" Icone="upload" Aceita=".xlsx,.xlsm,.csv" Varios="true" Desativado="E.Carregando" AoEscolher="Abrir"
+                      Dica="Compilado diário ou mensal; pode escolher vários" />
+    </Acoes>
+    <Kpis>
+        @{ var r = E.MonRes; }
+        @if (r == null)
+        {
+            <Kpi Titulo="Colaboradores" Cor="muted" Valor="@(E.MonSel.Count > 0 ? Fmt(E.MonSel.Count) : "—")" Detalhe="selecionados" />
+            <Kpi Titulo="Dias analisados" Cor="blue" /><Kpi Titulo="Ocioso médio por dia" Cor="red" /><Kpi Titulo="Ociosidade" Cor="amber" /><Kpi Titulo="Pausas contadas" Cor="purple" />
+        }
+        else
+        {
+            var p = r.Param;
+            <Kpi Titulo="Colaboradores" Cor="muted" Valor="@Fmt(r.PorCol.Count)" Detalhe="@($"jornada a partir das {p.Inicio}")" />
+            <Kpi Titulo="Dias analisados" Cor="blue" Valor="@Fmt(r.Dias.Count)" Detalhe="@(r.Dias.Count > 1 ? $"{Texto.Dm(r.Dias[0])} a {Texto.Dmy(r.Dias[^1])}" : r.Dias.Count == 1 ? Texto.Dmy(r.Dias[0]) : "")" />
+            <Kpi Titulo="Ocioso médio por dia" Cor="red" Valor="@Texto.FmtMin(r.MediaDia)" Detalhe="@("por colaborador por dia" + (p.Intervalo != 0 ? $", já sem {Texto.G(p.Intervalo)} min de intervalo" : ""))" />
+            <Kpi Titulo="Ociosidade" Cor="amber" Valor="@(Fv(r.Pct) + "%")" Detalhe="do tempo de jornada considerado" />
+            <Kpi Titulo="Pausas contadas" Cor="purple" Valor="@Fmt(r.NPausas)" Detalhe="@($"acima de {Texto.G(p.Gap)} min")" />
+        }
+    </Kpis>
+    <ChildContent>
+        <Painel Titulo="Antes de gerar" Nota="o cálculo usa o horário de FIM de cada atividade do compilado">
+            <div class="barra-ferr">
+                <span class="rotulo">Colaboradores</span>
+                <button class="btn btn-sec" @onclick="Selecionar"><Icone Nome="usuarios" Tamanho="16" /> @(E.MonSel.Count > 0 ? $"Selecionar colaboradores ({E.MonSel.Count})" : "Selecionar colaboradores")</button>
+                <button class="btn btn-sec" @onclick="UsarVolume">Usar a lista da aba Volume</button>
+                <span class="muted">@TextoSel()</span>
+            </div>
+            <div class="barra-ferr">
+                <span class="rotulo">Início da jornada</span>
+                <input class="campo" type="time" style="width:110px" value="@_ini" @onchange="e => { _ini = e.Value?.ToString() ?? _ini; }" />
+                <span class="rotulo">Contar pausas acima de</span>
+                <input class="campo num" type="number" min="0.5" max="240" step="0.5" value="@_gap.ToString(CultureInfo.InvariantCulture)" @onchange="MudarGap" title="Só conta como pausa o tempo entre uma finalização e a próxima que passar deste limite" />
+                <span class="muted">min</span>
+                <label class="marcar"><input type="checkbox" @bind="_comIntervalo" /> Descontar intervalo de</label>
+                <input class="campo num" type="number" min="1" max="240" disabled="@(!_comIntervalo)" value="@_intervalo" @onchange="MudarIntervalo" />
+                <span class="muted">min</span>
+                <label class="marcar" title="Se marcado, o tempo entre a última finalização e o fim da jornada também conta como pausa"><input type="checkbox" @bind="_comFim" /> Fim da jornada</label>
+                <input class="campo" type="time" style="width:110px" disabled="@(!_comFim)" value="@_fim" @onchange="e => { _fim = e.Value?.ToString() ?? _fim; }" />
+                <span class="mola"></span>
+                <button class="btn btn-pri" disabled="@(E.MonBase == null || E.Carregando)" @onclick="Gerar"><Icone Nome="faisca" Tamanho="16" /> Gerar</button>
+            </div>
+            <p class="muted" style="margin:0">@Regra()</p>
+        </Painel>
+        <Painel Titulo="@TituloGrafico()" Estilo="height:330px">
+            @if (E.MonRes != null && E.MonRes.Dias.Count == 1)
+            {
+                <BarrasLista Itens="ItensColab()" Total="@Math.Max(1, ItensColab().Sum(x => x.Item2))" Altura="260px" Vazio="Sem dados" />
+            }
+            else
+            {
+                <Colunas Cols="ColsDias()" Legenda="_legDias" Altura="260px" Vazio="@(E.MonRes == null ? "Anexe o compilado, selecione colaboradores e clique em Gerar" : "Sem dados")" />
+            }
+        </Painel>
+        <p class="muted" style="margin:0">@TextoFiltro()</p>
+        <div>
+            <SeletorAbas Itens="_abas" Ativa="_aba" AtivaChanged="i => _aba = i" />
+            <div class="aba-conteudo">
+                <Painel Sangrar="true">
+                    @switch (_aba)
+                    {
+                        case 0:
+                            <Tabela Colunas="_colsCol" Linhas="LinhasCol()" Altura="520px" AoDuploClique="l => VerPausas(l, 0)" />
+                            break;
+                        case 1:
+                            <Tabela Colunas="_colsDia" Linhas="LinhasDia()" Altura="520px" AoDuploClique="l => VerPausas(l, 1)" />
+                            break;
+                        case 2:
+                            <Tabela Colunas="_colsRank" Linhas="LinhasRank()" Altura="520px" Ordenavel="false" />
+                            break;
+                        default:
+                            <Tabela Colunas="_colsPausas" Linhas="LinhasPausas()" Altura="520px" />
+                            break;
+                    }
+                </Painel>
+            </div>
+        </div>
+    </ChildContent>
+</Pagina>
+
+@code {
+    protected override string Chave => "monitor";
+    readonly List<string> _abas = new() { "Por colaborador", "Dia a dia", "Mais e menos ociosos", "Pausas" };
+    readonly List<ColunaTab> _colsCol = new() { new("Colaborador", 0), new("Dias", 60, 'c'), new("Atividades", 95, 'c'), new("Ocioso médio/dia", 140, 'c'), new("% ocioso", 90, 'c'),
+        new("Pausas", 80, 'c'), new("Dia mais ocioso", 170, 'c'), new("Dia menos ocioso", 170, 'c') };
+    readonly List<ColunaTab> _colsDia = new() { new("Dia", 105, 'c'), new("Colaborador", 0), new("Ativ.", 65, 'c'), new("1ª final.", 85, 'c'), new("Última", 85, 'c'),
+        new("Pausas", 70, 'c'), new("Maior pausa", 160, 'c'), new("Ocioso bruto", 110, 'c'), new("Intervalo", 90, 'c'), new("Ocioso", 90, 'c'), new("%", 70, 'c') };
+    readonly List<ColunaTab> _colsPausas = new() { new("Colaborador", 0), new("Dia", 105, 'c'), new("De", 90, 'c'), new("Até", 90, 'c'), new("Duração", 100, 'c'), new("Tipo", 280) };
+    readonly List<ColunaTab> _colsRank = new() { new("", 140), new("Dia", 105, 'c'), new("Colaborador", 0), new("Ocioso", 100, 'c'), new("%", 70, 'c'), new("Atividades", 95, 'c') };
+    readonly List<(string, string)> _legDias = new() { ("Ocioso médio (min)", "var(--amber)"), ("Dia mais ocioso", "var(--red)") };
+    int _aba;
+    string _ini = "08:00", _fim = "17:00";
+    double _gap = 7;
+    int _intervalo = 60;
+    bool _comIntervalo = true, _comFim;
+
+    void MudarGap(ChangeEventArgs e) { if (double.TryParse(e.Value?.ToString(), NumberStyles.Float, CultureInfo.InvariantCulture, out var v)) _gap = Math.Clamp(Math.Round(v, 1), 0.5, 240); }
+    void MudarIntervalo(ChangeEventArgs e) { if (int.TryParse(e.Value?.ToString(), out var v)) _intervalo = Math.Clamp(v, 1, 240); }
+
+    (TimeOnly ini, double gap, double inter, TimeOnly? fim) Param()
+    {
+        var ini = TimeOnly.TryParse(_ini, CultureInfo.InvariantCulture, out var a) ? new TimeOnly(a.Hour, a.Minute) : new TimeOnly(8, 0);
+        TimeOnly? fim = _comFim && TimeOnly.TryParse(_fim, CultureInfo.InvariantCulture, out var b) ? new TimeOnly(b.Hour, b.Minute) : null;
+        return (ini, _gap, _comIntervalo ? _intervalo : 0.0, fim);
+    }
+
+    string Regra()
+    {
+        var (ini, gap, inter, fim) = Param();
+        var txt = $"Conta como pausa todo intervalo acima de {Texto.G(gap)} min: das {ini:HH\\:mm} até a 1ª finalização e entre uma finalização e a próxima" +
+                  (fim != null ? $", e da última finalização até as {fim:HH\\:mm}" : " (o dia termina na última finalização)") +
+                  (inter != 0 ? $". Do total, descontamos {Texto.G(inter)} min de intervalo." : ". Sem desconto de intervalo.");
+        var p = new ParamMonitor { Inicio = ini.ToString("HH:mm"), Gap = gap, Intervalo = inter, Fim = fim?.ToString("HH:mm") ?? "" };
+        if (E.MonRes != null && !E.MonRes.Param.Equals(p)) txt += "  ⚠ Parâmetros alterados: clique em Gerar para atualizar.";
+        return txt;
+    }
+
+    string Sub()
+    {
+        var b = E.MonBase;
+        if (b == null || E.Carregando) return E.SubMon;
+        var per = b.Dias.Count == 0 ? "sem datas" : Texto.Dmy(b.Dias[0]) + (b.Dias.Count > 1 ? $" a {Texto.Dmy(b.Dias[^1])} ({b.Dias.Count} dias)" : "");
+        return string.Join(", ", b.Arquivos.Select(x => x.nome)) + $"  ·  {per}  ·  {Fmt(b.Usuarios.Count)} colaboradores";
+    }
+
+    string TextoSel()
+    {
+        var nomes = E.MonBase?.Usuarios.ToDictionary(x => x.chave, x => x.nome) ?? new();
+        var sel = E.MonSel.Select(k => nomes.GetValueOrDefault(k, k)).ToList();
+        return sel.Count == 0 ? "Nenhum colaborador selecionado" : $"{sel.Count} selecionado(s): " + string.Join(", ", sel.Take(8)) + (sel.Count > 8 ? "…" : "");
+    }
+
+    async Task Abrir(List<Arquivo> cs)
+    {
+        await E.Executar(prog => QSmart.Core.Monitor.Preparar(cs, prog),
+            async b =>
+            {
+                E.MonBase = b; E.MonRes = null;
+                var validos = b.Usuarios.Select(x => x.chave).ToHashSet();
+                E.MonSel = E.MonSel.Where(validos.Contains).ToList();
+                await Task.CompletedTask;
+            },
+            ex => J.Erro("Erro ao ler o compilado", Estado.Mensagem(ex)),
+            (s, _) => E.SubMon = $"Lendo {cs.Count} planilha(s)… {s}s");
+    }
+
+    async Task Selecionar()
+    {
+        var b = E.MonBase;
+        if (b == null) { await J.Info("Colaboradores", "Anexe o compilado primeiro."); return; }
+        var v = await J.Multi("Colaboradores para monitorar", b.Usuarios.Select(x => (x.chave, $"{x.nome}  ·  {Fmt(x.n)} atividades")), E.MonSel, "Marque um ou mais. A busca filtra a lista.");
+        if (v == null) return;
+        E.MonSel = b.Usuarios.Select(x => x.chave).Where(v.Contains).ToList();
+        E.MonRes = null;
+    }
+
+    async Task UsarVolume()
+    {
+        var b = E.MonBase;
+        if (b == null) { await J.Info("Colaboradores", "Anexe o compilado primeiro."); return; }
+        if (E.VolLista.Count == 0) { await J.Info("Lista da aba Volume", "Nenhuma lista de usuários foi anexada na aba Volume."); return; }
+        var validos = b.Usuarios.Select(x => x.chave).ToHashSet();
+        E.MonSel = E.VolLista.Select(Compilados.NormUsuario).Distinct().Where(validos.Contains).ToList();
+        var fora = E.VolLista.Where(u => !validos.Contains(Compilados.NormUsuario(u))).ToList();
+        E.MonRes = null;
+        if (fora.Count > 0)
+            await J.Aviso("Lista da aba Volume", $"{fora.Count} usuário(s) da lista não aparecem neste compilado:\n" + string.Join(", ", fora.Take(30)) + (fora.Count > 30 ? "…" : ""));
+    }
+
+    async Task Gerar()
+    {
+        if (E.MonBase == null) { await J.Info("Monitor", "Anexe o compilado primeiro."); return; }
+        if (E.MonSel.Count == 0) { await J.Info("Monitor", "Selecione pelo menos um colaborador."); return; }
+        var (ini, gap, inter, fim) = Param();
+        var b = E.MonBase; var sel = E.MonSel.ToList();
+        await E.Executar(_ => Task.FromResult(QSmart.Core.Monitor.Calcular(b, sel, ini, gap, inter, fim)),
+            async r => { E.MonRes = r; E.MonFiltro = null; await Task.CompletedTask; },
+            ex => J.Erro("Monitor", ex.Message), (s, _) => E.SubMon = $"Calculando ociosidade… {s}s");
+    }
+
+    string TituloGrafico()
+    {
+        var r = E.MonRes;
+        if (r != null && r.Dias.Count == 1) return $"Tempo ocioso em {Texto.Dmy(r.Dias[0])} (minutos e parcela do total)";
+        return "Ociosidade média por dia (minutos por colaborador)";
+    }
+
+    List<(string, List<(long, string, string)>, string)> ColsDias()
+    {
+        var r = E.MonRes;
+        if (r == null) return new();
+        var mx = r.PorDia.Select(x => x.media).DefaultIfEmpty(0).Max();
+        return r.PorDia.Select(x => (Texto.Dm(x.dia), new List<(long, string, string)> { ((long)Texto.PyRound(x.media, 0), x.media == mx ? "var(--red)" : "var(--amber)", "Ocioso médio") },
+            Texto.DiaSemana(x.dia))).ToList();
+    }
+
+    List<(string, long, string?)> ItensColab() => E.MonRes == null ? new() : E.MonRes.PorCol.Select(x =>
+        (x.Colaborador, (long)Texto.PyRound(x.Media, 0), (string?)(x.Pct >= 30 ? "var(--red)" : x.Pct >= 15 ? "var(--amber)" : "var(--green)"))).ToList();
+
+    string Dd(DiaMonitor? x) => x == null ? "—" : $"{Texto.Dm(x.Dia)} · {Texto.FmtMin(x.Liquido)}";
+
+    List<LinhaTab>? _cCol; object? _rCol;
+    List<LinhaTab> LinhasCol()
+    {
+        var r = E.MonRes;
+        if (_cCol != null && ReferenceEquals(_rCol, r)) return _cCol;
+        _rCol = r;
+        if (r == null) return _cCol = new();
+        var varios = r.Dias.Count > 1;
+        return _cCol = r.PorCol.Select(x => new LinhaTab
+        {
+            Valores = new object?[] { x.Colaborador, x.Dias, Fmt(x.Atividades), Texto.FmtMin(x.Media), Fv(x.Pct) + "%", x.Pausas, varios ? Dd(x.Mais) : "—", varios ? Dd(x.Menos) : "—" },
+            Chaves = new object?[] { x.Colaborador, x.Dias, x.Atividades, x.Media, x.Pct, x.Pausas, x.Mais?.Liquido ?? 0, x.Menos?.Liquido ?? 0 },
+            Erro = x.Dias == 0, Tag = x.Chave,
+        }).ToList();
+    }
+
+    List<LinhaTab>? _cDia; (object?, string?)? _kDia;
+    List<LinhaTab> LinhasDia()
+    {
+        var r = E.MonRes;
+        var k = ((object?)r, E.MonFiltro);
+        if (_cDia != null && _kDia.Equals(k)) return _cDia;
+        _kDia = k;
+        if (r == null) return _cDia = new();
+        var ds = r.DiasL.Where(x => E.MonFiltro == null || x.Chave == E.MonFiltro).OrderBy(x => x.Dia).ThenBy(x => x.Colaborador, StringComparer.Ordinal).ToList();
+        var mx = ds.Select(x => x.Liquido).DefaultIfEmpty(0).Max();
+        return _cDia = ds.Select(x => new LinhaTab
+        {
+            Valores = new object?[] { Texto.Dmy(x.Dia), x.Colaborador, Fmt(x.Atividades), Texto.Hm(x.Primeira), Texto.Hm(x.Ultima), x.Pausas,
+                x.Maior.de != null ? $"{Texto.FmtMin(x.Maior.min)} ({Texto.Hm(x.Maior.de.Value)}–{Texto.Hm(x.Maior.ate!.Value)})" : "—",
+                Texto.FmtMin(x.Bruto), x.Desconto != 0 ? Texto.FmtMin(x.Desconto) : "—", Texto.FmtMin(x.Liquido), $"{Texto.PyRound(x.Pct, 0):0}%" },
+            Chaves = new object?[] { x.Dia, x.Colaborador, x.Atividades, x.Primeira, x.Ultima, x.Pausas, x.Maior.min, x.Bruto, x.Desconto, x.Liquido, x.Pct },
+            Tag = x.Chave,
+            Celulas = mx > 0 ? new() { [9] = new EstiloCelula(Fundo: $"color-mix(in srgb, var(--red) {(6 + 40 * x.Liquido / mx).ToString("0.#", CultureInfo.InvariantCulture)}%, transparent)") } : null,
+        }).ToList();
+    }
+
+    List<LinhaTab> LinhasPausas()
+    {
+        var r = E.MonRes;
+        if (r == null) return new();
+        return r.Pausas.Where(x => E.MonFiltro == null || x.Chave == E.MonFiltro).Select(x => new LinhaTab
+        {
+            Valores = new object?[] { x.Colaborador, Texto.Dmy(x.Dia), Texto.Hms(x.De), Texto.Hms(x.Ate), x.Min >= 60 ? Texto.FmtMin(x.Min) : Fv(x.Min) + " min", x.Tipo },
+            Chaves = new object?[] { x.Colaborador, x.Dia, x.De, x.Ate, x.Min, x.Tipo },
+        }).ToList();
+    }
+
+    List<LinhaTab> LinhasRank()
+    {
+        var r = E.MonRes;
+        if (r == null) return new();
+        LinhaTab L(string rot, DiaMonitor x, string cor) => new()
+        {
+            Valores = new object?[] { rot, Texto.Dmy(x.Dia), x.Colaborador, Texto.FmtMin(x.Liquido), Fv(x.Pct) + "%", Fmt(x.Atividades) },
+            Celulas = new() { [0] = new EstiloCelula(Cor: cor, Negrito: true) },
+        };
+        return r.DiasL.OrderByDescending(x => x.Liquido).Take(10).Select(x => L("▲ Mais ocioso", x, "var(--red)"))
+            .Concat(r.DiasL.OrderBy(x => x.Liquido).Take(10).Select(x => L("▼ Menos ocioso", x, "var(--green)"))).ToList();
+    }
+
+    string TextoFiltro()
+    {
+        if (E.MonRes == null) return "";
+        if (E.MonFiltro == null) return "Duplo clique num colaborador para ver só os dias e as pausas dele.";
+        var nome = E.MonRes.PorCol.FirstOrDefault(x => x.Chave == E.MonFiltro)?.Colaborador ?? "";
+        return $"Mostrando dia a dia e pausas de {nome}. Duplo clique de novo para ver todos.";
+    }
+
+    void VerPausas(LinhaTab l, int origem)
+    {
+        var chave = (string?)l.Tag;
+        E.MonFiltro = E.MonFiltro == chave ? null : chave;
+        _cDia = null;
+        if (E.MonFiltro != null) _aba = origem == 1 ? 3 : 1;
+    }
+
+    async Task Exportar()
+    {
+        var r = E.MonRes; var b = E.MonBase;
+        if (r == null || b == null) return;
+        var d = r.Dias;
+        var suf = d.Count > 0 ? d[0].ToString("yyyyMMdd") + (d.Count > 1 ? "_a_" + d[^1].ToString("yyyyMMdd") : "") : "sem_data";
+        byte[]? bytes = null;
+        await E.Executar(_ => Task.FromResult(QSmart.Core.Monitor.Exportar(r, b)), x => { bytes = x; return Task.CompletedTask; },
+            ex => J.Erro("Exportar", ex.Message), (s, _) => E.SubMon = $"Gravando… {s}s");
+        if (bytes != null) await E.Salvar($"Ociosidade_{suf}.xlsx", bytes, Navegador.MimeXlsx);
+    }
+}

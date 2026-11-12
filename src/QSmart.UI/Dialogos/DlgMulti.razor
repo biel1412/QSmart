@@ -1,0 +1,41 @@
+@* Lista pesquisável com caixas de marcação *@
+<Modal Titulo="@Titulo" Texto="@Dica" Classe="lista" AoCancelar="() => Fechar(null)">
+    <ChildContent>
+        <div class="campo-busca"><Icone Nome="busca" Tamanho="16" /><input class="campo" placeholder="Buscar…" @bind="_busca" @bind:event="oninput" id="dlg-busca" /></div>
+        <div class="lista-marcar">
+            @foreach (var (v, r) in Visiveis)
+            {
+                <label class="item-marcar">
+                    <input type="checkbox" checked="@_marcados.Contains(v)" @onchange="e => Alternar(v, (bool)e.Value!)" />
+                    <span>@r</span>
+                </label>
+            }
+            @if (!Visiveis.Any()) { <div class="g-vazio">Nada encontrado</div> }
+        </div>
+        <div class="muted">@_marcados.Count marcado(s)</div>
+    </ChildContent>
+    <Rodape>
+        <button class="btn btn-sec" @onclick="Marcar">Marcar visíveis</button>
+        <button class="btn btn-sec" @onclick="() => _marcados.Clear()">Limpar</button>
+        <span class="mola"></span>
+        <button class="btn btn-sec" @onclick="() => Fechar(null)">Cancelar</button>
+        <button class="btn btn-pri" @onclick="() => Fechar(new HashSet<string>(_marcados))">Aplicar</button>
+    </Rodape>
+</Modal>
+
+@code {
+    [Parameter] public string Titulo { get; set; } = "";
+    [Parameter] public string Dica { get; set; } = "";
+    [Parameter] public List<(string valor, string rotulo)> Opcoes { get; set; } = new();
+    [Parameter] public HashSet<string> Atuais { get; set; } = new();
+    [Parameter] public Action<object?> Fechar { get; set; } = _ => { };
+    [Inject] Navegador Nav { get; set; } = null!;
+    HashSet<string> _marcados = new();
+    string _busca = "";
+
+    protected override void OnInitialized() => _marcados = new(Atuais.Where(a => Opcoes.Any(o => o.valor == a)));
+    protected override async Task OnAfterRenderAsync(bool primeira) { if (primeira) await Nav.Focar("dlg-busca"); }
+    IEnumerable<(string, string)> Visiveis => Opcoes.Where(o => _busca.Trim() == "" || Texto.CaseFold(o.rotulo).Contains(Texto.CaseFold(_busca.Trim())));
+    void Alternar(string v, bool on) { if (on) _marcados.Add(v); else _marcados.Remove(v); }
+    void Marcar() { foreach (var (v, _) in Visiveis) _marcados.Add(v); }
+}

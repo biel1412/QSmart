@@ -1,0 +1,54 @@
+name: Publicar no GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Compilar (Blazor WebAssembly)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Publicar o QSmart
+        run: dotnet publish src/QSmart.Web/QSmart.Web.csproj -c Release -o publicado
+
+      - name: Ajustar para o GitHub Pages
+        run: |
+          cd publicado/wwwroot
+          REPO="${GITHUB_REPOSITORY#*/}"
+          sed -i "s|<base href=\"/\" />|<base href=\"/${REPO}/\" />|" index.html
+          cp index.html 404.html          # rotas internas (ex.: /resumo) abrem direto
+          touch .nojekyll                 # sem isso o GitHub Pages esconde a pasta _framework
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: publicado/wwwroot
+
+  deploy:
+    name: Publicar
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.publicacao.outputs.page_url }}
+    steps:
+      - id: publicacao
+        uses: actions/deploy-pages@v4

@@ -1,0 +1,33 @@
+@* Botão que abre o seletor de arquivos do sistema (os arquivos são lidos no próprio navegador) *@
+<label class="btn btn-@Variante @(Desativado ? "desativado" : "")" title="@Dica">
+    @if (Icone != null) { <QSmart.UI.Componentes.Icone Nome="@Icone" Tamanho="17" /> }
+    <span>@Texto</span>
+    <InputFile OnChange="Escolheu" multiple="@Varios" accept="@Aceita" disabled="@Desativado" @key="_chave" />
+</label>
+
+@code {
+    [Parameter] public string Texto { get; set; } = "";
+    [Parameter] public string Variante { get; set; } = "sec";
+    [Parameter] public string? Icone { get; set; }
+    [Parameter] public string Aceita { get; set; } = "";
+    [Parameter] public bool Varios { get; set; }
+    [Parameter] public bool Desativado { get; set; }
+    [Parameter] public string? Dica { get; set; }
+    [Parameter] public EventCallback<List<Arquivo>> AoEscolher { get; set; }
+    int _chave;
+
+    async Task Escolheu(InputFileChangeEventArgs e)
+    {
+        var lista = new List<Arquivo>();
+        var arquivos = Varios ? e.GetMultipleFiles(500) : new[] { e.File };
+        foreach (var f in arquivos)
+        {
+            using var s = f.OpenReadStream(2L * 1024 * 1024 * 1024);
+            using var ms = new MemoryStream();
+            await s.CopyToAsync(ms);
+            lista.Add(new Arquivo(f.Name, ms.ToArray()));
+        }
+        _chave++;    // permite escolher o mesmo arquivo de novo
+        if (lista.Count > 0) await AoEscolher.InvokeAsync(lista);
+    }
+}

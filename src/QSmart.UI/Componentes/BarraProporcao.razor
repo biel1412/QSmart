@@ -1,0 +1,8 @@
+@* Parte verde (conforme) sobre trilho vermelho (divergente) *@
+<div class="barra-prop @(Ok + Err > 0 && Err > 0 ? "com-erro" : "")" title="@(Ok + Err > 0 ? $"{Texto.Fmt(Ok)} no padrão, {Texto.Fmt(Err)} divergentes" : "")">
+    @if (Ok + Err > 0 && Ok > 0) { <span style="width:@(Math.Max(Ok * 100.0 / (Ok + Err), 1).ToString("0.##", CultureInfo.InvariantCulture))%"></span> }
+</div>
+@code {
+    [Parameter] public long Ok { get; set; }
+    [Parameter] public long Err { get; set; }
+}

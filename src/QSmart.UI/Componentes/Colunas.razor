@@ -1,0 +1,40 @@
+@* Colunas empilhadas por período (dias ou meses) com total no topo *@
+<div class="g-col" style="height:@Altura">
+    @if (Cols.Count == 0)
+    {
+        <div class="g-vazio">@Vazio</div>
+    }
+    else
+    {
+        var tot = Cols.Select(c => c.segs.Sum(s => s.valor)).ToList();
+        var maximo = Math.Max(1, tot.Max());
+        var passo = Math.Max(1, (int)Math.Ceiling(Cols.Count / 24.0));
+        <div class="g-legenda dir">@foreach (var (n, c) in Legenda) { <span><i style="background:@c"></i>@n</span> }</div>
+        <div class="g-area">
+            <div class="g-grade" style="bottom:50%"></div><div class="g-grade" style="bottom:100%"></div>
+            @for (int i = 0; i < Cols.Count; i++)
+            {
+                var (rot, segs, sub) = Cols[i];
+                var h = tot[i] / (double)maximo * 100;
+                <div class="g-c">
+                    <div class="g-pilha" style="height:@(h.ToString("0.###", CultureInfo.InvariantCulture))%">
+                        @if (tot[i] > 0 && Cols.Count <= 40) { <span class="g-tot">@Texto.Fmt(tot[i])</span> }
+                        @foreach (var (v, cor, nome) in segs.Where(s => s.valor > 0).Reverse())
+                        {
+                            <span class="g-bloco" style="flex:@v;background:@cor" title="@($"{rot}, {nome}: {Texto.Fmt(v)}")"></span>
+                        }
+                    </div>
+                    <div class="g-xrot">@(i % passo == 0 ? rot : "")</div>
+                    @if (!string.IsNullOrEmpty(sub) && Cols.Count <= 16) { <div class="g-xsub">@sub</div> }
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public List<(string rotulo, List<(long valor, string cor, string nome)> segs, string sub)> Cols { get; set; } = new();
+    [Parameter] public List<(string nome, string cor)> Legenda { get; set; } = new();
+    [Parameter] public string Vazio { get; set; } = "Sem dados";
+    [Parameter] public string Altura { get; set; } = "240px";
+}

@@ -1,0 +1,11 @@
+@implements IDisposable
+@foreach (var j in Janelas.Abertas)
+{
+    <DynamicComponent @key="j.Id" Type="j.Tipo" Parameters="j.Parametros" />
+}
+@code {
+    [Inject] Janelas Janelas { get; set; } = null!;
+    protected override void OnInitialized() => Janelas.Mudou += Atualizar;
+    void Atualizar() => InvokeAsync(StateHasChanged);
+    public void Dispose() => Janelas.Mudou -= Atualizar;
+}

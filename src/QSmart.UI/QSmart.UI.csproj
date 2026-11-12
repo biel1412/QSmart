@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk.Razor">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>QSmart.UI</RootNamespace>
+    <NoWarn>CS1591;CS8618;BL0007</NoWarn>
+  </PropertyGroup>
+  <!-- Build local (sem NuGet): usa o framework ASP.NET Core instalado. No GitHub Actions: pacote para o navegador. -->
+  <ItemGroup Condition="'$(QSmartLocal)' == 'true'">
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(QSmartLocal)' != 'true'">
+    <SupportedPlatform Include="browser" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.Web" Version="8.0.11" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\QSmart.Core\QSmart.Core.csproj" />
+  </ItemGroup>
+</Project>

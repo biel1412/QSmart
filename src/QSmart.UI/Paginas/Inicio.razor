@@ -1,0 +1,124 @@
+@page "/"
+@inherits PaginaBase
+
+<div class="inicio">
+    <section class="boas-vindas">
+        <div class="bv-texto">
+            <div class="bv-saudacao"><Icone Nome="faisca" Tamanho="16" /> @Saudacao()</div>
+            <h1>Bem-vindo ao <span class="grad">QSmart</span></h1>
+            <p>A plataforma de qualidade da <b>Insi</b>: decisões, inspeções, pareceres e operação em um só lugar. As planilhas são lidas aqui mesmo, no seu computador.</p>
+            <div class="bv-busca">
+                <Icone Nome="busca" Tamanho="18" />
+                <input class="campo" placeholder="O que você quer fazer? Ex.: pareceres, ociosidade, unir compilados…" @bind="_busca" @bind:event="oninput" @onkeydown="Tecla" id="busca-inicio" />
+                @if (_busca != "") { <button class="btn-icone" @onclick="@(() => _busca = "")" title="Limpar"><Icone Nome="x" Tamanho="16" /></button> }
+            </div>
+        </div>
+        <div class="bv-arte" aria-hidden="true">
+            <Logo Tamanho="132" />
+            <div class="bv-orbita o1"></div><div class="bv-orbita o2"></div>
+        </div>
+    </section>
+
+    <section class="situacao">
+        <div class="sit-card">
+            <span class="sit-ic" style="--c:var(--green)"><Icone Nome="resumo" /></span>
+            <div><div class="sit-rotulo">Planilha de aprovações</div><div class="sit-valor">@(E.Resultado?.Arquivo ?? "Nenhuma carregada")</div>
+                <div class="sit-det">@(E.Resultado != null ? $"{Fmt(E.Resultado.Linhas)} registros · {E.Resultado.Usuarios} usuários" : "Abra no Resumo")</div></div>
+        </div>
+        <div class="sit-card">
+            <span class="sit-ic" style="--c:var(--blue)"><Icone Nome="inspecao" /></span>
+            <div><div class="sit-rotulo">Planilha de inspeção</div><div class="sit-valor">@(E.Evolucao?.Arquivo ?? "Nenhuma carregada")</div>
+                <div class="sit-det">@(E.Evolucao != null ? $"{Fmt(E.Evolucao.Avaliacoes)} avaliações · {Fmt(E.Evolucao.Desvios)} desvios" : "Abra na Evolução")</div></div>
+        </div>
+        <div class="sit-card">
+            <span class="sit-ic" style="--c:var(--purple)"><Icone Nome="historico" /></span>
+            <div><div class="sit-rotulo">Histórico</div><div class="sit-valor">@(E.Historico.Count == 0 ? "Nenhum mês gravado" : $"{E.Historico.Count} mês(es) gravado(s)")</div>
+                <div class="sit-det">@(E.Historico.Count > 0 ? $"{Texto.NomeMes(E.Historico[0].Mes)} a {Texto.NomeMes(E.Historico[^1].Mes)}" : "Grave a partir da Evolução")</div></div>
+        </div>
+        <div class="sit-card">
+            <span class="sit-ic" style="--c:var(--amber)"><Icone Nome="pareceres" /></span>
+            <div><div class="sit-rotulo">Pareceres padrão</div><div class="sit-valor">@(E.ParPadroes.Count == 0 ? "Nenhum documento" : $"{E.ParPadroes.Count} pareceres")</div>
+                <div class="sit-det">@(E.ParDocumento != "" ? E.ParDocumento : "Anexe na aba Pareceres")</div></div>
+        </div>
+    </section>
+
+    @{ var visiveis = Abas.Todas.Where(a => E.AbaAtiva(a.Chave) && Combina(a)).ToList(); }
+    @if (visiveis.Count == 0)
+    {
+        <div class="g-vazio grande">Nenhum módulo corresponde a “@_busca”.</div>
+    }
+    @foreach (var g in Abas.Grupos)
+    {
+        var itens = visiveis.Where(a => a.Grupo == g).ToList();
+        if (itens.Count == 0) continue;
+        <section class="grupo-mod">
+            <h2 class="grupo-titulo"><span class="gt-barra g-@Indice(g)"></span>@g <span class="gt-desc">@DescGrupo(g)</span></h2>
+            <div class="cartoes">
+                @foreach (var a in itens)
+                {
+                    <a class="cartao g-@Indice(g)" href="@a.Rota">
+                        <span class="cartao-ic"><Icone Nome="@a.Icone" Tamanho="22" /></span>
+                        <span class="cartao-txt">
+                            <span class="cartao-nome">@a.Nome</span>
+                            <span class="cartao-desc">@a.Descricao</span>
+                            @if (Status(a.Chave) is string st) { <span class="cartao-status"><i></i>@st</span> }
+                        </span>
+                        <span class="cartao-seta"><Icone Nome="seta" Tamanho="18" /></span>
+                    </a>
+                }
+            </div>
+        </section>
+    }
+    <p class="inicio-rodape"><Icone Nome="escudo" Tamanho="15" /> QSmart · Insi — seus arquivos são processados no navegador e não são enviados para nenhum servidor.</p>
+</div>
+
+@code {
+    protected override string Chave => "resumo";
+    string _busca = "";
+
+    static string Saudacao()
+    {
+        var h = DateTime.Now.Hour;
+        return h < 12 ? "Bom dia" : h < 18 ? "Boa tarde" : "Boa noite";
+    }
+
+    bool Combina(Aba a)
+    {
+        var t = Texto.NormalizarBusca(_busca);
+        if (t == "") return true;
+        var alvo = Texto.NormalizarBusca($"{a.Nome} {a.Menu} {a.Grupo} {a.Descricao}");
+        return t.Split(' ').All(alvo.Contains);
+    }
+
+    void Tecla(KeyboardEventArgs e)
+    {
+        if (e.Key != "Enter") return;
+        var a = Abas.Todas.FirstOrDefault(x => E.AbaAtiva(x.Chave) && Combina(x));
+        if (a != null) Rotas.NavigateTo(a.Rota);
+    }
+
+    static int Indice(string g) => Array.IndexOf(Abas.Grupos, g);
+
+    static string DescGrupo(string g) => g switch
+    {
+        "Decisões" => "aprovações, reprovações e quem decide",
+        "Inspeção" => "desvios, inspeções internas e histórico mensal",
+        "Conformidade" => "pareceres conferidos com o padrão",
+        "Operação" => "volume, ociosidade e consolidação de arquivos",
+        _ => "diagnóstico das planilhas",
+    };
+
+    string? Status(string chave) => chave switch
+    {
+        "resumo" or "usuarios" when E.Resultado != null => $"{E.Resultado.Arquivo} carregado",
+        "evolucao" when E.Evolucao != null => $"{E.Evolucao.Arquivo} carregado",
+        "historico" when E.Historico.Count > 0 => $"{E.Historico.Count} mês(es) no histórico",
+        "pareceres" when E.ParDf != null => $"{E.ParArquivo?.Nome} carregado",
+        "inspecao" when E.IntRes != null => $"{E.IntRes.Arquivo} carregado",
+        "volume" when E.VolComp != null => $"{E.VolComp.Arquivos.Count} compilado(s) anexado(s)",
+        "monitor" when E.MonBase != null => $"{E.MonBase.Arquivos.Count} planilha(s) anexada(s)",
+        "corredor" when E.CorItens.Count > 0 => $"{E.CorItens.Count} compilado(s) na fila",
+        "depurador" when E.DepRes != null => $"{E.DepRes.Arquivo} em análise",
+        _ => null,
+    };
+}

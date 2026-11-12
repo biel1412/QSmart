@@ -1,0 +1,157 @@
+@* Configurações: abas ativas, dados do navegador e backup automático *@
+<Modal Titulo="Configurações" Classe="media" AoCancelar="() => Fechar(null)">
+    <ChildContent>
+        <Painel>
+            <h3 class="painel-titulo">Você deseja desabilitar alguma aba?</h3>
+            <p class="muted">As abas desativadas somem do menu lateral e do menu inicial. Os dados delas continuam salvos e você pode reativar quando quiser.</p>
+            @foreach (var chave in Abas.OrdemConfig)
+            {
+                var a = Abas.Por(chave)!;
+                var ativa = !E.Prefs.AbasOff.Contains(chave);
+                <div class="linha-config">
+                    <span class="ic-aba"><Icone Nome="@a.Icone" Tamanho="18" /></span>
+                    <span class="forte">@a.Nome</span>
+                    <span class="mola"></span>
+                    <button class="alternador @(ativa ? "on" : "")" role="switch" aria-checked="@ativa" @onclick="() => MudarAba(chave)">
+                        <span class="bolinha"></span><span>@(ativa ? "Ativa" : "Desativada")</span>
+                    </button>
+                </div>
+            }
+        </Painel>
+
+        <Painel Classe="mt">
+            <h3 class="painel-titulo">Dados e backup</h3>
+            <p class="muted">O histórico, as preferências e os pareceres padrão ficam guardados neste navegador, neste computador. As planilhas que você abre não são enviadas para nenhum servidor.
+                O backup copia esses dados automaticamente (ao abrir, ao gravar e ao sair), sem repetir quando nada mudou.</p>
+            <div class="rotulo">Levar os dados para outro lugar</div>
+            <p class="muted pequeno">Exporte um arquivo com todos os dados para guardar fora do navegador ou abrir em outro computador. A importação também aceita os arquivos do programa anterior (historico_qualidade.json, preferencias.json, pareceres_padrao.json).</p>
+            <div class="linha-botoes">
+                <button class="btn btn-sec" @onclick="ExportarDados"><Icone Nome="download" Tamanho="16" /> Exportar dados (.json)</button>
+                <BotaoArquivo Texto="Importar dados…" Icone="upload" Aceita=".json" Varios="true" AoEscolher="ImportarDados" />
+            </div>
+
+            <label class="marcar mt">
+                <input type="checkbox" checked="@_bk.Ativo" @onchange="async e => { _bk.Ativo = (bool)e.Value!; await SalvarBackup(); }" />
+                <span>Fazer backup automático (ao abrir, ao gravar e ao sair)</span>
+            </label>
+            <div class="linha-botoes">
+                <span>Manter os últimos</span>
+                <input class="campo num" type="number" min="1" max="365" value="@_bk.Manter" @onchange="async e => { if (int.TryParse(e.Value?.ToString(), out var n)) { _bk.Manter = Math.Clamp(n, 1, 365); await SalvarBackup(); } }" />
+                <span>backups</span>
+            </div>
+            <p class="muted mt">@_ultimo</p>
+            <div class="linha-botoes">
+                <button class="btn btn-pri" @onclick="BackupAgora"><Icone Nome="salvar" Tamanho="16" /> Fazer backup agora</button>
+                <button class="btn btn-sec" @onclick="Restaurar"><Icone Nome="historico" Tamanho="16" /> Restaurar backup…</button>
+            </div>
+        </Painel>
+    </ChildContent>
+    <Rodape><span class="muted pequeno">QSmart · Insi</span><span class="mola"></span><button class="btn btn-pri" @onclick="() => Fechar(null)">Fechar</button></Rodape>
+</Modal>
+
+@code {
+    [Parameter] public Action<object?> Fechar { get; set; } = _ => { };
+    [Inject] Estado E { get; set; } = null!;
+    ConfigBackup _bk = new();
+    string _ultimo = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        _bk = new ConfigBackup { Ativo = E.Prefs.Backup.Ativo, Manter = E.Prefs.Backup.Manter };
+        await Atualizar();
+    }
+
+    async Task Atualizar()
+    {
+        var bks = await E.Dados.ListarBackups();
+        if (bks.Count > 0)
+        {
+            var quando = DateTime.TryParse(bks[0].CriadoEm, CultureInfo.InvariantCulture, DateTimeStyles.None, out var d)
+                ? d.ToString("dd/MM/yyyy 'às' HH:mm", CultureInfo.InvariantCulture) : bks[0].Nome;
+            _ultimo = $"Último backup: {quando}. {bks.Count} guardado(s).";
+        }
+        else _ultimo = "Nenhum backup feito ainda.";
+        await E.AtualizarRodapeBackup();
+        E.Notificar();
+    }
+
+    async Task MudarAba(string chave)
+    {
+        var off = E.Prefs.AbasOff.ToList();
+        if (off.Contains(chave)) off.Remove(chave);
+        else
+        {
+            if (Abas.Todas.All(a => a.Chave == chave || off.Contains(a.Chave)))
+            {
+                await E.Janelas.Aviso("Configurações", "Pelo menos uma aba precisa ficar ativa.");
+                return;
+            }
+            off.Add(chave);
+        }
+        E.Prefs.AbasOff = off;
+        await E.SalvarPrefs();
+        E.Notificar();
+    }
+
+    async Task SalvarBackup()
+    {
+        E.Prefs.Backup = new ConfigBackup { Ativo = _bk.Ativo, Manter = _bk.Manter };
+        await E.SalvarPrefs();
+        await Atualizar();
+    }
+
+    async Task BackupAgora()
+    {
+        string? nome;
+        try { nome = await E.Dados.FazerBackup("manual", E.Prefs, true); }
+        catch (Exception ex) { await E.Janelas.Erro("Backup", "Não foi possível fazer o backup.\n\n" + ex.Message); return; }
+        await Atualizar();
+        if (nome != null) await E.Janelas.Info("Backup", $"Backup salvo neste navegador: {nome}");
+        else await E.Janelas.Info("Backup", "Ainda não há dados para copiar. Grave um mês no histórico primeiro.");
+    }
+
+    async Task Restaurar()
+    {
+        var bks = await E.Dados.ListarBackups();
+        if (bks.Count == 0) { await E.Janelas.Info("Restaurar backup", "Nenhum backup disponível."); return; }
+        var ops = bks.Select(b =>
+        {
+            var q = DateTime.TryParse(b.CriadoEm, CultureInfo.InvariantCulture, DateTimeStyles.None, out var d) ? d.ToString("dd/MM/yyyy HH:mm", CultureInfo.InvariantCulture) : b.Nome;
+            return (b.Nome, $"{q}   {b.Motivo}   ({b.Arquivos.Count} arquivo(s))");
+        });
+        var v = await E.Janelas.Um("Restaurar backup", ops, "", "Escolha o backup (duplo clique ou Aplicar). Antes de restaurar, o estado atual também é guardado.", "Cancelar escolha");
+        if (string.IsNullOrEmpty(v)) return;
+        if (!await E.Janelas.Pergunta("Restaurar backup", "Substituir o histórico, as preferências e os pareceres atuais por esse backup?")) return;
+        try { await E.Dados.Restaurar(v, E.Prefs); }
+        catch (Exception ex) { await E.Janelas.Erro("Restaurar backup", ex.Message); return; }
+        await E.RecarregarDados();
+        _bk = new ConfigBackup { Ativo = E.Prefs.Backup.Ativo, Manter = E.Prefs.Backup.Manter };
+        await Atualizar();
+        await E.Janelas.Info("Restaurar backup", "Backup restaurado.");
+    }
+
+    async Task ExportarDados()
+    {
+        var json = await E.Dados.Exportar();
+        await E.Nav.Baixar($"QSmart_dados_{Estado.Agora("yyyyMMdd_HHmm")}.json", System.Text.Encoding.UTF8.GetBytes(json), Navegador.MimeJson);
+    }
+
+    async Task ImportarDados(List<Arquivo> arqs)
+    {
+        if (!await E.Janelas.Pergunta("Importar dados", "Substituir os dados atuais pelos do(s) arquivo(s) escolhido(s)? Um backup do estado atual é feito antes.")) return;
+        var feitos = new List<string>();
+        try
+        {
+            foreach (var a in arqs)
+            {
+                var (txt, _) = LeitorCsv.Decodificar(a.Dados);
+                feitos.AddRange(await E.Dados.Importar(a.Nome, txt, E.Prefs));
+            }
+        }
+        catch (Exception ex) { await E.Janelas.Erro("Importar dados", ex.Message); return; }
+        await E.RecarregarDados();
+        _bk = new ConfigBackup { Ativo = E.Prefs.Backup.Ativo, Manter = E.Prefs.Backup.Manter };
+        await Atualizar();
+        await E.Janelas.Info("Importar dados", "Importado: " + string.Join(", ", feitos.Distinct()));
+    }
+}

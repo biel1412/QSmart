@@ -1,0 +1,19 @@
+<Modal Titulo="@Titulo" Texto="@Subtitulo" Classe="@(Larga ? "larga" : "media")" AoCancelar="() => Fechar(null)">
+    <ChildContent>
+        <Painel Sangrar="true">
+            <Tabela Colunas="Colunas" Linhas="Linhas" Altura="52vh" />
+            <div class="tabela-rodape">@Rodape</div>
+        </Painel>
+    </ChildContent>
+    <Rodape><span class="mola"></span><button class="btn btn-sec" @onclick="() => Fechar(null)">Fechar</button></Rodape>
+</Modal>
+
+@code {
+    [Parameter] public string Titulo { get; set; } = "";
+    [Parameter] public string Subtitulo { get; set; } = "";
+    [Parameter] public List<ColunaTab> Colunas { get; set; } = new();
+    [Parameter] public List<LinhaTab> Linhas { get; set; } = new();
+    [Parameter] public string Rodape { get; set; } = "";
+    [Parameter] public bool Larga { get; set; }
+    [Parameter] public Action<object?> Fechar { get; set; } = _ => { };
+}

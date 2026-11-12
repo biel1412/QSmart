@@ -1,0 +1,22 @@
+<section class="painel @(Sangrar ? "sangrar" : "") @Classe" style="@Estilo">
+    @if (Titulo != null || Extra != null)
+    {
+        <header class="painel-cab">
+            @if (Titulo != null) { <h3 class="painel-titulo">@Titulo</h3> }
+            <span class="mola"></span>
+            @Extra
+            @if (!string.IsNullOrEmpty(Nota)) { <span class="painel-nota">@Nota</span> }
+        </header>
+    }
+    <div class="painel-corpo">@ChildContent</div>
+</section>
+
+@code {
+    [Parameter] public string? Titulo { get; set; }
+    [Parameter] public string? Nota { get; set; }
+    [Parameter] public bool Sangrar { get; set; }
+    [Parameter] public string Classe { get; set; } = "";
+    [Parameter] public string Estilo { get; set; } = "";
+    [Parameter] public RenderFragment? Extra { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

@@ -1,0 +1,215 @@
+@page "/corredor"
+@inherits PaginaBase
+
+@{ var aviso = Aviso(); }
+<Pagina Titulo="Corredor" Grupo="@A.Grupo" Sub="@E.SubCor" Aviso="@aviso">
+    <Acoes>
+        <button class="btn btn-pri" disabled="@(E.CorItens.Count == 0 || E.Carregando)" @onclick="Unir"><Icone Nome="corredor" Tamanho="17" /> Gerar compilado único</button>
+    </Acoes>
+    <Kpis>
+        @{ var dias = E.CorItens.SelectMany(x => x.Dias).Distinct().OrderBy(d => d).ToList(); var tot = E.CorItens.Sum(x => x.Linhas); }
+        <Kpi Titulo="Compilados" Cor="muted" Valor="@Fmt(E.CorItens.Count)" Detalhe="anexados" />
+        <Kpi Titulo="Linhas somadas" Cor="blue" Valor="@Fmt(tot)" Detalhe="@(E.CorItens.Count > 0 ? "antes de tirar repetidas" : "")" />
+        <Kpi Titulo="Período" Cor="green" Valor="@(dias.Count > 0 ? $"{dias.Count} dia(s)" : "—")" Detalhe="@(dias.Count > 0 ? $"{Texto.Dm(dias[0])} a {Texto.Dmy(dias[^1])}" : "")" />
+        <Kpi Titulo="Usuários distintos" Cor="purple" Valor="@(E.CorItens.Count > 0 ? Fmt(E.CorItens.SelectMany(x => x.Usuarios).Distinct().Count()) : "—")" />
+        <Kpi Titulo="PDFs para juntar" Cor="amber" Valor="@Fmt(E.CorPdfs.Count)" Detalhe="@(E.CorPdfs.Count > 0 ? $"{Fmt(E.CorPdfs.Sum(x => x.paginas))} páginas" : "")" />
+    </Kpis>
+    <ChildContent>
+        <Painel Titulo="Compilados para unir" Nota="a ordem final é pela data/hora de fim da atividade" Sangrar="true">
+            <div class="barra-ferr dentro">
+                <BotaoArquivo Texto="Adicionar planilhas" Icone="mais" Aceita=".xlsx,.xlsm,.csv" Varios="true" Desativado="E.Carregando" AoEscolher="Adicionar" />
+                <button class="btn btn-sec" disabled="@(_sel.Count == 0)" @onclick="Remover">Remover selecionadas</button>
+                <button class="btn btn-sec" @onclick="() => { E.CorItens = new(); _sel = new(); }">Limpar</button>
+                <span class="mola"></span>
+                <label class="marcar" title="Linhas idênticas em todas as colunas (ex.: o mesmo compilado anexado duas vezes) ficam uma vez só"><input type="checkbox" @bind="_semDup" /> Remover linhas repetidas</label>
+                <label class="marcar"><input type="checkbox" @bind="_comArq" /> Coluna com o arquivo de origem</label>
+                <select class="campo" @bind="_fmt">
+                    <option value=".xlsx">Excel (.xlsx)</option>
+                    <option value=".csv">CSV (.csv) — mais rápido</option>
+                </select>
+            </div>
+            <Tabela Colunas="_cols" Linhas="Linhas()" Selecao="varias" @bind-Selecionadas="_sel" Altura="380px"
+                    Vazio="Adicione os compilados diários (ou semanais) que quer juntar num só." />
+        </Painel>
+        <Painel Titulo="Juntar PDFs" Nota="a ordem da lista é a ordem das páginas (arraste para reordenar)" Sangrar="true">
+            <div class="barra-ferr dentro">
+                <BotaoArquivo Texto="Adicionar PDFs" Icone="mais" Aceita=".pdf" Varios="true" AoEscolher="AdicionarPdfs" />
+                <button class="btn btn-sec" @onclick="() => Mover(-1)"><Icone Nome="cima" Tamanho="16" /> Subir</button>
+                <button class="btn btn-sec" @onclick="() => Mover(1)"><Icone Nome="baixo" Tamanho="16" /> Descer</button>
+                <button class="btn btn-sec" @onclick="RemoverPdf">Remover</button>
+                <button class="btn btn-sec" @onclick="() => { E.CorPdfs = new(); _pdfSel = -1; }">Limpar</button>
+                <span class="mola"></span>
+                <button class="btn btn-pri" disabled="@(E.CorPdfs.Count < 2 || E.Carregando)" @onclick="JuntarPdfs"><Icone Nome="pdf" Tamanho="16" /> Juntar PDFs</button>
+            </div>
+            <div class="lista-pdf" style="min-height:200px">
+                @if (E.CorPdfs.Count == 0) { <div class="g-vazio">Adicione dois ou mais PDFs para juntar num só.</div> }
+                @for (int i = 0; i < E.CorPdfs.Count; i++)
+                {
+                    var k = i;
+                    var (a, n) = E.CorPdfs[i];
+                    <div class="item-pdf @(_pdfSel == k ? "sel" : "")" draggable="true" title="@a.Nome"
+                         @onclick="() => _pdfSel = k" @ondragstart="() => _arrastando = k" @ondragover:preventDefault="true" @ondrop="() => Soltar(k)">
+                        <span class="num">@(k + 1)</span><Icone Nome="pdf" Tamanho="18" /><span>@a.Nome</span><span class="pags">@n página(s)</span>
+                    </div>
+                }
+            </div>
+        </Painel>
+    </ChildContent>
+</Pagina>
+
+@code {
+    protected override string Chave => "corredor";
+    readonly List<ColunaTab> _cols = new() { new("Arquivo", 0), new("Linhas", 100, 'c'), new("Dias", 270, 'c'), new("Usuários", 90, 'c'), new("Colunas", 260) };
+    HashSet<LinhaTab> _sel = new();
+    bool _semDup = true, _comArq;
+    string _fmt = ".xlsx";
+    int _pdfSel = -1, _arrastando = -1;
+
+    string? Aviso()
+    {
+        var itens = E.CorItens;
+        var dias = itens.SelectMany(x => x.Dias).Distinct().OrderBy(d => d).ToList();
+        var repetidos = dias.Where(d => itens.Count(x => x.Dias.Contains(d)) > 1).ToList();
+        var aviso = "";
+        if (repetidos.Count > 0)
+            aviso = $"{repetidos.Count} dia(s) aparecem em mais de um arquivo ({string.Join(", ", repetidos.Take(6).Select(Texto.Dm))}{(repetidos.Count > 6 ? "…" : "")}). " +
+                    "Com “Remover linhas repetidas” ligado, linhas idênticas não contam em dobro.";
+        var tot = itens.Sum(x => x.Linhas);
+        if (tot > Compilados.LimiteLinhasXlsx && _fmt == ".xlsx")
+            aviso += (aviso != "" ? "  " : "") + $"{Fmt(tot)} linhas passam do limite de uma aba do Excel: o arquivo será dividido em abas Compilado_1, Compilado_2…";
+        if (!E.Carregando) E.SubCor = itens.Count == 0 ? "Una vários compilados diários num só (semana, mês…) e junte PDFs." : $"{itens.Count} compilado(s) prontos para unir";
+        return aviso == "" ? null : aviso;
+    }
+
+    List<LinhaTab>? _cache; int _versao = -1, _v;
+    List<LinhaTab> Linhas()
+    {
+        var assin = E.CorItens.Count == 0 ? 0 : E.CorItens.Aggregate(17, (h, x) => h * 31 + x.GetHashCode());
+        if (_cache != null && assin == _versao) return _cache;
+        _versao = assin;
+        var refc = E.CorItens.Count > 0 ? E.CorItens[0].Colunas.ToHashSet() : new HashSet<string>();
+        return _cache = E.CorItens.Select(x =>
+        {
+            var d = x.Dias;
+            var per = d.Count == 0 ? "sem data" : Texto.Dmy(d[0]) + (d.Count > 1 ? $" a {Texto.Dmy(d[^1])} ({d.Count} dias)" : "");
+            var dif = refc.Union(x.Colunas).Except(refc.Intersect(x.Colunas)).OrderBy(c => c, StringComparer.Ordinal).ToList();
+            var txt = dif.Count == 0 ? "iguais ao 1º arquivo" : "diferentes: " + Texto.Cortar(string.Join(", ", dif), 81);
+            return new LinhaTab
+            {
+                Valores = new object?[] { x.Arquivo, Fmt(x.Linhas), per, Fmt(x.Usuarios.Count), txt },
+                Chaves = new object?[] { x.Arquivo, x.Linhas, d.Count > 0 ? d[0].DayNumber : 0, x.Usuarios.Count, "" },
+                Erro = dif.Count > 0, Tag = x,
+            };
+        }).ToList();
+    }
+
+    async Task Adicionar(List<Arquivo> cs)
+    {
+        cs = cs.Where(c => !E.CorItens.Any(x => x.Arquivo == c.Nome && x.Fonte.Dados.Length == c.Dados.Length)).ToList();
+        if (cs.Count == 0) return;
+        var prog0 = "";
+        await E.Executar(async prog =>
+        {
+            var novos = new List<ResumoCompilado>(); var erros = new List<string>();
+            int i = 0;
+            foreach (var c in cs)
+            {
+                prog.Msg = prog0 = $"{++i} de {cs.Count}: {c.Nome}";
+                await prog.Talvez();
+                try { novos.Add(await Compilados.Resumir(c, prog)); }
+                catch (Exception ex) { erros.Add($"{c.Nome}: {Estado.Mensagem(ex)}"); }
+            }
+            return (novos, erros);
+        },
+        async r =>
+        {
+            E.CorItens.AddRange(r.novos);
+            if (r.erros.Count > 0) await J.Aviso("Alguns arquivos não foram lidos", string.Join("\n", r.erros));
+        },
+        ex => J.Erro("Erro ao ler", ex.Message),
+        (s, _) => E.SubCor = $"Lendo {prog0}… {s}s");
+    }
+
+    void Remover()
+    {
+        var tirar = _sel.Select(l => (ResumoCompilado)l.Tag!).ToHashSet();
+        E.CorItens = E.CorItens.Where(x => !tirar.Contains(x)).ToList();
+        _sel = new();
+    }
+
+    async Task Unir()
+    {
+        var itens = E.CorItens.OrderBy(x => x.Dias.Count > 0 ? x.Dias[0] : DateOnly.MaxValue).ThenBy(x => x.Arquivo, StringComparer.Ordinal).ToList();
+        if (itens.Count == 0 || E.Carregando) return;
+        var dias = itens.SelectMany(x => x.Dias).Distinct().OrderBy(d => d).ToList();
+        var nome = (dias.Count > 1 ? $"COMPILADO_{dias[0]:ddMMyyyy}_a_{dias[^1]:ddMMyyyy}" : dias.Count == 1 ? $"COMPILADO_{dias[0]:ddMMyyyy}" : "COMPILADO_UNIFICADO") + _fmt;
+        var csv = _fmt == ".csv"; var dup = _semDup; var arq = _comArq;
+        var msg = "começando";
+        await E.Executar(prog => { var t = Compilados.Unir(itens.Select(x => x.Fonte).ToList(), csv, dup, arq, prog); return t; },
+            async r =>
+            {
+                await E.Nav.Baixar(nome, r.Bytes, csv ? Navegador.MimeCsv : Navegador.MimeXlsx);
+                var txt = $"{Fmt(r.Gravadas)} linhas gravadas de {r.Arquivos} arquivo(s)" +
+                          (r.Duplicadas > 0 ? $"\n{Fmt(r.Duplicadas)} linhas repetidas removidas" : "") +
+                          (r.Abas > 1 ? $"\nDividido em {r.Abas} abas (limite do Excel)" : "") +
+                          (r.ColunasDiferentes ? "\nAtenção: os arquivos não tinham exatamente as mesmas colunas." : "") +
+                          $"\n\nArquivo baixado: {nome}";
+                await J.Info("Compilado único gerado", txt);
+            },
+            ex => J.Erro("Erro ao gerar o compilado", Estado.Mensagem(ex)),
+            (s, m) => { if (m != "") msg = m; E.SubCor = $"Gerando compilado único: {msg}… {s}s"; });
+    }
+
+    // ----- PDFs -----
+    async Task AdicionarPdfs(List<Arquivo> cs)
+    {
+        var erros = new List<string>();
+        foreach (var c in cs)
+        {
+            try { E.CorPdfs.Add((c, await E.Nav.PdfPaginas(c.Dados))); }
+            catch (Exception ex) { erros.Add($"{c.Nome}: {ex.Message}"); }
+        }
+        if (erros.Count > 0) await J.Aviso("Alguns PDFs não foram lidos", string.Join("\n", erros));
+    }
+
+    void Mover(int passo)
+    {
+        int i = _pdfSel, j = i + passo;
+        if (i < 0 || j < 0 || j >= E.CorPdfs.Count) return;
+        (E.CorPdfs[i], E.CorPdfs[j]) = (E.CorPdfs[j], E.CorPdfs[i]);
+        _pdfSel = j;
+    }
+
+    void Soltar(int destino)
+    {
+        if (_arrastando < 0 || _arrastando == destino) return;
+        var item = E.CorPdfs[_arrastando];
+        E.CorPdfs.RemoveAt(_arrastando);
+        E.CorPdfs.Insert(destino, item);
+        _pdfSel = destino;
+        _arrastando = -1;
+    }
+
+    void RemoverPdf()
+    {
+        if (_pdfSel < 0 || _pdfSel >= E.CorPdfs.Count) return;
+        E.CorPdfs.RemoveAt(_pdfSel);
+        _pdfSel = -1;
+    }
+
+    async Task JuntarPdfs()
+    {
+        if (E.CorPdfs.Count < 2) { await J.Info("Juntar PDFs", "Adicione pelo menos dois PDFs."); return; }
+        byte[] bytes;
+        try
+        {
+            E.SubCor = "Juntando PDFs…";
+            bytes = await E.Nav.PdfJuntar(E.CorPdfs.Select(x => x.arq.Dados).ToList());
+        }
+        catch (Exception ex) { await J.Erro("Juntar PDFs", ex.Message); return; }
+        finally { E.SubCor = $"{E.CorItens.Count} compilado(s) prontos para unir"; }
+        var paginas = E.CorPdfs.Sum(x => x.paginas);
+        await E.Nav.Baixar("PDF_unido.pdf", bytes, Navegador.MimePdf);
+        if (await J.Pergunta("PDF gerado", $"{paginas} páginas em: PDF_unido.pdf\n\nDeseja abrir agora?")) await E.Nav.Abrir(bytes, Navegador.MimePdf);
+    }
+}

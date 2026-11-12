@@ -1,0 +1,164 @@
+@page "/historico"
+@inherits PaginaBase
+
+@{ Calcular(); }
+<Pagina Titulo="Histórico" Grupo="@A.Grupo" Sub="@_sub">
+    <Acoes>
+        <button class="btn btn-pri" @onclick="Encaminhar"><Icone Nome="enviar" Tamanho="17" /> Encaminhar para o Teams</button>
+    </Acoes>
+    <Kpis><KpisOrigem Dados="_h" RotuloAval="@($"em {_regs.Count} mês(es)")" /></Kpis>
+    <ChildContent>
+        <Painel>
+            <div class="barra-ferr">
+                <span class="rotulo">Ano</span>
+                <select class="campo" style="min-width:110px" value="@E.HistAno" @onchange="MudarAno">
+                    @foreach (var a in Anos()) { <option value="@a">@a</option> }
+                </select>
+                <span class="muted" style="margin-left:10px">Meses (clique para selecionar um ou mais)</span>
+                <span class="mola"></span>
+                <button class="btn btn-sec" @onclick="() => { E.HistSel = new(); }">Limpar seleção</button>
+                <button class="btn btn-sec" @onclick="Excluir"><Icone Nome="lixo" Tamanho="16" /> Excluir meses</button>
+            </div>
+            <div class="chips">
+                @if (Visiveis().Count == 0) { <span class="muted">Nenhum mês gravado ainda</span> }
+                @foreach (var r in Visiveis())
+                {
+                    var mes = r.Mes;
+                    <button class="chip @(E.HistSel.Contains(mes) ? "ativo" : "")" title="@Texto.NomeMes(mes)" @onclick="() => Alternar(mes)">@Texto.NomeMes(mes, true)</button>
+                }
+            </div>
+        </Painel>
+        <div class="barra-ferr">
+            <span class="rotulo">Filtrar por</span>
+            @foreach (var (chave, rot) in new[] { ("origem", "Origem"), ("aut", "Autorização"), ("insp", "Inspetor"), ("erro", "Tipo de erro") })
+            {
+                var n = E.HistFiltros.Get(chave).Count;
+                <button class="btn btn-sec @(n > 0 ? "ativo" : "")" @onclick="() => Escolher(chave)"><Icone Nome="filtro" Tamanho="15" /> @(n > 0 ? $"{rot} ({n})" : rot)</button>
+            }
+            <button class="btn btn-sec" disabled="@(!E.HistFiltros.Algum)" @onclick="() => E.HistFiltros = new()">Limpar filtros</button>
+        </div>
+        @if (_nota != null) { <p class="aviso">@_nota</p> }
+        <div class="grade-32">
+            <Painel Titulo="Por tipo de autorização" Estilo="min-height:380px">
+                <BarrasEmpilhadas Linhas="Evolucao.LinhasAut(_h)" Legenda="Evolucao.Legenda(_h)" Vazio="@(_h == null ? "Nenhum mês gravado" : "Sem dados para os filtros")" />
+            </Painel>
+            <Painel Titulo="Desvios por inspetor" Sangrar="true" Estilo="min-height:380px">
+                <Tabela Colunas="_colsInsp" Linhas="_linhasInsp" Vazio="@(_h == null ? "Nenhum mês gravado" : "")" />
+            </Painel>
+        </div>
+        <div class="grade-32">
+            <Painel Titulo="Evolução mês a mês" Estilo="min-height:330px">
+                <Colunas Cols="_cols" Legenda="Evolucao.Legenda(_h)" Altura="270px" Vazio="@(_h == null ? "Nenhum mês gravado" : "Sem dados para os filtros")" />
+            </Painel>
+            <Painel Titulo="Tipos de erro mais frequentes" Estilo="min-height:330px">
+                <BarrasLista Itens="_erros" Total="@(_h?.Desvios ?? 0)" Vazio="@(_h == null ? "Nenhum mês gravado" : "Sem desvios")" />
+            </Painel>
+        </div>
+    </ChildContent>
+</Pagina>
+
+@code {
+    protected override string Chave => "historico";
+    readonly List<ColunaTab> _colsInsp = new() { new("Inspetor", 0), new("Desv.", 64, 'c'), new("%", 80, 'c'), new("Int.", 54, 'c'), new("Ext.", 54, 'c'), new("Cham.", 64, 'c') };
+    ResultadoInspecao? _h;
+    List<RegistroHist> _regs = new();
+    string _sub = "";
+    string? _nota;
+    List<LinhaTab> _linhasInsp = new();
+    List<(string, List<(long, string, string)>, string)> _cols = new();
+    List<(string, long, string?)> _erros = new();
+    string? _assinatura;
+
+    List<string> Anos() => new[] { "Todos" }.Concat(E.Historico.Select(r => r.Mes[..4]).Distinct().OrderByDescending(x => x, StringComparer.Ordinal)).ToList();
+    List<RegistroHist> Visiveis() => E.Historico.Where(r => E.HistAno == "Todos" || r.Mes.StartsWith(E.HistAno)).ToList();
+
+    void Calcular()
+    {
+        if (!Anos().Contains(E.HistAno)) E.HistAno = "Todos";
+        var vis = Visiveis();
+        E.HistSel.IntersectWith(vis.Select(r => r.Mes));
+        var f = E.HistFiltros;
+        var ass = string.Join(",", E.Historico.Select(r => r.Mes + r.GravadoEm)) + "|" + E.HistAno + "|" + string.Join(",", E.HistSel.OrderBy(x => x)) + "|" +
+                  string.Join(";", new[] { f.Origem, f.Aut, f.Insp, f.Erro }.Select(s => string.Join(",", s.OrderBy(x => x))));
+        if (ass == _assinatura) return;
+        _assinatura = ass;
+        _regs = E.HistSel.Count > 0 ? vis.Where(r => E.HistSel.Contains(r.Mes)).ToList() : vis;
+        _h = _regs.Count > 0 ? Historico.Agregar(_regs, f) : null;
+        var sem = f.Algum ? _h?.SemDetalhe : null;
+        _nota = sem is { Count: > 0 } ? string.Join(", ", sem.Select(m => Texto.NomeMes(m))) + (sem.Count == 1 ? " foi gravado" : " foram gravados") +
+            " antes dos filtros existirem e não entra nos números filtrados. Abra a planilha daquele mês na aba Evolução e grave de novo." : null;
+        if (_h == null)
+        {
+            _sub = "Nenhum mês gravado ainda. Na aba Evolução, carregue a planilha de inspeção e clique em “Gravar no histórico”.";
+            _linhasInsp = new(); _cols = new(); _erros = new();
+            return;
+        }
+        var meses = _regs.Select(r => r.Mes).ToList();
+        var lista = meses.Count <= 4 ? string.Join(", ", meses.Select(m => Texto.NomeMes(m))) : $"{Texto.NomeMes(meses[0])} a {Texto.NomeMes(meses[^1])}";
+        _sub = $"{meses.Count} mês(es) {(E.HistSel.Count > 0 ? "selecionado(s)" : "(todos do filtro)")}: {lista}" + (_h.FiltrosTexto != "" ? $".  Filtros: {_h.FiltrosTexto}" : "");
+        _linhasInsp = _h.PorInspetor.Select(r => new LinhaTab
+        {
+            Valores = new object?[] { r.Nome, r.Desv, $"{F1(r.Desv / (double)(r.Aval == 0 ? 1 : r.Aval) * 100)}%", r.O("Interno"), r.O("Externo"), r.O("Chamados") },
+            Chaves = new object?[] { r.Nome, r.Desv, r.Desv / (double)(r.Aval == 0 ? 1 : r.Aval), r.O("Interno"), r.O("Externo"), r.O("Chamados") },
+        }).ToList();
+        _cols = _h.Meses.Select(m => (Texto.NomeMes(m.Mes, true), _h.Origens.Select(o => (m.PorOrigem.GetValueOrDefault(o), CorOrigem(o), o)).ToList(),
+            $"{F1(m.Desvios / (double)(m.Avaliacoes == 0 ? 1 : m.Avaliacoes) * 100)}% aval.")).ToList();
+        _erros = _h.PorErro.Take(6).Select(e => (Texto.Rotulo(e.erro), e.qtd, (string?)"var(--red)")).ToList();
+    }
+
+    void MudarAno(ChangeEventArgs e) { E.HistAno = e.Value?.ToString() ?? "Todos"; E.HistSel = new(); }
+    void Alternar(string mes) { if (!E.HistSel.Remove(mes)) E.HistSel.Add(mes); }
+
+    async Task Excluir()
+    {
+        if (E.HistSel.Count == 0) { await J.Info("Excluir", "Selecione na lista o(s) mês(es) que deseja excluir."); return; }
+        var nomes = string.Join(", ", E.HistSel.OrderBy(x => x).Select(m => Texto.NomeMes(m)));
+        if (!await J.Pergunta("Excluir do histórico", $"Excluir definitivamente: {nomes}?")) return;
+        var regs = E.Historico.Where(r => !E.HistSel.Contains(r.Mes)).ToList();
+        try { await E.Dados.SalvarHistorico(regs); }
+        catch (Exception ex) { await J.Erro("Erro ao excluir", ex.Message); return; }
+        E.Historico = regs;
+        E.HistSel = new();
+        E.Notificar();
+        await E.BackupAuto("meses excluídos");
+    }
+
+    async Task Escolher(string chave)
+    {
+        var op = Historico.Opcoes(Visiveis());
+        var valores = op.GetValueOrDefault(chave) ?? new();
+        if (valores.Count == 0)
+        {
+            await J.Info("Filtro", "Os meses gravados ainda não têm esse detalhe.\n\nAbra a planilha de inspeção na aba Evolução e clique em “Gravar no histórico” de novo para habilitar os filtros.");
+            return;
+        }
+        Func<string, string> rot = chave switch { "aut" => Texto.NomeSegmento, "erro" => Texto.Rotulo, _ => x => x };
+        var titulo = chave switch { "origem" => "Origem", "aut" => "Tipo de autorização", "insp" => "Inspetor", _ => "Tipo de erro" };
+        var dica = "Marque um ou mais itens. Sem nada marcado, todos entram." +
+                   (chave == "erro" ? "\nO filtro de erro vale para os desvios; as avaliações continuam sendo a base do %." : "");
+        var res = await J.Multi(titulo, valores.Select(v => (v, rot(v))), E.HistFiltros.Get(chave), dica);
+        if (res != null) { E.HistFiltros.Set(chave, res); E.Notificar(); }
+    }
+
+    async Task Encaminhar()
+    {
+        if (E.HistSel.Count == 0) { await J.Info("Encaminhar", "Selecione na lista o(s) mês(es) que deseja encaminhar."); return; }
+        var regs = Visiveis().Where(r => E.HistSel.Contains(r.Mes)).ToList();
+        if (regs.Count == 0) return;
+        var texto = Historico.MensagemTeams(regs, Historico.Agregar(regs, E.HistFiltros));
+        await J.Texto("Mensagem para o Teams", "Revise ou edite o texto. Depois copie ou abra o Teams e cole no chat/canal desejado.", texto, new()
+        {
+            ("Copiar", "sec", async t => { await E.Nav.Copiar(t); return "Copiado para a área de transferência"; }),
+            ("Abrir no Teams", "pri", async t =>
+            {
+                await E.Nav.Copiar(t);
+                var url = "https://teams.microsoft.com/l/chat/0/0?message=" + Uri.EscapeDataString(t);
+                string st;
+                if (url.Length > 1900) { url = "https://teams.microsoft.com/l/chat/0/0"; st = "Copiado. No Teams, escolha o destino e cole com Ctrl+V"; }
+                else st = "Teams aberto com a mensagem (também copiada)";
+                await E.Nav.AbrirUrl(url);
+                return st;
+            }),
+        });
+    }
+}

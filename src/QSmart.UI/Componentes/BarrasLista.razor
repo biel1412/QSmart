@@ -1,0 +1,34 @@
+@* Ranking: rótulo | barra fina | quantidade | %. Uma cor por item (padrão: cor de destaque). *@
+<div class="g-lista" style="@(Altura != null ? $"max-height:{Altura}" : "")">
+    @if (Legenda.Count > 0)
+    {
+        <div class="g-legenda">@foreach (var (n, c) in Legenda) { <span><i style="background:@c"></i>@n</span> }</div>
+    }
+    @if (Itens.Count == 0)
+    {
+        <div class="g-vazio">@Vazio</div>
+    }
+    else
+    {
+        var total = Total > 0 ? Total : Math.Max(1, Itens.Sum(x => x.valor));
+        var maximo = Math.Max(1, Itens.Max(x => x.valor));
+        foreach (var (rot, val, cor) in Itens)
+        {
+            var pct = val / (double)total * 100;
+            <div class="g-linha" title="@($"{rot}: {Texto.Fmt(val)} ({Texto.F(pct)}%)")">
+                <span class="g-rot">@rot</span>
+                <span class="g-trilho"><span class="g-barra" style="width:@(val > 0 ? Math.Max(val / (double)maximo * 100, 1.2) : 0)%;background:@(cor ?? "var(--accent)")"></span></span>
+                <span class="g-val">@Texto.Fmt(val)</span>
+                <span class="g-pct">@(Texto.F(pct))%</span>
+            </div>
+        }
+    }
+</div>
+
+@code {
+    [Parameter] public List<(string rotulo, long valor, string? cor)> Itens { get; set; } = new();
+    [Parameter] public long Total { get; set; }
+    [Parameter] public List<(string nome, string cor)> Legenda { get; set; } = new();
+    [Parameter] public string Vazio { get; set; } = "Sem dados";
+    [Parameter] public string? Altura { get; set; }
+}
