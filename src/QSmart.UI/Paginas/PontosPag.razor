@@ -21,10 +21,7 @@
         <Kpi Titulo="Média geral" Cor="green" Valor="@(r != null && _todos.Count > 0 ? Fv(_todos.Average(u => u.Media)) : "—")"
              Detalhe="@(r != null ? $"{Fmt(r.Acoes)} ações no período" : "")"
              Proporcao="@(r != null && _todos.Count > 0 ? _todos.Average(u => u.Media) / lim : null)" />
-        @{ var pend = _abaixo.Where(u => Just(u) == null).ToList(); }
-        <Kpi Titulo="Sem justificativa" Cor="purple" Valor="@(r != null ? Fmt(pend.Count) : "—")"
-             Detalhe="@(r == null ? "" : _abaixo.Count == 0 ? "" : pend.Count == 0 ? "todos justificados" : $"menor média: {pend.MinBy(u => u.Media)!.Usuario} ({Fv(pend.Min(u => u.Media))})")"
-             Proporcao="@(r != null && _abaixo.Count > 0 ? (_abaixo.Count - pend.Count) / (double)_abaixo.Count : null)" />
+        <Kpi Titulo="Menor média" Cor="purple" Valor="@(_abaixo.Count > 0 ? Fv(_abaixo[0].Media) : "—")" Detalhe="@(_abaixo.Count > 0 ? _abaixo[0].Usuario : "")" />
     </Kpis>
     <ChildContent>
         <div class="barra-ferr">
@@ -63,30 +60,28 @@
         }
         else
         {
-            var cont = Enumerable.Range(0, 4).Select(f => _abaixo.Count(u => FaixaDe(u) == f)).ToArray();
-            string[] nomesF = { "Crítico", "Atenção", "Perto da meta", "Justificado" };
+            var cont = Enumerable.Range(0, 3).Select(f => _abaixo.Count(u => PontosAcao.Faixa(u.Media, lim) == f)).ToArray();
             <div class="pts-dist">
                 <div class="pts-dist-cab">
                     <span class="rotulo">Quem está abaixo da meta, por faixa</span>
-                    <span class="muted">@Fmt(_abaixo.Count) usuário(s)@(cont[3] > 0 ? $" · {cont[3]} justificado(s)" : "")</span>
+                    <span class="muted">@Fmt(_abaixo.Count) usuário(s)</span>
                 </div>
                 <div class="pts-dist-barra">
-                    @for (int f = 0; f < 4; f++)
+                    @for (int f = 0; f < 3; f++)
                     {
                         if (cont[f] == 0) continue;
-                        <span class="f@(f)" style="flex:@cont[f]" title="@($"{nomesF[f]}: {cont[f]} usuário(s)")">@(cont[f] * 100 / Math.Max(1, _abaixo.Count) >= 6 ? $"{Texto.F(cont[f] * 100.0 / _abaixo.Count, 0)}%" : "")</span>
+                        <span class="f@(f)" style="flex:@cont[f]" title="@($"{cont[f]} usuário(s)")">@(cont[f] * 100 / Math.Max(1, _abaixo.Count) >= 6 ? $"{Texto.F(cont[f] * 100.0 / _abaixo.Count, 0)}%" : "")</span>
                     }
                 </div>
                 <div class="pts-dist-leg">
-                    @for (int f = 0; f < 4; f++)
+                    @for (int f = 0; f < 3; f++)
                     {
-                        var ff = f;
-                        <button class="pts-dist-item f@(f) @(_filtroFaixa == f ? "on" : "")" @onclick="() => _filtroFaixa = _filtroFaixa == ff ? -1 : ff" title="Mostrar só esta faixa (clique de novo para mostrar todas)">
+                        <div class="pts-dist-item f@(f)">
                             <i></i>
                             <b>@cont[f]</b>
-                            <span>@nomesF[f]</span>
-                            <span class="muted">@(f == 0 ? $"menos de {Texto.G(lim * .5)} por dia" : f == 1 ? $"{Texto.G(lim * .5)} a {Texto.G(lim * .8)}" : f == 2 ? $"{Texto.G(lim * .8)} a {Texto.G(lim)}" : "fora das faixas")</span>
-                        </button>
+                            <span>@(f == 0 ? "Crítico" : f == 1 ? "Atenção" : "Perto da meta")</span>
+                            <span class="muted">@(f == 0 ? $"menos de {Texto.G(lim * .5)} por dia" : f == 1 ? $"{Texto.G(lim * .5)} a {Texto.G(lim * .8)}" : $"{Texto.G(lim * .8)} a {Texto.G(lim)}")</span>
+                        </div>
                     }
                 </div>
             </div>
@@ -94,11 +89,11 @@
             <div class="grade-32">
                 <Painel Titulo="@($"Abaixo de {Texto.G(lim)} — média de ações por dia")" Nota="a linha marca a meta">
                     <div class="pts-barras">
-                        @foreach (var u in _lista)
+                        @foreach (var u in _abaixo)
                         {
-                            var f = FaixaDe(u); var j = Just(u);
-                            <div class="pts-linha @(j != null ? "justificado" : "")" title="@($"{u.Usuario}: {Fv(u.Media)} por dia ({Texto.F(u.Media / lim * 100)}% da meta) · {Fmt(u.Total)} ações em {Ferias.Plural(u.DiasTrabalhados, "dia")}" + (j != null ? $"\nJustificado: {j}" : ""))">
-                                <span class="pts-nome">@u.Usuario@if (j != null) { <span class="pts-just">@j</span> }</span>
+                            var f = PontosAcao.Faixa(u.Media, lim);
+                            <div class="pts-linha" title="@($"{u.Usuario}: {Fv(u.Media)} por dia ({Texto.F(u.Media / lim * 100)}% da meta) · {Fmt(u.Total)} ações em {Ferias.Plural(u.DiasTrabalhados, "dia")}")">
+                                <span class="pts-nome">@u.Usuario</span>
                                 <span class="pts-trilho">
                                     <span class="pts-barra f@(f)" style="width:@P(u.Media / lim)"></span>
                                     <span class="pts-meta"></span>
@@ -116,10 +111,10 @@
                                 <tr><th></th>@foreach (var d in r.Dias) { <th title="@($"{Texto.DiaSemana(d)}, {Texto.Dmy(d)}")">@d.Day</th> }</tr>
                             </thead>
                             <tbody>
-                                @foreach (var u in _lista)
+                                @foreach (var u in _abaixo)
                                 {
-                                    <tr class="@(Just(u) != null ? "justificado" : "")">
-                                        <td class="pts-mapa-nome" title="@(u.Usuario + (Just(u) is string jj ? $" · {jj}" : ""))">@u.Usuario</td>
+                                    <tr>
+                                        <td class="pts-mapa-nome" title="@u.Usuario">@u.Usuario</td>
                                         @foreach (var d in r.Dias)
                                         {
                                             var n = u.PorDia.GetValueOrDefault(d);
@@ -134,47 +129,9 @@
                 </Painel>
             </div>
 
-            <Painel Titulo="Detalhe e justificativas" Sangrar="true">
-                <Extra>
-                    <div class="segmentado">
-                        <button class="seg @(_filtroJust == "" ? "on" : "")" @onclick="@(() => _filtroJust = "")">Todos (@_abaixo.Count)</button>
-                        <button class="seg @(_filtroJust == "pend" ? "on" : "")" @onclick="@(() => _filtroJust = "pend")">Sem justificativa (@(_abaixo.Count - cont[3]))</button>
-                        <button class="seg @(_filtroJust == "just" ? "on" : "")" @onclick="@(() => _filtroJust = "just")">Justificados (@cont[3])</button>
-                    </div>
-                </Extra>
-                <ChildContent>
-                    <div class="tabela-rolagem" style="max-height:560px">
-                        <table class="tabela pts-tabela">
-                            <colgroup><col style="width:19%" /><col style="width:8%" /><col style="width:8%" /><col style="width:11%" /><col style="width:19%" /><col style="width:8%" /><col style="width:9%" /><col style="width:6%" /><col style="width:12%" /></colgroup>
-                            <thead><tr><th>Usuário</th><th class="al-c">Média/dia</th><th class="al-c">% da meta</th><th>Faixa</th><th>Justificativa</th><th class="al-c">Faltam/dia</th><th class="al-c">Ações</th><th class="al-c">Dias</th><th class="al-c">Menor / maior dia</th></tr></thead>
-                            <tbody>
-                                @foreach (var u in _tabela)
-                                {
-                                    var f = FaixaDe(u); var j = Just(u);
-                                    <tr class="@(j != null ? "justificado" : "")" @key="u.Usuario">
-                                        <td><b>@u.Usuario</b></td>
-                                        <td class="al-c"><b class="pts-cor f@(f)">@Fv(u.Media)</b></td>
-                                        <td class="al-c">@(Texto.F(u.Media / lim * 100))%</td>
-                                        <td><span class="etq pts-etq f@(f)">@nomesF[f]</span></td>
-                                        <td>
-                                            <select class="campo-linha pts-sel @(j != null ? "on" : "")" value="@(j ?? "")" @onchange="e => Justificar(u, e.Value?.ToString())" title="Justificativa do mês @MesTexto">
-                                                <option value="">— sem justificativa —</option>
-                                                @foreach (var op in PontosAcao.Justificativas) { <option value="@op">@op</option> }
-                                            </select>
-                                        </td>
-                                        <td class="al-c">@Fv(lim - u.Media)</td>
-                                        <td class="al-c">@Fmt(u.Total)</td>
-                                        <td class="al-c">@u.DiasTrabalhados</td>
-                                        <td class="al-c" title="@DicaDias(u)">@Fmt(u.MenorDia) / @Fmt(u.MaiorDia)</td>
-                                    </tr>
-                                }
-                            </tbody>
-                        </table>
-                        @if (_tabela.Count == 0) { <div class="tabela-vazia">Ninguém nesse filtro.</div> }
-                    </div>
-                </ChildContent>
+            <Painel Titulo="Detalhe de quem está abaixo da meta" Nota="clique no título de uma coluna para ordenar" Sangrar="true">
+                <Tabela Colunas="_cols" Linhas="_linhas" Altura="520px" />
             </Painel>
-            <p class="muted pequeno">A justificativa vale para o mês do compilado (@MesTexto) e fica salva neste navegador. Justificado, o usuário sai de Crítico, Atenção e Perto da meta. Clique numa faixa acima para filtrar.</p>
         }
     </ChildContent>
 </Pagina>
@@ -182,31 +139,14 @@
 @code {
     protected override string Chave => "pontos";
     string _busca = "";
-    List<LinhaPontos> _todos = new(), _abaixo = new(), _lista = new(), _tabela = new();
-    int _filtroFaixa = -1;
-    string _filtroJust = "";
-
-    string Mes => E.PtsRes == null ? "" : PontosAcao.Mes(E.PtsRes);
-    string MesTexto => Mes == "" ? "—" : Texto.NomeMes(Mes);
-
-    string? Just(LinhaPontos u)
-        => E.PtsJust.TryGetValue(Mes, out var d) && d.TryGetValue(PontosAcao.ChaveUsuario(u.Usuario), out var j) ? j : null;
-
-    static string DicaDias(LinhaPontos u)
-        => (u.DataMenor is DateOnly a ? $"Menor: {Texto.Fmt(u.MenorDia)} em {Texto.Dmy(a)}" : "") +
-           (u.DataMaior is DateOnly c ? $" · Maior: {Texto.Fmt(u.MaiorDia)} em {Texto.Dmy(c)}" : "");
-
-    int FaixaDe(LinhaPontos u) => PontosAcao.Faixa(u.Media, E.PtsLimite, Just(u));
-
-    async Task Justificar(LinhaPontos u, string? valor)
+    string? _ass;
+    List<LinhaPontos> _todos = new(), _abaixo = new();
+    List<LinhaTab> _linhas = new();
+    readonly List<ColunaTab> _cols = new()
     {
-        if (Mes == "") return;
-        if (!E.PtsJust.TryGetValue(Mes, out var d)) E.PtsJust[Mes] = d = new();
-        var k = PontosAcao.ChaveUsuario(u.Usuario);
-        if (string.IsNullOrEmpty(valor) || !PontosAcao.Justificativas.Contains(valor)) d.Remove(k);   // só aceita as opções da lista
-        else d[k] = valor;
-        await E.SalvarPtsJust();
-    }
+        new("Usuário", 0), new("Média/dia", 96, 'c'), new("% da meta", 96, 'c'), new("Faltam/dia", 96, 'c'), new("Total de ações", 116, 'c'),
+        new("Dias trabalhados", 124, 'c'), new("Menor dia", 120, 'c'), new("Maior dia", 120, 'c'), new("Faixa", 150),
+    };
 
     static string P(double x) => (Math.Clamp(x, 0.005, 1) * 100).ToString("0.##", CultureInfo.InvariantCulture) + "%";
 
@@ -220,23 +160,36 @@
 
     void Calcular()
     {
+        var ass = $"{E.PtsRes?.GetHashCode()}|{E.PtsLimite}|{E.PtsMinDias}|{_busca}";
+        if (ass == _ass) return;
+        _ass = ass;
         var r = E.PtsRes;
-        if (r == null) { _todos = new(); _abaixo = new(); _lista = new(); _tabela = new(); return; }
+        if (r == null) { _todos = new(); _abaixo = new(); _linhas = new(); return; }
         var b = Texto.NormalizarBusca(_busca);
         _todos = r.Usuarios.Where(u => u.DiasTrabalhados >= E.PtsMinDias).ToList();
         _abaixo = _todos.Where(u => u.Media < E.PtsLimite).OrderBy(u => u.Media).ThenBy(u => u.Usuario, StringComparer.Ordinal)
             .Where(u => b == "" || Texto.NormalizarBusca(u.Usuario).Contains(b)).ToList();
-        // pendentes primeiro (do menor para o maior), justificados no fim
-        var ordem = _abaixo.OrderBy(u => Just(u) != null ? 1 : 0).ThenBy(u => u.Media).ToList();
-        _lista = ordem.Where(u => _filtroFaixa < 0 || FaixaDe(u) == _filtroFaixa).ToList();
-        _tabela = _lista.Where(u => _filtroJust == "" || (_filtroJust == "just") == (Just(u) != null)).ToList();
+        var lim = E.PtsLimite;
+        string[] corFaixa = { "var(--red)", "var(--amber)", "#CA8A04" };
+        _linhas = _abaixo.Select(u =>
+        {
+            int f = PontosAcao.Faixa(u.Media, lim);
+            return new LinhaTab
+            {
+                Valores = new object?[] { u.Usuario, Fv(u.Media), Texto.F(u.Media / lim * 100) + "%", Fv(lim - u.Media), Fmt(u.Total), u.DiasTrabalhados,
+                    u.DataMenor is DateOnly a ? $"{Fmt(u.MenorDia)} ({Texto.Dm(a)})" : "", u.DataMaior is DateOnly c ? $"{Fmt(u.MaiorDia)} ({Texto.Dm(c)})" : "",
+                    f == 0 ? "Crítico" : f == 1 ? "Atenção" : "Perto da meta" },
+                Chaves = new object?[] { u.Usuario, u.Media, u.Media / lim, lim - u.Media, u.Total, u.DiasTrabalhados, u.MenorDia, u.MaiorDia, f },
+                Celulas = new() { [1] = new EstiloCelula(Negrito: true, Cor: corFaixa[f]), [8] = new EstiloCelula(Cor: corFaixa[f], Negrito: true) },
+            };
+        }).ToList();
     }
 
     void Recalcular()
     {
         if (E.PtsBase == null) return;
         E.PtsRes = PontosAcao.Calcular(E.PtsBase, E.PtsPorDiaTrabalhado);
-
+        _ass = null;
     }
 
     async Task Abrir(List<Arquivo> arqs)
@@ -254,20 +207,20 @@
                 if (r.Dias.Count == 1)
                     await J.Aviso("Pontos de ação mensal", $"Esse compilado tem só um dia ({Texto.Dmy(r.Dias[0])}). A média vale para esse dia; para o mês, anexe o compilado mensal ou todos os diários do mês.");
             },
-            async ex => { await J.Erro("Erro ao ler o compilado", Estado.Mensagem(ex)); },
+            async ex => { _ass = null; await J.Erro("Erro ao ler o compilado", Estado.Mensagem(ex)); },
             (s, msg) => E.SubPts = $"Lendo {arqs.Count} arquivo(s)… {msg} {s}s");
     }
 
     void MudarLimite(ChangeEventArgs e)
     {
         if (double.TryParse(e.Value?.ToString()?.Replace(',', '.'), NumberStyles.Float, CultureInfo.InvariantCulture, out var v) && v > 0) E.PtsLimite = v;
-
+        _ass = null;
     }
 
     void MudarMinDias(ChangeEventArgs e)
     {
         if (int.TryParse(e.Value?.ToString(), out var n)) E.PtsMinDias = Math.Clamp(n, 1, 31);
-
+        _ass = null;
     }
 
     void MudarDivisor(bool porDiaTrabalhado)
@@ -286,6 +239,6 @@
             SemData = r.SemData, SemUsuario = r.SemUsuario, PorDiaTrabalhado = r.PorDiaTrabalhado, Arquivos = r.Arquivos,
         };
         var mes = r.Dias.Count > 0 ? r.Dias[^1].ToString("yyyy-MM", CultureInfo.InvariantCulture) : Estado.Agora("yyyy-MM");
-        await E.Salvar($"Pontos_de_acao_{mes}.xlsx", PontosAcao.Exportar(filtrado, E.PtsLimite, E.PtsJust.GetValueOrDefault(PontosAcao.Mes(r))), Navegador.MimeXlsx);
+        await E.Salvar($"Pontos_de_acao_{mes}.xlsx", PontosAcao.Exportar(filtrado, E.PtsLimite), Navegador.MimeXlsx);
     }
 }

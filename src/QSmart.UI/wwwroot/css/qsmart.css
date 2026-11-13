@@ -621,31 +621,10 @@ button.fer-alerta:hover { filter: brightness(.97); }
 .pts-dist-barra { display: flex; gap: 3px; height: 26px; border-radius: 13px; overflow: hidden; }
 .pts-dist-barra span { display: grid; place-items: center; color: #fff; font-size: 11.5px; font-weight: 700; min-width: 6px; }
 .pts-dist-barra .f0 { background: var(--red); } .pts-dist-barra .f1 { background: var(--amber); } .pts-dist-barra .f2 { background: #EAB308; }
-.pts-dist-leg { display: flex; gap: 10px; flex-wrap: wrap; }
+.pts-dist-leg { display: flex; gap: 28px; flex-wrap: wrap; }
 .pts-dist-item { display: flex; align-items: baseline; gap: 7px; }
 .pts-dist-item i { width: 10px; height: 10px; border-radius: 3px; align-self: center; }
 .pts-dist-item b { font-size: 18px; font-variant-numeric: tabular-nums; }
 .pts-dist-item.f0 i { background: var(--red); } .pts-dist-item.f0 b { color: var(--red); }
 .pts-dist-item.f1 i { background: var(--amber); } .pts-dist-item.f1 b { color: var(--amber); }
 .pts-dist-item.f2 i { background: #EAB308; } .pts-dist-item.f2 b { color: #CA8A04; }
-
-/* Pontos de ação — justificativas */
-.pts-dist-barra .f3 { background: #0D9488; }
-.pts-dist-item.f3 i { background: #0D9488; } .pts-dist-item.f3 b { color: #0D9488; }
-.pts-dist-item { border: 1px solid transparent; background: none; border-radius: 9px; padding: 4px 8px; cursor: pointer; font: inherit; color: inherit; text-align: left; }
-.pts-dist-item:hover { background: var(--surface2); }
-.pts-dist-item.on { border-color: var(--line); background: var(--surface2); }
-.pts-barra.f3 { background: #0D9488; opacity: .55; }
-.pts-linha.justificado .pts-val, .pts-linha.justificado .pts-pct { color: var(--muted); }
-.pts-just { display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 8px; font-size: 10.5px; font-weight: 650; background: color-mix(in srgb, #0D9488 14%, transparent); color: #0D9488; vertical-align: 1px; }
-.pts-mapa tr.justificado td { opacity: .45; }
-.pts-mapa tr.justificado td.pts-mapa-nome { opacity: 1; color: #0D9488; }
-.pts-cor.f0 { color: var(--red); } .pts-cor.f1 { color: var(--amber); } .pts-cor.f2 { color: #CA8A04; } .pts-cor.f3 { color: #0D9488; }
-.etq.pts-etq.f0 { background: var(--red-soft); color: var(--red); }
-.etq.pts-etq.f1 { background: var(--amber-soft); color: var(--amber); }
-.etq.pts-etq.f2 { background: color-mix(in srgb, #EAB308 16%, transparent); color: #A16207; }
-.etq.pts-etq.f3 { background: color-mix(in srgb, #0D9488 14%, transparent); color: #0D9488; }
-.pts-tabela tr.justificado td { background: color-mix(in srgb, #0D9488 5%, transparent); }
-.pts-sel { border-color: var(--line); background: var(--surface); cursor: pointer; }
-.pts-sel.on { border-color: color-mix(in srgb, #0D9488 45%, transparent); color: #0D9488; font-weight: 650; background: color-mix(in srgb, #0D9488 7%, var(--surface)); }
-.pts-tabela { table-layout: fixed; width: 100%; min-width: 1040px; } .pts-tabela td:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

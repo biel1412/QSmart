@@ -108,9 +108,7 @@ public sealed class Estado
     public string SubPts = "Anexe o compilado do mês: o QSmart calcula a média de ações por dia de cada usuário e mostra quem fica abaixo da meta.";
 
     // ----- Coordenação: férias e EAP (guardados só neste navegador, fora da pasta de dados) -----
-    public const string ChFerias = "coordenacao/ferias.json", ChEap = "coordenacao/eap.json", ChPtsJust = "coordenacao/pontos_justificativas.json";
-    /// <summary>Justificativas do Pontos de ação, por mês e usuário.</summary>
-    public Dictionary<string, Dictionary<string, string>> PtsJust = new();
+    public const string ChFerias = "coordenacao/ferias.json", ChEap = "coordenacao/eap.json";
     public DadosFerias Ferias = new();
     public DadosEap EapDados = new();
     public bool CoordCarregada;
@@ -133,20 +131,12 @@ public sealed class Estado
         CoordCarregada = true;
         try { Ferias = Core.Coordenacao.Ferias.Ler(await Nav.Ler(ChFerias)); } catch { Ferias = new(); }
         try { EapDados = Eap.Ler(await Nav.Ler(ChEap)); } catch { EapDados = new(); }
-        try { PtsJust = PontosAcao.LerJustificativas(await Nav.Ler(ChPtsJust)); } catch { PtsJust = new(); }
     }
 
     public async Task SalvarFerias()
     {
         if (!await Nav.Gravar(ChFerias, Core.Coordenacao.Ferias.Gravar(Ferias)))
             await Janelas.Erro("Férias", "Não foi possível salvar neste navegador (armazenamento cheio ou bloqueado).");
-        Notificar();
-    }
-
-    public async Task SalvarPtsJust()
-    {
-        if (!await Nav.Gravar(ChPtsJust, PontosAcao.GravarJustificativas(PtsJust)))
-            await Janelas.Erro("Pontos de ação", "Não foi possível salvar a justificativa neste navegador.");
         Notificar();
     }
 
