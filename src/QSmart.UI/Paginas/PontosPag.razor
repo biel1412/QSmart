@@ -13,11 +13,14 @@
         <Kpi Titulo="Usuários analisados" Cor="blue" Valor="@(r != null ? Fmt(_todos.Count) : "—")"
              Detalhe="@(r == null ? "" : r.Dias.Count == 0 ? "sem datas" : $"{Texto.Dm(r.Dias[0])} a {Texto.Dm(r.Dias[^1])} · {Ferias.Plural(r.Dias.Count, "dia")} com registros")" />
         <Kpi Titulo="@($"Abaixo de {Texto.G(lim)} por dia")" Cor="red" Valor="@(r != null ? Fmt(_abaixo.Count) : "—")"
-             Detalhe="@(r == null ? "" : _todos.Count == 0 ? "" : $"{Texto.F(_abaixo.Count * 100.0 / _todos.Count)}% dos usuários")" />
+             Detalhe="@(r == null ? "" : _todos.Count == 0 ? "" : $"{Texto.F(_abaixo.Count * 100.0 / _todos.Count)}% dos usuários")"
+             Proporcao="@(r != null && _todos.Count > 0 ? _abaixo.Count / (double)_todos.Count : null)" />
         <Kpi Titulo="Média de quem está abaixo" Cor="amber" Valor="@(r != null && _abaixo.Count > 0 ? Fv(_abaixo.Average(u => u.Media)) : "—")"
-             Detalhe="@(r != null && _abaixo.Count > 0 ? $"faltam {Fv(lim - _abaixo.Average(u => u.Media))} ações por dia, em média" : "")" />
+             Detalhe="@(r != null && _abaixo.Count > 0 ? $"{Texto.F(_abaixo.Average(u => u.Media) / lim * 100, 0)}% da meta · faltam {Fv(lim - _abaixo.Average(u => u.Media))} por dia" : "")"
+             Proporcao="@(r != null && _abaixo.Count > 0 ? _abaixo.Average(u => u.Media) / lim : null)" />
         <Kpi Titulo="Média geral" Cor="green" Valor="@(r != null && _todos.Count > 0 ? Fv(_todos.Average(u => u.Media)) : "—")"
-             Detalhe="@(r != null ? $"{Fmt(r.Acoes)} ações no período" : "")" />
+             Detalhe="@(r != null ? $"{Fmt(r.Acoes)} ações no período" : "")"
+             Proporcao="@(r != null && _todos.Count > 0 ? _todos.Average(u => u.Media) / lim : null)" />
         <Kpi Titulo="Menor média" Cor="purple" Valor="@(_abaixo.Count > 0 ? Fv(_abaixo[0].Media) : "—")" Detalhe="@(_abaixo.Count > 0 ? _abaixo[0].Usuario : "")" />
     </Kpis>
     <ChildContent>
@@ -57,16 +60,30 @@
         }
         else
         {
-            <div class="pts-faixas">
-                @for (int f = 0; f < 3; f++)
-                {
-                    var n = _abaixo.Count(u => PontosAcao.Faixa(u.Media, lim) == f);
-                    <div class="pts-faixa f@(f)">
-                        <span class="pts-faixa-n">@n</span>
-                        <span class="pts-faixa-t">@(f == 0 ? "Crítico" : f == 1 ? "Atenção" : "Perto da meta")</span>
-                        <span class="pts-faixa-d">@(f == 0 ? $"menos de {Texto.G(lim * .5)} por dia" : f == 1 ? $"de {Texto.G(lim * .5)} a {Texto.G(lim * .8)}" : $"de {Texto.G(lim * .8)} a {Texto.G(lim)}")</span>
-                    </div>
-                }
+            var cont = Enumerable.Range(0, 3).Select(f => _abaixo.Count(u => PontosAcao.Faixa(u.Media, lim) == f)).ToArray();
+            <div class="pts-dist">
+                <div class="pts-dist-cab">
+                    <span class="rotulo">Quem está abaixo da meta, por faixa</span>
+                    <span class="muted">@Fmt(_abaixo.Count) usuário(s)</span>
+                </div>
+                <div class="pts-dist-barra">
+                    @for (int f = 0; f < 3; f++)
+                    {
+                        if (cont[f] == 0) continue;
+                        <span class="f@(f)" style="flex:@cont[f]" title="@($"{cont[f]} usuário(s)")">@(cont[f] * 100 / Math.Max(1, _abaixo.Count) >= 6 ? $"{Texto.F(cont[f] * 100.0 / _abaixo.Count, 0)}%" : "")</span>
+                    }
+                </div>
+                <div class="pts-dist-leg">
+                    @for (int f = 0; f < 3; f++)
+                    {
+                        <div class="pts-dist-item f@(f)">
+                            <i></i>
+                            <b>@cont[f]</b>
+                            <span>@(f == 0 ? "Crítico" : f == 1 ? "Atenção" : "Perto da meta")</span>
+                            <span class="muted">@(f == 0 ? $"menos de {Texto.G(lim * .5)} por dia" : f == 1 ? $"{Texto.G(lim * .5)} a {Texto.G(lim * .8)}" : $"{Texto.G(lim * .8)} a {Texto.G(lim)}")</span>
+                        </div>
+                    }
+                </div>
             </div>
 
             <div class="grade-32">

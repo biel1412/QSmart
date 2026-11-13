@@ -1,12 +1,14 @@
 @* Indicadores Avaliações / Desvios / Internos / Externos / Chamados (Evolução e Histórico) *@
 <Kpi Titulo="Avaliações" Cor="muted" Valor="@(Dados != null ? Texto.Fmt(Dados.Avaliacoes) : "—")" Detalhe="@(Dados != null ? RotuloAval : "")" />
 <Kpi Titulo="Desvios" Cor="red" Valor="@(Dados != null ? Texto.Fmt(Dados.Desvios) : "—")"
-     Detalhe="@(Dados != null ? $"{Texto.F(Dados.Desvios / (double)(Dados.Avaliacoes == 0 ? 1 : Dados.Avaliacoes) * 100)}% das avaliações" : "")" />
+     Detalhe="@(Dados != null ? $"{Texto.F(Dados.Desvios / (double)(Dados.Avaliacoes == 0 ? 1 : Dados.Avaliacoes) * 100)}% das avaliações" : "")"
+     Proporcao="@(Dados != null && Dados.Avaliacoes > 0 ? Dados.Desvios / (double)Dados.Avaliacoes : null)" />
 @foreach (var (o, rot, cor) in new[] { ("Interno", "Internos", "blue"), ("Externo", "Externos", "amber"), ("Chamados", "Chamados", "purple") })
 {
     var q = Dados?.Q(o) ?? 0;
     <Kpi Titulo="@rot" Cor="@cor" Valor="@(Dados != null ? Texto.Fmt(q) : "—")"
-         Detalhe="@(Dados != null ? $"{Texto.F(q / (double)(Dados.Desvios == 0 ? 1 : Dados.Desvios) * 100)}% dos desvios" : "")" />
+         Detalhe="@(Dados != null ? $"{Texto.F(q / (double)(Dados.Desvios == 0 ? 1 : Dados.Desvios) * 100)}% dos desvios" : "")"
+         Proporcao="@(Dados != null && Dados.Desvios > 0 ? q / (double)Dados.Desvios : null)" />
 }
 @code {
     [Parameter] public ResultadoInspecao? Dados { get; set; }

@@ -11,8 +11,8 @@
         @{ var r = E.Resultado; }
         <Kpi Titulo="Decisões analisadas" Cor="blue" Valor="@(r != null ? Fmt(r.Aprov + r.Reprov) : "—")"
              Detalhe="@(r == null ? "" : r.Outros != 0 ? $"{Fmt(r.Outros)} fora da comparação" : "aprovações + reprovações")" />
-        <Kpi Titulo="Aprovações" Cor="green" Valor="@(r != null ? Fmt(r.Aprov) : "—")" Detalhe="@(r != null ? $"{F1(r.PctAprov)}% das decisões" : "")" />
-        <Kpi Titulo="Reprovações" Cor="red" Valor="@(r != null ? Fmt(r.Reprov) : "—")" Detalhe="@(r != null ? $"{F1(r.PctReprov)}% das decisões" : "")" />
+        <Kpi Titulo="Aprovações" Cor="green" Valor="@(r != null ? Fmt(r.Aprov) : "—")" Detalhe="@(r != null ? $"{F1(r.PctAprov)}% das decisões" : "")" Proporcao="@(r != null ? r.PctAprov / 100 : null)" />
+        <Kpi Titulo="Reprovações" Cor="red" Valor="@(r != null ? Fmt(r.Reprov) : "—")" Detalhe="@(r != null ? $"{F1(r.PctReprov)}% das decisões" : "")" Proporcao="@(r != null ? r.PctReprov / 100 : null)" />
         @if (r != null && r.Tipos.Count > 0)
         {
             var t = r.Tipos[0];

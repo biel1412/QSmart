@@ -13,11 +13,11 @@
     <Kpis>
         @if (p != null && res != null)
         {
-            <Kpi Titulo="Andamento" Cor="accent" Valor="@($"{Texto.F(res.Progresso, 0)}%")" Detalhe="@($"{res.Concluidos} de {Ferias.Plural(res.Pacotes, "pacote")} concluído(s)")" />
+            <Kpi Titulo="Andamento" Cor="accent" Valor="@($"{Texto.F(res.Progresso, 0)}%")" Detalhe="@($"{res.Concluidos} de {Ferias.Plural(res.Pacotes, "pacote")} concluído(s)")" Proporcao="@(res.Progresso / 100)" />
             <Kpi Titulo="Pacotes de trabalho" Cor="blue" Valor="@Fmt(res.Pacotes)" Detalhe="@($"{res.EmAndamento} em andamento · {Fmt(res.Itens)} itens na EAP")" />
             <Kpi Titulo="Prazo" Cor="purple" Valor="@(res.Inicio is DateOnly a && res.Fim is DateOnly b ? Ferias.Plural(b.DayNumber - a.DayNumber + 1, "dia") : "—")"
                  Detalhe="@(res.Inicio is DateOnly a2 && res.Fim is DateOnly b2 ? $"{Texto.Dmy(a2)} a {Texto.Dmy(b2)}" : "informe as datas dos pacotes")" />
-            <Kpi Titulo="Custo estimado" Cor="green" Valor="@Moeda(res.Custo)" Detalhe="@(res.Custo > 0 ? "soma dos itens" : "informe os custos dos pacotes")" Tamanho="24" />
+            <Kpi Titulo="Custo estimado" Cor="green" Valor="@Moeda(res.Custo)" Detalhe="@(res.Custo > 0 ? "soma dos itens" : "informe os custos dos pacotes")" Tamanho="22" />
             <Kpi Titulo="Atrasados" Cor="red" Valor="@Fmt(res.Atrasados)" Detalhe="@(res.Atrasados > 0 ? "fim já passou e não concluídos" : res.SemResponsavel > 0 ? $"{res.SemResponsavel} pacote(s) sem responsável" : "nenhum atraso")" />
         }
     </Kpis>
