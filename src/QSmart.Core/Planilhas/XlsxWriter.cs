@@ -4,9 +4,6 @@ using System.Text;
 
 namespace QSmart.Core.Planilhas;
 
-/// <summary>Célula com fórmula; Valor é o resultado já calculado (aparece antes do Excel recalcular).</summary>
-public sealed record Formula(string Expressao, object? Valor = null);
-
 /// <summary>Gravador de .xlsx simples (negrito, preenchimento, congelar painéis, larguras), sem dependências.</summary>
 public sealed class XlsxWriter
 {
@@ -19,8 +16,6 @@ public sealed class XlsxWriter
         internal readonly Dictionary<int, int> EstiloLinha = new();
         internal readonly Dictionary<int, double> Larguras = new();
         internal (int linhas, int cols)? Congela;
-        internal readonly List<(string sqref, string[] lista, string? titulo, string? msg)> Validacoes = new();
-        internal readonly List<(string sqref, string formula, int dxf)> Condicionais = new();
         internal Aba(XlsxWriter wb, string nome) { Wb = wb; Nome = nome; }
 
         public int N => Linhas.Count;
@@ -29,14 +24,6 @@ public sealed class XlsxWriter
         public void NegritoLinha(int linha) => EstiloLinha[linha] = Wb.Estilo(true, null);
         public void Congelar(int linhas, int cols) => Congela = (linhas, cols);
         public void Largura(int col, double largura) => Larguras[col] = largura;
-
-        /// <summary>Validação de dados em lista (menu suspenso) no intervalo, ex.: "L2:L60". Recusa valores fora da lista.</summary>
-        public void ValidacaoLista(string sqref, IEnumerable<string> lista, string? titulo = null, string? mensagem = null)
-            => Validacoes.Add((sqref, lista.ToArray(), titulo, mensagem));
-
-        /// <summary>Formatação condicional por fórmula (ex.: "$L2&lt;&gt;\"\""): pinta o fundo com a cor quando verdadeira.</summary>
-        public void CondicionalCor(string sqref, string formula, string corHex, bool negrito = false)
-            => Condicionais.Add((sqref, formula, Wb.Dxf(corHex, negrito)));
 
         public void Preencher(int linha, int col, string corHex, bool negrito = false)
             => Estilos[((long)linha << 20) | (uint)col] = Wb.Estilo(negrito, corHex);
@@ -70,14 +57,6 @@ public sealed class XlsxWriter
 
     readonly List<Aba> _abas = new();
     readonly List<(bool negrito, string? cor, bool data)> _estilos = new() { (false, null, false) };
-    readonly List<(string cor, bool negrito)> _dxfs = new();
-    internal int Dxf(string cor, bool negrito)
-    {
-        var k = (cor.ToUpperInvariant(), negrito);
-        var i = _dxfs.IndexOf(k);
-        if (i < 0) { _dxfs.Add(k); i = _dxfs.Count - 1; }
-        return i;
-    }
     readonly Dictionary<string, int> _shared = new(StringComparer.Ordinal);
     readonly List<string> _sharedLista = new();
 
@@ -217,12 +196,6 @@ public sealed class XlsxWriter
                         var estD = Estilo(est != 0 && _estilos[est].negrito, est != 0 ? _estilos[est].cor : null, true);
                         sb.Append($"<c r=\"{refc}\" s=\"{estD}\"><v>{serial.ToString("R", CultureInfo.InvariantCulture)}</v></c>");
                         break;
-                    case Formula fo:
-                        var fx = $"<f>{Esc(fo.Expressao.TrimStart('='))}</f>";
-                        if (fo.Valor is string fs) sb.Append($"<c r=\"{refc}\" t=\"str\"{sAttr}>{fx}<v>{Esc(fs)}</v></c>");
-                        else if (fo.Valor is null) sb.Append($"<c r=\"{refc}\"{sAttr}>{fx}</c>");
-                        else sb.Append($"<c r=\"{refc}\"{sAttr}>{fx}<v>{Convert.ToDouble(fo.Valor).ToString("R", CultureInfo.InvariantCulture)}</v></c>");
-                        break;
                     case Celula cel:
                         if (cel.Tipo is TipoCelula.Inteiro or TipoCelula.Numero)
                             sb.Append($"<c r=\"{refc}\"{sAttr}><v>{cel.Numero.ToString("R", CultureInfo.InvariantCulture)}</v></c>");
@@ -239,22 +212,6 @@ public sealed class XlsxWriter
             sb.Append("</row>");
         }
         sb.Append("</sheetData>");
-        int prio = 1;
-        foreach (var (sq, fo, dxf) in a.Condicionais)
-            sb.Append($"<conditionalFormatting sqref=\"{sq}\"><cfRule type=\"expression\" dxfId=\"{dxf}\" priority=\"{prio++}\"><formula>{Esc(fo.TrimStart('='))}</formula></cfRule></conditionalFormatting>");
-        if (a.Validacoes.Count > 0)
-        {
-            sb.Append($"<dataValidations count=\"{a.Validacoes.Count}\">");
-            foreach (var (sq, lista, tit, msg) in a.Validacoes)
-            {
-                sb.Append("<dataValidation type=\"list\" allowBlank=\"1\" showInputMessage=\"1\" showErrorMessage=\"1\" errorStyle=\"stop\"");
-                sb.Append(" errorTitle=\"Valor inválido\" error=\"Escolha uma das opções da lista.\"");
-                if (tit != null) sb.Append($" promptTitle=\"{Esc(tit)}\"");
-                if (msg != null) sb.Append($" prompt=\"{Esc(msg)}\"");
-                sb.Append($" sqref=\"{sq}\"><formula1>{Esc("\"" + string.Join(",", lista) + "\"")}</formula1></dataValidation>");
-            }
-            sb.Append("</dataValidations>");
-        }
         sb.Append("<pageMargins left=\"0.7\" right=\"0.7\" top=\"0.75\" bottom=\"0.75\" header=\"0.3\" footer=\"0.3\"/></worksheet>");
         return Encoding.UTF8.GetBytes(sb.ToString());
     }
@@ -294,7 +251,7 @@ public sealed class XlsxWriter
                 sbWb.Append($"<sheet name=\"{Esc(_abas[i].Nome)}\" sheetId=\"{i + 1}\" r:id=\"rId{i + 1}\"/>");
                 sbRels.Append($"<Relationship Id=\"rId{i + 1}\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet{i + 1}.xml\"/>");
             }
-            sbWb.Append("</sheets><calcPr calcId=\"191029\" fullCalcOnLoad=\"1\"/></workbook>");
+            sbWb.Append("</sheets></workbook>");
             int n = _abas.Count;
             sbRels.Append($"<Relationship Id=\"rId{n + 1}\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles\" Target=\"styles.xml\"/>");
             sbRels.Append($"<Relationship Id=\"rId{n + 2}\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings\" Target=\"sharedStrings.xml\"/></Relationships>");
@@ -331,15 +288,7 @@ public sealed class XlsxWriter
             sb.Append($"<xf numFmtId=\"{(data ? 164 : 0)}\" fontId=\"{(neg ? 1 : 0)}\" fillId=\"{fill}\" borderId=\"0\" xfId=\"0\"" +
                       $"{(neg ? " applyFont=\"1\"" : "")}{(cor != null ? " applyFill=\"1\"" : "")}{(data ? " applyNumberFormat=\"1\"" : "")}/>");
         }
-        sb.Append("</cellXfs><cellStyles count=\"1\"><cellStyle name=\"Normal\" xfId=\"0\" builtinId=\"0\"/></cellStyles>");
-        if (_dxfs.Count > 0)
-        {
-            sb.Append($"<dxfs count=\"{_dxfs.Count}\">");
-            foreach (var (cor, neg) in _dxfs)
-                sb.Append($"<dxf>{(neg ? "<font><b/></font>" : "")}<fill><patternFill patternType=\"solid\"><fgColor rgb=\"FF{cor}\"/><bgColor rgb=\"FF{cor}\"/></patternFill></fill></dxf>");
-            sb.Append("</dxfs>");
-        }
-        sb.Append("</styleSheet>");
+        sb.Append("</cellXfs><cellStyles count=\"1\"><cellStyle name=\"Normal\" xfId=\"0\" builtinId=\"0\"/></cellStyles></styleSheet>");
         return sb.ToString();
     }
 }
