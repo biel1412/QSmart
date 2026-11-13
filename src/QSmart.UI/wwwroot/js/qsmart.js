@@ -3,13 +3,16 @@
   const BASE = document.currentScript ? new URL('.', document.currentScript.src).href : './_content/QSmart.UI/js/';
   const LIB = new URL('../lib/', BASE).href;
 
+  // versão de teste (…/teste/) usa um armazenamento separado: não toca nos dados da versão oficial
+  const NS = /\/teste\/?$/.test(new URL(document.baseURI).pathname) ? 'qsmart-teste' : 'qsmart';
+
   // ---------- armazenamento (IndexedDB, com localStorage de reserva) ----------
   let dbp = null;
   function db() {
     if (dbp) return dbp;
     dbp = new Promise((ok, erro) => {
       try {
-        const req = indexedDB.open('qsmart', 1);
+        const req = indexedDB.open(NS, 1);
         req.onupgradeneeded = () => req.result.createObjectStore('kv');
         req.onsuccess = () => ok(req.result);
         req.onerror = () => erro(req.error);
@@ -31,18 +34,18 @@
   const kv = {
     async get(k) {
       try { const v = await tx('readonly', s => s.get(k)); return v === undefined ? null : v; }
-      catch { return localStorage.getItem('qsmart:' + k); }
+      catch { return localStorage.getItem(NS + ':' + k); }
     },
     async set(k, v) {
       try { await tx('readwrite', s => s.put(v, k)); return true; }
-      catch { try { localStorage.setItem('qsmart:' + k, v); return true; } catch { return false; } }
+      catch { try { localStorage.setItem(NS + ':' + k, v); return true; } catch { return false; } }
     },
     async del(k) {
-      try { await tx('readwrite', s => s.delete(k)); } catch { localStorage.removeItem('qsmart:' + k); }
+      try { await tx('readwrite', s => s.delete(k)); } catch { localStorage.removeItem(NS + ':' + k); }
     },
     async keys() {
       try { return (await tx('readonly', s => s.getAllKeys())).map(String); }
-      catch { return Object.keys(localStorage).filter(k => k.startsWith('qsmart:')).map(k => k.slice(7)); }
+      catch { return Object.keys(localStorage).filter(k => k.startsWith(NS + ':')).map(k => k.slice(NS.length + 1)); }
     },
   };
 
@@ -204,7 +207,7 @@
   // ---------- tela ----------
   function tema(nome) {
     document.documentElement.dataset.tema = nome;
-    try { localStorage.setItem('qsmart:tema', JSON.stringify(nome)); } catch { }
+    try { localStorage.setItem(NS + ':tema', JSON.stringify(nome)); } catch { }
     const meta = document.querySelector('meta[name=theme-color]');
     if (meta) meta.content = nome === 'escuro' ? '#0B0E1A' : '#F6F7FB';
   }

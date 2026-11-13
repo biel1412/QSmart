@@ -1,19 +1,22 @@
 name: Publicar no GitHub Pages
 
-# Compila o QSmart (Blazor WebAssembly) e publica o site pronto na branch gh-pages.
+# Compila o QSmart (Blazor WebAssembly) e publica na branch gh-pages.
+#   main        -> versão oficial  https://<usuário>.github.io/QSmart/
+#   alteracoes  -> versão de teste https://<usuário>.github.io/QSmart/teste/
+# Cada publicação troca só a sua parte do site; a outra é mantida.
 # No GitHub: Settings → Pages → Source: "Deploy from a branch" → gh-pages / (root).
 
 on:
   push:
-    branches: [main]
+    branches: [main, alteracoes]
   workflow_dispatch:
 
 permissions:
   contents: write
 
 concurrency:
-  group: pages
-  cancel-in-progress: true
+  group: pages            # uma publicação por vez (as duas escrevem na gh-pages)
+  cancel-in-progress: false
 
 jobs:
   publicar:
@@ -32,22 +35,46 @@ jobs:
       - name: Compilar o QSmart
         run: dotnet publish src/QSmart.Web/QSmart.Web.csproj -c Release -o publicado
 
-      - name: Ajustar para o GitHub Pages
+      - name: Montar o site (oficial + teste)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          cd publicado/wwwroot
           REPO="${GITHUB_REPOSITORY#*/}"
-          sed -i "s|<base href=\"/\" />|<base href=\"/${REPO}/\" />|" index.html
-          cp index.html 404.html          # rotas internas (ex.: /resumo) abrem direto
-          touch .nojekyll                 # sem isso o GitHub Pages esconde a pasta _framework
+          if [ "${GITHUB_REF_NAME}" = "main" ]; then ALVO=""; else ALVO="teste/"; fi
+          BASE="/${REPO}/${ALVO}"
+          sed -i "s|<base href=\"/\" />|<base href=\"${BASE}\" />|" publicado/wwwroot/index.html
+
+          # site atual (para manter a parte que não está sendo publicada agora)
+          mkdir site atual
+          if git ls-remote --exit-code --heads origin gh-pages > /dev/null; then
+            git fetch -q --depth=1 origin gh-pages
+            git --work-tree=atual checkout -q FETCH_HEAD -- .
+          fi
+          if [ -z "$ALVO" ]; then
+            cp -a publicado/wwwroot/. site/
+            [ -d atual/teste ] && cp -a atual/teste site/teste
+          else
+            cp -a atual/. site/ 2>/dev/null || true
+            rm -rf site/teste
+            mkdir -p site/teste
+            cp -a publicado/wwwroot/. site/teste/
+          fi
+          touch site/.nojekyll            # sem isso o GitHub Pages esconde a pasta _framework
+
+          # 404.html: rotas internas (ex.: /resumo) abrem direto; na versão de teste, volta para o início dela
+          if [ -f site/index.html ]; then
+            cp site/index.html site/404.html
+            sed -i "s|<head>|<head>\n    <script>if (location.pathname.startsWith('/${REPO}/teste/')) location.replace('/${REPO}/teste/');</script>|" site/404.html
+          fi
 
       - name: Publicar na branch gh-pages
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          cd publicado/wwwroot
+          cd site
           git init -q -b gh-pages
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
-          git commit -q -m "Publicação de ${GITHUB_SHA::7}"
+          git commit -q -m "Publicação de ${GITHUB_REF_NAME} ${GITHUB_SHA::7}"
           git push -f "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" gh-pages

@@ -15,7 +15,11 @@
     <link rel="stylesheet" href="_content/QSmart.UI/css/qsmart.css" />
     <script>
         // aplica o tema salvo antes de desenhar (evita piscar)
-        try { const p = JSON.parse(localStorage.getItem('qsmart:tema') || 'null'); if (p) document.documentElement.dataset.tema = p; } catch (e) { }
+        {
+            const teste = /\/teste\/?$/.test(new URL(document.baseURI).pathname);   // versão de teste: …/teste/
+            if (teste) document.documentElement.dataset.ambiente = 'teste';
+            try { const p = JSON.parse(localStorage.getItem((teste ? 'qsmart-teste' : 'qsmart') + ':tema') || 'null'); if (p) document.documentElement.dataset.tema = p; } catch (e) { }
+        }
     </script>
     <style>
         #qs-carregando .qc-barra i { width: var(--blazor-load-percentage, 30%); animation: none; transition: width .2s; }
