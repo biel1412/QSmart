@@ -1,4 +1,4 @@
-@* Configurações: abas ativas, dados do navegador e backup automático *@
+@* Configurações: abas ativas, pasta de dados e backup automático *@
 <Modal Titulo="Configurações" Classe="media" AoCancelar="() => Fechar(null)">
     <ChildContent>
         <Painel>
@@ -20,15 +20,28 @@
         </Painel>
 
         <Painel Classe="mt">
-            <h3 class="painel-titulo">Dados e backup</h3>
-            <p class="muted">O histórico, as preferências e os pareceres padrão ficam guardados neste navegador, neste computador. As planilhas que você abre não são enviadas para nenhum servidor.
-                O backup copia esses dados automaticamente (ao abrir, ao gravar e ao sair), sem repetir quando nada mudou.</p>
-            <div class="rotulo">Levar os dados para outro lugar</div>
-            <p class="muted pequeno">Exporte um arquivo com todos os dados para guardar fora do navegador ou abrir em outro computador. A importação também aceita os arquivos do programa anterior (historico_qualidade.json, preferencias.json, pareceres_padrao.json).</p>
+            <h3 class="painel-titulo">Pasta de dados e backup</h3>
+            <p class="muted">O histórico, as preferências e os pareceres padrão ficam na pasta de dados, nos mesmos arquivos do programa anterior
+                (historico_qualidade.json, preferencias.json e pareceres_padrao.json). O backup copia esses arquivos automaticamente
+                (ao abrir, ao gravar e ao sair), sem repetir quando nada mudou. As planilhas que você abre não saem deste computador.</p>
+
+            <div class="rotulo">Pasta de dados</div>
+            <p class="muted caminho"><Icone Nome="pasta" Tamanho="15" /> @E.Dados.DescricaoPastaDados</p>
             <div class="linha-botoes">
-                <button class="btn btn-sec" @onclick="ExportarDados"><Icone Nome="download" Tamanho="16" /> Exportar dados (.json)</button>
-                <BotaoArquivo Texto="Importar dados…" Icone="upload" Aceita=".json" Varios="true" AoEscolher="ImportarDados" />
+                <button class="btn btn-sec" disabled="@(!E.Dados.PastaSuportada)" @onclick="AlterarDados">Alterar pasta de dados…</button>
+                @if (E.Dados.PastaDados != null || E.Dados.PastaDadosPendente != null)
+                {
+                    <button class="btn btn-sec" @onclick="DadosNoNavegador">Usar a padrão (este navegador)</button>
+                }
+                @if (E.Dados.PastaDadosPendente != null || E.Dados.PastaBackupPendente != null)
+                {
+                    <button class="btn btn-pri" @onclick="Permitir">Permitir acesso à pasta</button>
+                }
             </div>
+            @if (!E.Dados.PastaSuportada)
+            {
+                <p class="aviso pequeno">Escolher pasta funciona no Google Chrome e no Microsoft Edge. Neste navegador os dados ficam guardados nele mesmo; use Exportar/Importar para levá-los a outro lugar.</p>
+            }
 
             <label class="marcar mt">
                 <input type="checkbox" checked="@_bk.Ativo" @onchange="async e => { _bk.Ativo = (bool)e.Value!; await SalvarBackup(); }" />
@@ -39,10 +52,24 @@
                 <input class="campo num" type="number" min="1" max="365" value="@_bk.Manter" @onchange="async e => { if (int.TryParse(e.Value?.ToString(), out var n)) { _bk.Manter = Math.Clamp(n, 1, 365); await SalvarBackup(); } }" />
                 <span>backups</span>
             </div>
+
+            <div class="rotulo mt">Pasta dos backups</div>
+            <p class="muted caminho"><Icone Nome="pasta" Tamanho="15" /> @E.Dados.DescricaoPastaBackup</p>
+            <div class="linha-botoes">
+                <button class="btn btn-sec" disabled="@(!E.Dados.PastaSuportada)" @onclick="AlterarBackup">Alterar pasta de backup…</button>
+                <button class="btn btn-sec" disabled="@(E.Dados.PastaBackup == null && E.Dados.PastaBackupPendente == null)" @onclick="BackupPadrao">Usar a padrão</button>
+            </div>
             <p class="muted mt">@_ultimo</p>
             <div class="linha-botoes">
                 <button class="btn btn-pri" @onclick="BackupAgora"><Icone Nome="salvar" Tamanho="16" /> Fazer backup agora</button>
                 <button class="btn btn-sec" @onclick="Restaurar"><Icone Nome="historico" Tamanho="16" /> Restaurar backup…</button>
+            </div>
+
+            <div class="rotulo mt">Levar os dados para outro lugar</div>
+            <p class="muted pequeno">Exporte um arquivo com todos os dados para guardar ou abrir em outro computador. A importação também aceita os arquivos do programa anterior (historico_qualidade.json, preferencias.json, pareceres_padrao.json).</p>
+            <div class="linha-botoes">
+                <button class="btn btn-sec" @onclick="ExportarDados"><Icone Nome="download" Tamanho="16" /> Exportar dados (.json)</button>
+                <BotaoArquivo Texto="Importar dados…" Icone="upload" Aceita=".json" Varios="true" AoEscolher="ImportarDados" />
             </div>
         </Painel>
     </ChildContent>
@@ -95,7 +122,7 @@
 
     async Task SalvarBackup()
     {
-        E.Prefs.Backup = new ConfigBackup { Ativo = _bk.Ativo, Manter = _bk.Manter };
+        E.Prefs.Backup = new ConfigBackup { Ativo = _bk.Ativo, Manter = _bk.Manter, PastaOriginal = E.Prefs.Backup.PastaOriginal };
         await E.SalvarPrefs();
         await Atualizar();
     }
@@ -106,7 +133,7 @@
         try { nome = await E.Dados.FazerBackup("manual", E.Prefs, true); }
         catch (Exception ex) { await E.Janelas.Erro("Backup", "Não foi possível fazer o backup.\n\n" + ex.Message); return; }
         await Atualizar();
-        if (nome != null) await E.Janelas.Info("Backup", $"Backup salvo neste navegador: {nome}");
+        if (nome != null) await E.Janelas.Info("Backup", E.Dados.PastaBackup != null || E.Dados.PastaDados != null ? $"Backup salvo em:\n{nome}" : $"Backup salvo neste navegador: {nome}");
         else await E.Janelas.Info("Backup", "Ainda não há dados para copiar. Grave um mês no histórico primeiro.");
     }
 
@@ -153,5 +180,53 @@
         _bk = new ConfigBackup { Ativo = E.Prefs.Backup.Ativo, Manter = E.Prefs.Backup.Manter };
         await Atualizar();
         await E.Janelas.Info("Importar dados", "Importado: " + string.Join(", ", feitos.Distinct()));
+    }
+
+    // ----- pastas -----
+    async Task AlterarDados()
+    {
+        (string nome, List<string> copiados)? r;
+        try { r = await E.Dados.DefinirPastaDados(); }
+        catch (Exception ex) { await E.Janelas.Erro("Pasta de dados", $"Não consegui usar essa pasta (sem permissão de escrita?).\n\n{ex.Message}"); return; }
+        if (r == null) return;
+        await E.RecarregarDados();
+        _bk = new ConfigBackup { Ativo = E.Prefs.Backup.Ativo, Manter = E.Prefs.Backup.Manter, PastaOriginal = E.Prefs.Backup.PastaOriginal };
+        await Atualizar();
+        var (nome, copiados) = r.Value;
+        await E.Janelas.Info("Pasta de dados", $"Agora os dados ficam na pasta “{nome}”.\n\n" +
+            (copiados.Count > 0 ? "Arquivos copiados para a nova pasta: " + string.Join(", ", copiados) : "A pasta já tinha os arquivos."));
+    }
+
+    async Task DadosNoNavegador()
+    {
+        if (!await E.Janelas.Pergunta("Pasta de dados", "Voltar a guardar os dados neste navegador? Os arquivos da pasta continuam lá, sem alteração.")) return;
+        List<string> copiados;
+        try { copiados = await E.Dados.UsarNavegadorParaDados(); }
+        catch (Exception ex) { await E.Janelas.Erro("Pasta de dados", ex.Message); return; }
+        await E.RecarregarDados();
+        _bk = new ConfigBackup { Ativo = E.Prefs.Backup.Ativo, Manter = E.Prefs.Backup.Manter, PastaOriginal = E.Prefs.Backup.PastaOriginal };
+        await Atualizar();
+        await E.Janelas.Info("Pasta de dados", "Agora os dados ficam neste navegador.\n\n" +
+            (copiados.Count > 0 ? "Arquivos copiados da pasta: " + string.Join(", ", copiados) : "O navegador já tinha os arquivos."));
+    }
+
+    async Task Permitir()
+    {
+        if (!await E.Dados.PermitirPastas()) { await E.Janelas.Aviso("Pasta de dados", "O navegador não liberou o acesso à pasta."); }
+        await E.RecarregarDados();
+        await Atualizar();
+    }
+
+    async Task AlterarBackup()
+    {
+        try { if (await E.Dados.DefinirPastaBackup() == null) return; }
+        catch (Exception ex) { await E.Janelas.Erro("Pasta dos backups", $"Não consegui usar essa pasta (sem permissão de escrita?).\n\n{ex.Message}"); return; }
+        await Atualizar();
+    }
+
+    async Task BackupPadrao()
+    {
+        await E.Dados.BackupPadrao();
+        await Atualizar();
     }
 }

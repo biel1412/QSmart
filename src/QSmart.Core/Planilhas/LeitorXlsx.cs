@@ -163,14 +163,19 @@ public static class LeitorXlsx
         using var r = Xml(s);
         StringBuilder? atual = null;
         int nivelRph = 0;
-        while (r.Read())
+        bool jaPosicionado = false;      // ReadElementContentAsString já avança para o nó seguinte
+        while (jaPosicionado || r.Read())
         {
+            jaPosicionado = false;
             if (r.NodeType == XmlNodeType.Element)
             {
                 if (r.LocalName == "si") { atual = new StringBuilder(); if (r.IsEmptyElement) { lista.Add(""); atual = null; } }
                 else if (r.LocalName == "rPh" && !r.IsEmptyElement) nivelRph++;
                 else if (r.LocalName == "t" && atual != null && nivelRph == 0 && !r.IsEmptyElement)
+                {
                     atual.Append(r.ReadElementContentAsString());
+                    jaPosicionado = true;
+                }
             }
             else if (r.NodeType == XmlNodeType.EndElement)
             {

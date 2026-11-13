@@ -37,14 +37,17 @@ configurações (desativar abas, backup automático, exportar/importar dados) e 
 
 ## Onde ficam os dados
 
-O original gravava `historico_qualidade.json`, `preferencias.json` e `pareceres_padrao.json` numa pasta.
-No QSmart esses mesmos dados (no mesmo formato) ficam guardados **no navegador** (IndexedDB):
+Como no programa anterior, histórico, preferências e pareceres padrão ficam nos arquivos
+`historico_qualidade.json`, `preferencias.json` e `pareceres_padrao.json` (mesmo formato).
 
-- **Backup automático** ao abrir, ao gravar e ao sair, sem repetir quando nada mudou (configurável: manter os últimos N).
-- **Exportar dados** gera um `.json` com tudo — serve para guardar fora do navegador ou levar para outro computador.
-- **Importar dados** aceita esse pacote **e os arquivos do programa anterior**, então o histórico antigo pode ser trazido direto.
-
-> Os dados ficam no navegador e no computador em que foram gravados. Para usar em outra máquina, exporte e importe.
+- **Pasta de dados** (Configurações → *Alterar pasta de dados…*): o QSmart lê e grava esses arquivos direto na pasta escolhida —
+  pode ser a mesma pasta usada pelo programa anterior. Ao trocar de pasta, os arquivos que ainda não existem lá são copiados.
+  O navegador pede para liberar o acesso à pasta ao abrir o QSmart. Funciona no Google Chrome e no Microsoft Edge.
+- Sem pasta escolhida (ou em outros navegadores), os dados ficam guardados **no próprio navegador** (IndexedDB).
+- **Backup automático** ao abrir, ao gravar e ao sair, sem repetir quando nada mudou (manter os últimos N). Os backups ficam na
+  subpasta `backups` da pasta de dados, numa pasta de backup própria (*Alterar pasta de backup…*) ou no navegador — sempre em
+  subpastas datadas com `manifest.json`, como no original.
+- **Exportar / Importar dados** gera e lê um `.json` com tudo; a importação aceita também os arquivos do programa anterior.
 
 ## Arquitetura
 

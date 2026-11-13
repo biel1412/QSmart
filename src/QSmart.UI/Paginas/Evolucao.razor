@@ -124,6 +124,6 @@
         E.Historico = regs;
         E.Notificar();
         await E.BackupAuto("histórico gravado");
-        await J.Info("Gravado", $"{Texto.NomeMes(mes)} gravado no histórico.\n\nOs dados ficam guardados neste navegador.");
+        await J.Info("Gravado", $"{Texto.NomeMes(mes)} gravado no histórico.\n\n{E.Dados.Local(Dados.ChHistorico)}");
     }
 }

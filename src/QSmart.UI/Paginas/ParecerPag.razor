@@ -346,7 +346,7 @@
             AtualizarPadroes();
             Processar();
             await E.BackupAuto("pareceres gravados");
-            await J.Info("Gravado", "Documento gravado neste navegador.\nNa próxima vez ele será carregado automaticamente.");
+            await J.Info("Gravado", $"Documento gravado em:\n{E.Dados.Local(Dados.ChPareceres)}\n\nNa próxima vez ele será carregado automaticamente.");
         }
     }
 }

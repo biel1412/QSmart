@@ -101,6 +101,15 @@ public sealed class Estado
     public async Task Iniciar()
     {
         if (Iniciado) return;
+        await Dados.Iniciar();
+        if (Dados.PastaDadosPendente != null || Dados.PastaBackupPendente != null)
+        {
+            // o navegador só libera a pasta escolhida depois de um clique do usuário
+            var nomes = string.Join(" e ", new[] { Dados.PastaDadosPendente, Dados.PastaBackupPendente }.Where(n => n != null).Select(n => $"“{n}”"));
+            var sim = await Janelas.Pergunta("Pasta de dados", $"O QSmart guarda o histórico, as preferências, os pareceres e os backups na pasta {nomes}.\n\nPermitir o acesso agora?");
+            if (!sim || !await Dados.PermitirPastas())
+                await Janelas.Aviso("Pasta de dados", "Sem acesso à pasta: nesta sessão os dados vêm deste navegador. Para usar a pasta de novo, recarregue a página ou abra Configurações.");
+        }
         Prefs = await Dados.CarregarPreferencias();
         Historico = await Dados.CarregarHistorico();
         CarregarPareceres(await Dados.CarregarPareceres());
@@ -139,7 +148,7 @@ public sealed class Estado
     public async Task SalvarPrefs()
     {
         if (!await Dados.SalvarPreferencias(Prefs))
-            await Janelas.Aviso("Preferências", "Não foi possível salvar as preferências neste navegador. Elas valem só até fechar a página.");
+            await Janelas.Aviso("Preferências", $"Não foi possível salvar as preferências {Dados.OndeGrava}. Elas valem só até fechar a página.");
     }
 
     public async Task AlternarTema()
@@ -237,7 +246,7 @@ public sealed class Estado
     {
         foreach (var (k, v) in novo) Prefs.Classes[k] = v;
         if (!await Dados.SalvarPreferencias(Prefs))
-            await Janelas.Aviso("Preferências", "Não foi possível salvar a classificação neste navegador. Ela vale só até fechar a página.");
+            await Janelas.Aviso("Preferências", $"Não foi possível salvar a classificação {Dados.OndeGrava}. Ela vale só até fechar a página.");
         RecalcularResumo();
         Notificar();
     }

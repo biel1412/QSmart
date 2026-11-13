@@ -13,6 +13,19 @@ public sealed class Navegador
     public ValueTask Apagar(string chave) => _js.InvokeVoidAsync("qsmart.kv.del", chave);
     public ValueTask<string[]> Chaves() => _js.InvokeAsync<string[]>("qsmart.kv.keys");
 
+    // pasta escolhida pelo usuário (papel: "dados" ou "backup")
+    public ValueTask<bool> PastaSuportada() => _js.InvokeAsync<bool>("qsmart.pasta.suportado");
+    public ValueTask<string?> PastaNome(string papel) => _js.InvokeAsync<string?>("qsmart.pasta.nome", papel);
+    public ValueTask<string> PastaEstado(string papel) => _js.InvokeAsync<string>("qsmart.pasta.estado", papel);
+    public ValueTask<bool> PastaPermitir(string papel) => _js.InvokeAsync<bool>("qsmart.pasta.permitir", papel);
+    public ValueTask<string?> PastaEscolher(string papel) => _js.InvokeAsync<string?>("qsmart.pasta.escolher", papel);
+    public ValueTask PastaConfirmar(string papel) => _js.InvokeVoidAsync("qsmart.pasta.confirmar", papel);
+    public ValueTask PastaEsquecer(string papel) => _js.InvokeVoidAsync("qsmart.pasta.esquecer", papel);
+    public ValueTask<string?> PastaLer(string papel, string caminho, bool escolhida = false) => _js.InvokeAsync<string?>("qsmart.pasta.ler", papel, caminho, escolhida);
+    public ValueTask<bool> PastaGravar(string papel, string caminho, string texto, bool escolhida = false) => _js.InvokeAsync<bool>("qsmart.pasta.gravar", papel, caminho, texto, escolhida);
+    public ValueTask<string[]> PastaListar(string papel, string sub) => _js.InvokeAsync<string[]>("qsmart.pasta.listar", papel, sub);
+    public ValueTask PastaApagar(string papel, string caminho) => _js.InvokeVoidAsync("qsmart.pasta.apagar", papel, caminho);
+
     public ValueTask Baixar(string nome, byte[] bytes, string mime) => _js.InvokeVoidAsync("qsmart.baixar", nome, bytes, mime);
     public ValueTask Abrir(byte[] bytes, string mime) => _js.InvokeVoidAsync("qsmart.abrir", bytes, mime);
     public ValueTask<bool> Copiar(string texto) => _js.InvokeAsync<bool>("qsmart.copiar", texto);

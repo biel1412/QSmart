@@ -46,6 +46,79 @@
     },
   };
 
+  // ---------- pasta de dados e pasta de backup (Chrome/Edge: File System Access API) ----------
+  // papel: 'dados' | 'backup'. O identificador da pasta fica guardado no IndexedDB.
+  const pasta = {
+    suportado() { return typeof window.showDirectoryPicker === 'function'; },
+    async _h(papel) {
+      try { const v = await tx('readonly', s => s.get('__pasta_' + papel)); return v || null; } catch { return null; }
+    },
+    async nome(papel) { const h = await pasta._h(papel); return h ? h.name : null; },
+    async estado(papel) {
+      const h = await pasta._h(papel);
+      if (!h) return 'nenhuma';
+      try { return await h.queryPermission({ mode: 'readwrite' }); } catch { return 'denied'; }
+    },
+    async permitir(papel) {
+      const h = await pasta._h(papel);
+      if (!h) return false;
+      try { return (await h.requestPermission({ mode: 'readwrite' })) === 'granted'; } catch { return false; }
+    },
+    // abre o seletor; devolve o nome da pasta escolhida (null = cancelado). Não grava a escolha ainda.
+    async escolher(papel) {
+      try {
+        const h = await window.showDirectoryPicker({ id: 'qsmart-' + papel, mode: 'readwrite' });
+        pasta._escolhida = h;
+        // falha aqui se a pasta não aceitar gravação
+        const f = await h.getFileHandle('.teste_escrita', { create: true });
+        const w = await f.createWritable(); await w.write('ok'); await w.close();
+        await h.removeEntry('.teste_escrita');
+        return h.name;
+      } catch (e) {
+        if (e && e.name === 'AbortError') return null;
+        throw e;
+      }
+    },
+    async confirmar(papel) { await tx('readwrite', s => s.put(pasta._escolhida, '__pasta_' + papel)); },
+    async esquecer(papel) { try { await tx('readwrite', s => s.delete('__pasta_' + papel)); } catch { } },
+    async _dir(papel, partes, criar, escolhida) {
+      let d = escolhida ? pasta._escolhida : await pasta._h(papel);
+      if (!d) throw new Error('Pasta não definida.');
+      for (const p of partes) d = await d.getDirectoryHandle(p, { create: !!criar });
+      return d;
+    },
+    _partes(caminho) { const p = caminho.split('/').filter(x => x); return { dirs: p.slice(0, -1), nome: p[p.length - 1] }; },
+    async ler(papel, caminho, escolhida) {
+      const { dirs, nome } = pasta._partes(caminho);
+      try {
+        const d = await pasta._dir(papel, dirs, false, escolhida);
+        const f = await (await d.getFileHandle(nome)).getFile();
+        return await f.text();
+      } catch (e) { if (e && (e.name === 'NotFoundError' || e.name === 'TypeMismatchError')) return null; throw e; }
+    },
+    async existe(papel, caminho, escolhida) { return (await pasta.ler(papel, caminho, escolhida)) !== null; },
+    async gravar(papel, caminho, texto, escolhida) {
+      const { dirs, nome } = pasta._partes(caminho);
+      const d = await pasta._dir(papel, dirs, true, escolhida);
+      const w = await (await d.getFileHandle(nome, { create: true })).createWritable();   // grava num temporário e troca ao fechar
+      await w.write(texto); await w.close();
+      return true;
+    },
+    async listar(papel, sub) {
+      try {
+        const d = await pasta._dir(papel, sub ? sub.split('/').filter(x => x) : [], false);
+        const out = [];
+        for await (const [n, h] of d.entries()) if (h.kind === 'directory') out.push(n);
+        return out;
+      } catch (e) { if (e && e.name === 'NotFoundError') return []; throw e; }
+    },
+    async apagar(papel, caminho) {
+      const { dirs, nome } = pasta._partes(caminho);
+      try { const d = await pasta._dir(papel, dirs, false); await d.removeEntry(nome, { recursive: true }); }
+      catch (e) { if (!(e && e.name === 'NotFoundError')) throw e; }
+    },
+  };
+
   // ---------- arquivos ----------
   function baixar(nome, bytes, mime) {
     const blob = new Blob([bytes], { type: mime || 'application/octet-stream' });
@@ -152,5 +225,5 @@
     if (l) { l.classList.add('sumir'); setTimeout(() => l.remove(), 500); }
   }
 
-  window.qsmart = { kv, baixar, abrir, copiar, abrirUrl, pdfPaginas, pdfJuntar, pdfLinhas, tema, aoOcultar, focar, rolarLinha, pronto };
+  window.qsmart = { kv, pasta, baixar, abrir, copiar, abrirUrl, pdfPaginas, pdfJuntar, pdfLinhas, tema, aoOcultar, focar, rolarLinha, pronto };
 })();

@@ -9,6 +9,8 @@ public sealed class ConfigBackup
 {
     public bool Ativo { get; set; } = true;
     public int Manter { get; set; } = 20;
+    /// <summary>Caminho de pasta gravado pelo programa original (mantido para não se perder quando os dois usam a mesma pasta).</summary>
+    public string PastaOriginal { get; set; } = "";
 }
 
 /// <summary>Preferências (mesmo conteúdo do preferencias.json do original, sem a pasta).</summary>
@@ -42,6 +44,7 @@ public sealed class Preferencias
             {
                 if (b["ativo"] != null) p.Backup.Ativo = b["ativo"]!.GetValue<bool>();
                 if (b["manter"] != null) p.Backup.Manter = Math.Clamp((int)b["manter"]!.GetValue<double>(), 1, 365);
+                if (b["pasta"] is JsonValue pv && pv.TryGetValue<string>(out var ps)) p.Backup.PastaOriginal = ps;
             }
         }
         catch { return new Preferencias(); }
@@ -57,7 +60,7 @@ public sealed class Preferencias
         {
             ["classes"] = dif, ["tema"] = Tema, ["menu_recolhido"] = Recolhido,
             ["abas_desativadas"] = new JsonArray(AbasOff.Select(a => (JsonNode?)a).ToArray()),
-            ["backup"] = new JsonObject { ["ativo"] = Backup.Ativo, ["manter"] = Backup.Manter },
+            ["backup"] = new JsonObject { ["ativo"] = Backup.Ativo, ["manter"] = Backup.Manter, ["pasta"] = Backup.PastaOriginal },
         }.ToJsonString(Json.Opcoes);
     }
 }
@@ -76,7 +79,8 @@ public sealed class InfoBackup
     public string Hash { get; set; } = "";
 }
 
-/// <summary>Dados gravados no navegador (histórico, preferências, pareceres padrão) e backups automáticos.</summary>
+/// <summary>Dados (histórico, preferências, pareceres padrão) e backups automáticos.
+/// Ficam na pasta de dados escolhida pelo usuário (como no original) ou, sem pasta escolhida, no próprio navegador.</summary>
 public sealed class Dados
 {
     public const string ChHistorico = "historico_qualidade.json", ChPrefs = "preferencias.json", ChPareceres = "pareceres_padrao.json";
@@ -85,38 +89,172 @@ public sealed class Dados
     readonly Navegador _nav;
     public Dados(Navegador nav) { _nav = nav; }
 
-    public async Task<Preferencias> CarregarPreferencias() => Preferencias.DeJson(await _nav.Ler(ChPrefs));
-    public async Task<bool> SalvarPreferencias(Preferencias p) => await _nav.Gravar(ChPrefs, p.ParaJson());
+    // ---------------- pastas ----------------
+    /// <summary>O navegador permite escolher pastas (Chrome e Edge).</summary>
+    public bool PastaSuportada { get; private set; }
+    /// <summary>Nome da pasta de dados em uso (null = dados no navegador).</summary>
+    public string? PastaDados { get; private set; }
+    /// <summary>Pasta de dados escolhida, mas ainda sem permissão de acesso nesta sessão.</summary>
+    public string? PastaDadosPendente { get; private set; }
+    public string? PastaBackup { get; private set; }
+    public string? PastaBackupPendente { get; private set; }
+
+    public async Task Iniciar()
+    {
+        try { PastaSuportada = await _nav.PastaSuportada(); } catch { PastaSuportada = false; }
+        await AtualizarPastas();
+    }
+
+    public async Task AtualizarPastas()
+    {
+        PastaDados = PastaDadosPendente = PastaBackup = PastaBackupPendente = null;
+        if (!PastaSuportada) return;
+        foreach (var papel in new[] { "dados", "backup" })
+        {
+            string est, nome;
+            try { est = await _nav.PastaEstado(papel); nome = await _nav.PastaNome(papel) ?? ""; }
+            catch { continue; }
+            if (est == "nenhuma") continue;
+            var ok = est == "granted";
+            if (papel == "dados") { if (ok) PastaDados = nome; else PastaDadosPendente = nome; }
+            else { if (ok) PastaBackup = nome; else PastaBackupPendente = nome; }
+        }
+    }
+
+    /// <summary>Pede acesso às pastas escolhidas (precisa de um clique do usuário). Devolve se ficou tudo liberado.</summary>
+    public async Task<bool> PermitirPastas()
+    {
+        if (PastaDadosPendente != null) await _nav.PastaPermitir("dados");
+        if (PastaBackupPendente != null) await _nav.PastaPermitir("backup");
+        await AtualizarPastas();
+        return PastaDadosPendente == null && PastaBackupPendente == null;
+    }
+
+    /// <summary>Texto da pasta de dados, para as Configurações.</summary>
+    public string DescricaoPastaDados => PastaDados != null ? $"Pasta “{PastaDados}”"
+        : PastaDadosPendente != null ? $"Pasta “{PastaDadosPendente}” (sem acesso nesta sessão: os dados estão vindo deste navegador)"
+        : "Neste navegador (nenhuma pasta escolhida)";
+
+    public string DescricaoPastaBackup => PastaBackup != null ? $"Pasta “{PastaBackup}”"
+        : PastaBackupPendente != null ? $"Pasta “{PastaBackupPendente}” (sem acesso nesta sessão)"
+        : PastaDados != null ? $"Pasta “{PastaDados}/backups”  (padrão)"
+        : "Neste navegador  (padrão)";
+
+    /// <summary>Escolhe a pasta de dados, copiando para ela os arquivos que ainda não existirem lá
+    /// (definir_pasta_dados do original). Devolve null se cancelou, senão (nome, copiados).</summary>
+    public async Task<(string nome, List<string> copiados)?> DefinirPastaDados()
+    {
+        var nome = await _nav.PastaEscolher("dados");      // lança erro se a pasta não aceitar gravação
+        if (nome == null) return null;
+        var copiados = new List<string>();
+        foreach (var a in Arquivos)
+        {
+            var atual = await Ler(a);
+            if (atual == null) continue;
+            if (await _nav.PastaLer("dados", a, true) != null) continue;
+            await _nav.PastaGravar("dados", a, atual, true);
+            copiados.Add(a);
+        }
+        await _nav.PastaConfirmar("dados");
+        await AtualizarPastas();
+        return (nome, copiados);
+    }
+
+    /// <summary>Volta a guardar os dados no navegador (copia para ele os arquivos que ainda não existirem lá).</summary>
+    public async Task<List<string>> UsarNavegadorParaDados()
+    {
+        var copiados = new List<string>();
+        if (PastaDados != null)
+            foreach (var a in Arquivos)
+            {
+                var atual = await Ler(a);
+                if (atual == null || await _nav.Ler(a) != null) continue;
+                await _nav.Gravar(a, atual);
+                copiados.Add(a);
+            }
+        await _nav.PastaEsquecer("dados");
+        await AtualizarPastas();
+        return copiados;
+    }
+
+    public async Task<string?> DefinirPastaBackup()
+    {
+        var nome = await _nav.PastaEscolher("backup");
+        if (nome == null) return null;
+        await _nav.PastaConfirmar("backup");
+        await AtualizarPastas();
+        return nome;
+    }
+
+    public async Task BackupPadrao()
+    {
+        await _nav.PastaEsquecer("backup");
+        await AtualizarPastas();
+    }
+
+    // ---------------- leitura e gravação ----------------
+    /// <summary>Onde um arquivo de dados fica gravado (para as mensagens).</summary>
+    public string Local(string arquivo) => PastaDados != null ? $"Pasta “{PastaDados}” › {arquivo}" : "Neste navegador";
+
+    async Task<string?> Ler(string arquivo) => PastaDados != null ? await _nav.PastaLer("dados", arquivo) : await _nav.Ler(arquivo);
+    async Task<bool> Gravar(string arquivo, string texto)
+    {
+        try { return PastaDados != null ? await _nav.PastaGravar("dados", arquivo, texto) : await _nav.Gravar(arquivo, texto); }
+        catch { return false; }
+    }
+    async Task Apagar(string arquivo)
+    {
+        if (PastaDados != null) await _nav.PastaApagar("dados", arquivo); else await _nav.Apagar(arquivo);
+    }
+    public string OndeGrava => PastaDados != null ? $"na pasta “{PastaDados}”" : "neste navegador";
+
+    public async Task<Preferencias> CarregarPreferencias()
+    {
+        try { return Preferencias.DeJson(await Ler(ChPrefs)); } catch { return new Preferencias(); }
+    }
+    public async Task<bool> SalvarPreferencias(Preferencias p) => await Gravar(ChPrefs, p.ParaJson());
 
     public async Task<List<RegistroHist>> CarregarHistorico()
     {
-        var j = await _nav.Ler(ChHistorico);
+        string? j;
+        try { j = await Ler(ChHistorico); } catch { return new(); }
         try { return Historico.Ler(j); }
         catch
         {
             // arquivo corrompido: preserva uma cópia e começa vazio
-            if (j != null) await _nav.Gravar(ChHistorico + ".corrompido", j);
-            await _nav.Apagar(ChHistorico);
+            try
+            {
+                if (j != null) await Gravar(ChHistorico + ".corrompido", j);
+                await Apagar(ChHistorico);
+            }
+            catch { }
             return new();
         }
     }
 
     public async Task SalvarHistorico(List<RegistroHist> regs)
     {
-        if (!await _nav.Gravar(ChHistorico, Historico.Gravar(regs)))
-            throw new IOException("O navegador não permitiu gravar (armazenamento cheio ou bloqueado).");
+        if (!await Gravar(ChHistorico, Historico.Gravar(regs)))
+            throw new IOException($"Não foi possível gravar {OndeGrava} (sem permissão, pasta indisponível ou armazenamento cheio).");
     }
 
-    public async Task<ConfigPareceres> CarregarPareceres() => ConfigPareceres.DeJson(await _nav.Ler(ChPareceres));
-    public async Task<bool> SalvarPareceres(ConfigPareceres c) => await _nav.Gravar(ChPareceres, c.ParaJson());
+    public async Task<ConfigPareceres> CarregarPareceres()
+    {
+        try { return ConfigPareceres.DeJson(await Ler(ChPareceres)); } catch { return new ConfigPareceres(); }
+    }
+    public async Task<bool> SalvarPareceres(ConfigPareceres c) => await Gravar(ChPareceres, c.ParaJson());
 
     // ---------------- backup ----------------
+    /// <summary>Onde ficam os backups: pasta de backup escolhida; senão a subpasta “backups” da pasta de dados; senão o navegador.</summary>
+    (string papel, string sub)? DestinoBackup => PastaBackup != null ? ("backup", "") : PastaDados != null ? ("dados", "backups") : null;
+    static string Junta(string sub, string nome) => sub == "" ? nome : sub + "/" + nome;
+
     async Task<Dictionary<string, string>> DadosAtuais()
     {
         var d = new Dictionary<string, string>();
         foreach (var a in Arquivos)
         {
-            var v = await _nav.Ler(a);
+            var v = await Ler(a);
             if (v != null) d[a] = v;
         }
         return d;
@@ -127,6 +265,29 @@ public sealed class Dados
 
     public async Task<List<InfoBackup>> ListarBackups()
     {
+        var dest = DestinoBackup;
+        if (dest != null)
+        {
+            var (papel, sub) = dest.Value;
+            var lista = new List<InfoBackup>();
+            string[] nomes;
+            try { nomes = await _nav.PastaListar(papel, sub); } catch { return lista; }
+            foreach (var n in nomes)
+            {
+                try
+                {
+                    var man = await _nav.PastaLer(papel, Junta(sub, n + "/manifest.json"));
+                    if (man == null || JsonNode.Parse(man) is not JsonObject m) continue;
+                    lista.Add(new InfoBackup
+                    {
+                        Nome = n, CriadoEm = (string?)m["criado_em"] ?? "", Motivo = (string?)m["motivo"] ?? "",
+                        Arquivos = (m["arquivos"] as JsonArray)?.Select(x => (string?)x ?? "").ToList() ?? new(), Hash = (string?)m["hash"] ?? "",
+                    });
+                }
+                catch { }
+            }
+            return lista.OrderByDescending(b => b.Nome, StringComparer.Ordinal).ToList();
+        }
         var j = await _nav.Ler(ChIndiceBackup);
         if (string.IsNullOrWhiteSpace(j)) return new();
         try
@@ -150,11 +311,18 @@ public sealed class Dados
     async Task Podar(int manter)
     {
         var l = await ListarBackups();
+        var dest = DestinoBackup;
+        if (dest != null)
+        {
+            foreach (var b in l.Skip(Math.Max(1, manter)))
+                try { await _nav.PastaApagar(dest.Value.papel, Junta(dest.Value.sub, b.Nome)); } catch { }
+            return;
+        }
         foreach (var b in l.Skip(Math.Max(1, manter))) await _nav.Apagar("backups/" + b.Nome);
         await SalvarIndice(l.Take(Math.Max(1, manter)).ToList());
     }
 
-    /// <summary>Copia os dados para um backup datado. Não repete se nada mudou. Devolve o nome criado ou null.</summary>
+    /// <summary>Copia os dados para um backup datado. Não repete se nada mudou. Devolve onde foi salvo, ou null.</summary>
     public async Task<string?> FazerBackup(string motivo, Preferencias prefs, bool forcar = false)
     {
         var atuais = await DadosAtuais();
@@ -165,14 +333,26 @@ public sealed class Dados
         var agora = DateTime.Now;
         var nome = agora.ToString("yyyy-MM-dd_HHmmss", CultureInfo.InvariantCulture);
         while (lista.Any(b => b.Nome == nome)) { agora = agora.AddSeconds(1); nome = agora.ToString("yyyy-MM-dd_HHmmss", CultureInfo.InvariantCulture); }
+        var criado = agora.ToString("yyyy-MM-ddTHH:mm:ss", CultureInfo.InvariantCulture);
+        var dest = DestinoBackup;
+        if (dest != null)
+        {
+            // mesmo formato do original: uma subpasta datada com os arquivos e o manifest.json
+            var (papel, sub) = dest.Value;
+            var pastaBk = Junta(sub, nome);
+            foreach (var (k, v) in atuais) await _nav.PastaGravar(papel, pastaBk + "/" + k, v);
+            await _nav.PastaGravar(papel, pastaBk + "/manifest.json", new JsonObject
+            {
+                ["criado_em"] = criado, ["motivo"] = motivo,
+                ["arquivos"] = new JsonArray(atuais.Keys.Select(a => (JsonNode?)a).ToArray()), ["hash"] = h,
+            }.ToJsonString(Json.Opcoes));
+            await Podar(prefs.Backup.Manter);
+            return (papel == "backup" ? PastaBackup : PastaDados + "/backups") + "/" + nome;
+        }
         var pacote = new JsonObject();
         foreach (var (k, v) in atuais) pacote[k] = v;
         await _nav.Gravar("backups/" + nome, pacote.ToJsonString());
-        lista.Insert(0, new InfoBackup
-        {
-            Nome = nome, CriadoEm = agora.ToString("yyyy-MM-ddTHH:mm:ss", CultureInfo.InvariantCulture), Motivo = motivo,
-            Arquivos = atuais.Keys.ToList(), Hash = h,
-        });
+        lista.Insert(0, new InfoBackup { Nome = nome, CriadoEm = criado, Motivo = motivo, Arquivos = atuais.Keys.ToList(), Hash = h });
         await SalvarIndice(lista);
         await Podar(prefs.Backup.Manter);
         return nome;
@@ -181,11 +361,26 @@ public sealed class Dados
     /// <summary>Restaura os arquivos de um backup (antes, guarda uma cópia do estado atual).</summary>
     public async Task Restaurar(string nome, Preferencias prefs)
     {
-        var j = await _nav.Ler("backups/" + nome) ?? throw new IOException("Backup não encontrado.");
+        var dest = DestinoBackup;
+        var conteudo = new Dictionary<string, string>();
+        if (dest != null)
+        {
+            foreach (var a in Arquivos)
+            {
+                var v = await _nav.PastaLer(dest.Value.papel, Junta(dest.Value.sub, nome + "/" + a));
+                if (v != null) conteudo[a] = v;
+            }
+            if (conteudo.Count == 0) throw new IOException("Backup não encontrado.");
+        }
+        else
+        {
+            var j = await _nav.Ler("backups/" + nome) ?? throw new IOException("Backup não encontrado.");
+            if (JsonNode.Parse(j) is not JsonObject o) throw new IOException("Backup inválido.");
+            foreach (var a in Arquivos) if (o[a] != null) conteudo[a] = o[a]!.GetValue<string>();
+        }
         await FazerBackup("antes de restaurar", prefs, true);
-        if (JsonNode.Parse(j) is not JsonObject o) throw new IOException("Backup inválido.");
-        foreach (var a in Arquivos)
-            if (o[a] != null) await _nav.Gravar(a, o[a]!.GetValue<string>());
+        foreach (var (a, v) in conteudo)
+            if (!await Gravar(a, v)) throw new IOException($"Não foi possível gravar {a} {OndeGrava}.");
     }
 
     /// <summary>Pacote com todos os dados, para guardar fora do navegador ou levar para outro computador.</summary>
@@ -206,7 +401,7 @@ public sealed class Dados
         if ((string?)n["formato"] == "qsmart-dados")
         {
             foreach (var a in Arquivos)
-                if (n[a] != null) { await _nav.Gravar(a, n[a]!.ToJsonString(Json.Opcoes)); importados.Add(a); }
+                if (n[a] != null) { await Gravar(a, n[a]!.ToJsonString(Json.Opcoes)); importados.Add(a); }
             return importados;
         }
         string? destino = null;
@@ -216,7 +411,7 @@ public sealed class Dados
         else if (Arquivos.Contains(Path.GetFileName(nomeArquivo))) destino = Path.GetFileName(nomeArquivo);
         if (destino == null) throw new InvalidDataException("Não reconheci o conteúdo: use um arquivo exportado pelo QSmart ou historico_qualidade.json, preferencias.json ou pareceres_padrao.json.");
         if (destino == ChHistorico) Historico.Ler(json);                // valida
-        await _nav.Gravar(destino, json);
+        if (!await Gravar(destino, json)) throw new IOException($"Não foi possível gravar {destino} {OndeGrava}.");
         importados.Add(destino);
         return importados;
     }
