@@ -10,7 +10,6 @@
     <ServiceWorkerAssetsManifest></ServiceWorkerAssetsManifest>
     <!-- compila o C# para WebAssembly nativo na publicação: leitura de planilhas grandes muitas vezes mais rápida -->
     <RunAOTCompilation Condition="'$(Configuration)' == 'Release'">true</RunAOTCompilation>
-    <WasmStripILAfterAOT>true</WasmStripILAfterAOT>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" Version="8.0.11" />
