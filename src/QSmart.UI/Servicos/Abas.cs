@@ -29,14 +29,12 @@ public static class Abas
             "Organiza as férias da equipe, avisa choques e datas muito próximas e marca quem quer vender dias.", "ferias"),
         new("pontos", "Pontos de ação mensal", "Pontos de ação", "pontos", "Coordenação",
             "Média diária de ações por usuário no mês e painel só com quem fica abaixo de 150.", "pontos"),
-        new("eap", "EAP (estrutura analítica de projeto)", "EAP", "eap", "Coordenação",
-            "Divide projetos em fases, entregas e pacotes de trabalho, com responsáveis, prazos e custos.", "eap"),
         new("depurador", "Depurador de leitura", "Depurador", "depurador", "Ferramentas",
             "Mostra, linha a linha, o que o sistema lê de uma planilha e o que fica de fora.", "depurador"),
     };
 
     /// <summary>Ordem da lista de abas nas Configurações (igual ao original).</summary>
-    public static readonly string[] OrdemConfig = { "resumo", "usuarios", "evolucao", "inspecao", "volume", "monitor", "corredor", "historico", "pareceres", "ferias", "pontos", "eap", "depurador" };
+    public static readonly string[] OrdemConfig = { "resumo", "usuarios", "evolucao", "inspecao", "volume", "monitor", "corredor", "historico", "pareceres", "ferias", "pontos", "depurador" };
 
     public static readonly string[] Grupos = { "Decisões", "Inspeção", "Conformidade", "Operação", "Coordenação", "Ferramentas" };
 

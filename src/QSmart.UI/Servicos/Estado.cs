@@ -107,12 +107,11 @@ public sealed class Estado
     public int PtsMinDias = 1;
     public string SubPts = "Anexe o compilado do mês: o QSmart calcula a média de ações por dia de cada usuário e mostra quem fica abaixo da meta.";
 
-    // ----- Coordenação: férias e EAP (guardados só neste navegador, fora da pasta de dados) -----
-    public const string ChFerias = "coordenacao/ferias.json", ChEap = "coordenacao/eap.json", ChPtsJust = "coordenacao/pontos_justificativas.json";
+    // ----- Coordenação: férias e justificativas (guardados só neste navegador, fora da pasta de dados) -----
+    public const string ChFerias = "coordenacao/ferias.json", ChPtsJust = "coordenacao/pontos_justificativas.json";
     /// <summary>Justificativas do Pontos de ação, por mês e usuário.</summary>
     public Dictionary<string, Dictionary<string, string>> PtsJust = new();
     public DadosFerias Ferias = new();
-    public DadosEap EapDados = new();
     public bool CoordCarregada;
 
     public string? FeriasResumo
@@ -125,14 +124,12 @@ public sealed class Estado
             return $"{Ferias.Periodos.Count} período(s)" + (ch > 0 ? $" · {ch} choque(s)" : "") + (pr > 0 ? $" · {pr} data(s) próxima(s)" : "");
         }
     }
-    public string? EapResumo => EapDados.Projetos.Count == 0 ? null : $"{EapDados.Projetos.Count} projeto(s)";
 
     public async Task CarregarCoordenacao()
     {
         if (CoordCarregada) return;
         CoordCarregada = true;
         try { Ferias = Core.Coordenacao.Ferias.Ler(await Nav.Ler(ChFerias)); } catch { Ferias = new(); }
-        try { EapDados = Eap.Ler(await Nav.Ler(ChEap)); } catch { EapDados = new(); }
         try { PtsJust = PontosAcao.LerJustificativas(await Nav.Ler(ChPtsJust)); } catch { PtsJust = new(); }
     }
 
@@ -150,12 +147,6 @@ public sealed class Estado
         Notificar();
     }
 
-    public async Task SalvarEap()
-    {
-        if (!await Nav.Gravar(ChEap, Eap.Gravar(EapDados)))
-            await Janelas.Erro("EAP", "Não foi possível salvar neste navegador (armazenamento cheio ou bloqueado).");
-        Notificar();
-    }
 
     // ================= início =================
     public async Task Iniciar()
