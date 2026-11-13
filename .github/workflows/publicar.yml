@@ -26,6 +26,9 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
+      - name: Ferramentas de WebAssembly (compilação AOT)
+        run: dotnet workload install wasm-tools
+
       - name: Compilar o QSmart
         run: dotnet publish src/QSmart.Web/QSmart.Web.csproj -c Release -o publicado
 
