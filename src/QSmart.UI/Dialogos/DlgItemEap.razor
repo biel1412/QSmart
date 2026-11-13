@@ -1,0 +1,99 @@
+@using QSmart.Core.Coordenacao
+@* Edição de um item da EAP *@
+<Modal Titulo="@($"{Codigo} · {(Item.Nome == "" ? "Item" : Item.Nome)}")" Texto="@Tipo" Icone="eap" Classe="media" AoCancelar="() => Fechar(null)">
+    <ChildContent>
+        <label class="form-campo">
+            <span class="rotulo">Nome</span>
+            <input class="campo" @bind="Item.Nome" @bind:event="oninput" id="eap-nome" />
+        </label>
+        <div class="form-grade">
+            <label class="form-campo">
+                <span class="rotulo">Responsável</span>
+                <input class="campo" list="dl-resp" @bind="Item.Responsavel" placeholder="Quem responde pela entrega" />
+                <datalist id="dl-resp">@foreach (var r in Responsaveis) { <option value="@r"></option> }</datalist>
+            </label>
+            <label class="form-campo">
+                <span class="rotulo">Custo estimado (R$)@(Folha ? "" : " — além dos subitens")</span>
+                <input class="campo" type="number" min="0" step="0.01" value="@(Item.Custo?.ToString(CultureInfo.InvariantCulture))" @onchange="MudarCusto" />
+            </label>
+            <label class="form-campo">
+                <span class="rotulo">Início@(Folha ? "" : " (os subitens também contam)")</span>
+                <input class="campo" type="date" value="@Iso(Item.Inicio)" @onchange="e => Item.Inicio = DeIso(e.Value?.ToString())" />
+            </label>
+            <label class="form-campo">
+                <span class="rotulo">Fim</span>
+                <input class="campo" type="date" value="@Iso(Item.Fim)" min="@Iso(Item.Inicio)" @onchange="e => Item.Fim = DeIso(e.Value?.ToString())" />
+            </label>
+        </div>
+        @if (Folha)
+        {
+            <div class="form-grade">
+                <div class="form-campo">
+                    <span class="rotulo">Status</span>
+                    <div class="segmentado">
+                        @foreach (var s in Eap.Status)
+                        {
+                            <button class="seg @(Item.Status == s ? "on" + (s == Eap.Concluido ? " c-aprov" : "") : "")" @onclick="() => MudarStatus(s)">@s</button>
+                        }
+                    </div>
+                </div>
+                <label class="form-campo">
+                    <span class="rotulo">% concluído: @Item.Progresso%</span>
+                    <input type="range" min="0" max="100" step="5" value="@Item.Progresso" @oninput="MudarProgresso" />
+                </label>
+            </div>
+        }
+        else
+        {
+            <p class="muted pequeno">Status, % concluído e prazo deste item são calculados a partir dos subitens.</p>
+        }
+        <label class="form-campo">
+            <span class="rotulo">Notas <span class="opcional">(opcional)</span></span>
+            <textarea class="campo area" rows="3" @bind="Item.Notas" placeholder="Critérios de aceite, dependências, observações…"></textarea>
+        </label>
+        @if (Item.Inicio is DateOnly a && Item.Fim is DateOnly b && b < a)
+        {
+            <div class="fer-alerta choque"><Icone Nome="alerta" Tamanho="16" /> A data de fim é anterior ao início.</div>
+        }
+    </ChildContent>
+    <Rodape>
+        <button class="btn btn-perigo" @onclick="() => Fechar(Excluir)"><Icone Nome="lixo" Tamanho="16" /> Excluir</button>
+        <span class="mola"></span>
+        <button class="btn btn-sec" @onclick="() => Fechar(null)">Cancelar</button>
+        <button class="btn btn-pri" @onclick="() => Fechar(Item)"><Icone Nome="check" Tamanho="16" /> Salvar</button>
+    </Rodape>
+</Modal>
+
+@code {
+    public const string Excluir = "excluir";
+    [Parameter] public ItemEap Item { get; set; } = new();
+    [Parameter] public string Codigo { get; set; } = "";
+    [Parameter] public string Tipo { get; set; } = "";
+    [Parameter] public bool Folha { get; set; } = true;
+    [Parameter] public List<string> Responsaveis { get; set; } = new();
+    [Parameter] public Action<object?> Fechar { get; set; } = _ => { };
+    [Inject] Navegador Nav { get; set; } = null!;
+
+    protected override async Task OnAfterRenderAsync(bool primeira) { if (primeira) await Nav.Focar("eap-nome"); }
+
+    static string Iso(DateOnly? d) => d?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? "";
+    static DateOnly? DeIso(string? s) => DateOnly.TryParseExact(s, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var d) ? d : null;
+
+    void MudarCusto(ChangeEventArgs e)
+        => Item.Custo = double.TryParse(e.Value?.ToString()?.Replace(',', '.'), NumberStyles.Float, CultureInfo.InvariantCulture, out var v) && v >= 0 ? v : null;
+
+    void MudarStatus(string s)
+    {
+        Item.Status = s;
+        if (s == Eap.Concluido) Item.Progresso = 100;
+        else if (s == Eap.NaoIniciado) Item.Progresso = 0;
+        else if (Item.Progresso is 0 or 100) Item.Progresso = 10;
+    }
+
+    void MudarProgresso(ChangeEventArgs e)
+    {
+        if (!int.TryParse(e.Value?.ToString(), out var p)) return;
+        Item.Progresso = Math.Clamp(p, 0, 100);
+        Item.Status = p >= 100 ? Eap.Concluido : p > 0 ? Eap.EmAndamento : Eap.NaoIniciado;
+    }
+}

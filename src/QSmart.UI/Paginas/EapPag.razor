@@ -1,0 +1,462 @@
+@page "/eap"
+@inherits PaginaBase
+@using QSmart.Core.Coordenacao
+
+@{ Montar(); var p = Projeto; var res = _resumo; }
+<Pagina Titulo="EAP — Estrutura analítica de projeto" Grupo="@A.Grupo" Sub="Divida o projeto em fases, entregas e pacotes de trabalho. Prazos, custos e andamento são somados de baixo para cima. Fica salvo só neste navegador.">
+    <Acoes>
+        <button class="btn btn-hero" disabled="@(p == null)" @onclick="Exportar"><Icone Nome="download" Tamanho="17" /> Exportar Excel</button>
+        <button class="btn btn-hero" disabled="@(E.EapDados.Projetos.Count == 0)" @onclick="Backup" title="Baixa um arquivo com todos os projetos para guardar no computador"><Icone Nome="salvar" Tamanho="17" /> Salvar backup</button>
+        <BotaoArquivo Texto="Restaurar backup" Variante="hero" Icone="upload" Aceita=".json" AoEscolher="Restaurar" />
+        <button class="btn btn-pri" @onclick="NovoProjeto"><Icone Nome="mais" Tamanho="17" /> Novo projeto</button>
+    </Acoes>
+    <Kpis>
+        @if (p != null && res != null)
+        {
+            <Kpi Titulo="Andamento" Cor="accent" Valor="@($"{Texto.F(res.Progresso, 0)}%")" Detalhe="@($"{res.Concluidos} de {Ferias.Plural(res.Pacotes, "pacote")} concluído(s)")" />
+            <Kpi Titulo="Pacotes de trabalho" Cor="blue" Valor="@Fmt(res.Pacotes)" Detalhe="@($"{res.EmAndamento} em andamento · {Fmt(res.Itens)} itens na EAP")" />
+            <Kpi Titulo="Prazo" Cor="purple" Valor="@(res.Inicio is DateOnly a && res.Fim is DateOnly b ? Ferias.Plural(b.DayNumber - a.DayNumber + 1, "dia") : "—")"
+                 Detalhe="@(res.Inicio is DateOnly a2 && res.Fim is DateOnly b2 ? $"{Texto.Dmy(a2)} a {Texto.Dmy(b2)}" : "informe as datas dos pacotes")" />
+            <Kpi Titulo="Custo estimado" Cor="green" Valor="@Moeda(res.Custo)" Detalhe="@(res.Custo > 0 ? "soma dos itens" : "informe os custos dos pacotes")" Tamanho="24" />
+            <Kpi Titulo="Atrasados" Cor="red" Valor="@Fmt(res.Atrasados)" Detalhe="@(res.Atrasados > 0 ? "fim já passou e não concluídos" : res.SemResponsavel > 0 ? $"{res.SemResponsavel} pacote(s) sem responsável" : "nenhum atraso")" />
+        }
+    </Kpis>
+    <ChildContent>
+        @if (E.EapDados.Projetos.Count == 0)
+        {
+            <div class="vazio-grande">
+                <span class="vazio-ic"><Icone Nome="eap" Tamanho="34" /></span>
+                <h3>Nenhum projeto ainda</h3>
+                <p class="muted">A EAP divide o projeto em níveis: <b>fases</b> → <b>entregas</b> → <b>pacotes de trabalho</b>. Cada pacote tem responsável,
+                    prazo e custo; os níveis de cima somam tudo sozinhos. Comece em branco ou com um modelo de fases.</p>
+                <div class="linha-botoes" style="justify-content:center">
+                    <button class="btn btn-pri" @onclick="NovoProjeto"><Icone Nome="mais" Tamanho="17" /> Novo projeto</button>
+                </div>
+            </div>
+        }
+        else
+        {
+            <div class="eap-layout">
+                <aside class="eap-projetos">
+                    <div class="rotulo">Projetos</div>
+                    @foreach (var pr in E.EapDados.Projetos)
+                    {
+                        var arv = Eap.Arvore(pr, _hoje); var rr = Eap.Resumo(arv);
+                        <button class="eap-proj @(pr == p ? "on" : "")" @onclick="() => Selecionar(pr)">
+                            <span class="eap-proj-nome">@(pr.Nome == "" ? "(sem nome)" : pr.Nome)</span>
+                            <span class="eap-proj-det">@Ferias.Plural(rr.Pacotes, "pacote") · @Texto.F(rr.Progresso, 0)%@(rr.Atrasados > 0 ? $" · {rr.Atrasados} atrasado(s)" : "")</span>
+                            <span class="eap-mini"><span style="width:@Pc(rr.Progresso)"></span></span>
+                        </button>
+                    }
+                </aside>
+
+                @if (p != null)
+                {
+                    <div class="eap-principal">
+                        <Painel Classe="eap-cab">
+                            <div class="eap-cab-grade">
+                                <label class="form-campo"><span class="rotulo">Projeto</span><input class="campo eap-titulo" value="@p.Nome" @onchange="e => MudarProjeto(() => p.Nome = Str(e))" placeholder="Nome do projeto" /></label>
+                                <label class="form-campo"><span class="rotulo">Gerente / dono</span><input class="campo" value="@p.Gerente" @onchange="e => MudarProjeto(() => p.Gerente = Str(e))" /></label>
+                                <label class="form-campo eap-desc"><span class="rotulo">Objetivo</span><input class="campo" value="@p.Descricao" @onchange="e => MudarProjeto(() => p.Descricao = Str(e))" placeholder="O que o projeto entrega e para quem" /></label>
+                                <div class="eap-cab-acoes">
+                                    <button class="btn btn-sec" @onclick="Duplicar" title="Cria uma cópia deste projeto"><Icone Nome="copiar" Tamanho="16" /> Duplicar</button>
+                                    <button class="btn btn-perigo" @onclick="ExcluirProjeto"><Icone Nome="lixo" Tamanho="16" /> Excluir</button>
+                                </div>
+                            </div>
+                        </Painel>
+
+                        <div class="barra-ferr">
+                            <div class="segmentado">
+                                <button class="seg @(_visao == "estrutura" ? "on" : "")" @onclick="@(() => _visao = "estrutura")">Estrutura</button>
+                                <button class="seg @(_visao == "diagrama" ? "on" : "")" @onclick="@(() => _visao = "diagrama")">Diagrama</button>
+                                <button class="seg @(_visao == "cronograma" ? "on" : "")" @onclick="@(() => _visao = "cronograma")">Cronograma</button>
+                            </div>
+                            <span class="mola"></span>
+                            @if (_visao != "diagrama" && _todos.Any(n => !n.Folha))
+                            {
+                                <button class="btn btn-sec" @onclick="() => { _fechados.Clear(); }">Expandir tudo</button>
+                                <button class="btn btn-sec" @onclick="() => { foreach (var n in _todos.Where(n => !n.Folha)) _fechados.Add(n.Item.Id); }">Recolher tudo</button>
+                            }
+                            <button class="btn btn-pri" @onclick="NovaFase"><Icone Nome="mais" Tamanho="16" /> Adicionar fase</button>
+                        </div>
+
+                        @if (_arvore.Count == 0)
+                        {
+                            <div class="vazio-grande pequeno">
+                                <h3>Projeto vazio</h3>
+                                <p class="muted">Comece pelas fases (primeiro nível). Depois, dentro de cada fase, adicione as entregas e os pacotes de trabalho.</p>
+                                <div class="linha-botoes" style="justify-content:center">
+                                    <button class="btn btn-pri" @onclick="NovaFase"><Icone Nome="mais" Tamanho="16" /> Adicionar fase</button>
+                                    <button class="btn btn-sec" @onclick="UsarModelo">Usar modelo de fases</button>
+                                </div>
+                            </div>
+                        }
+                        else if (_visao == "estrutura")
+                        {
+                            <Painel Sangrar="true" Classe="eap-painel">
+                                <div class="tabela-rolagem">
+                                    <table class="tabela eap-tabela">
+                                        <colgroup><col style="width:70px" /><col /><col style="width:120px" /><col style="width:136px" /><col style="width:136px" /><col style="width:96px" /><col style="width:138px" /><col style="width:198px" /></colgroup>
+                                        <thead><tr><th>Código</th><th>Item</th><th>Responsável</th><th>Início</th><th>Fim</th><th class="al-d">Custo (R$)</th><th>Andamento</th><th></th></tr></thead>
+                                        <tbody>
+                                            @foreach (var n in Visiveis())
+                                            {
+                                                var it = n.Item;
+                                                <tr class="eap-n@(Math.Min(n.Nivel, 3)) @(n.Atrasado ? "atrasado" : "") @(_novo == it.Id ? "novo" : "")" @key="it.Id">
+                                                    <td class="eap-cod">
+                                                        @if (!n.Folha)
+                                                        {
+                                                            <button class="eap-seta" @onclick="() => Alternar(it.Id)" title="@(_fechados.Contains(it.Id) ? "Mostrar subitens" : "Esconder subitens")">@(_fechados.Contains(it.Id) ? "▸" : "▾")</button>
+                                                        }
+                                                        <span class="eap-cor" style="background:@CorFase(n)"></span>@n.Codigo
+                                                    </td>
+                                                    <td>
+                                                        <div class="eap-nome" style="padding-left:@((n.Nivel - 1) * 14)px" title="@n.TipoNivel">
+                                                            <input class="campo-linha @(n.Folha ? "" : "forte")" value="@it.Nome" @onchange="e => MudarItem(it, () => it.Nome = Str(e))" placeholder="@($"Nome da {n.TipoNivel.ToLowerInvariant()}")" id="eap-@it.Id" />
+                                                        </div>
+                                                    </td>
+                                                    <td><input class="campo-linha" list="dl-resp-eap" value="@it.Responsavel" @onchange="e => MudarItem(it, () => it.Responsavel = Str(e))" placeholder="—" /></td>
+                                                    @if (n.Folha)
+                                                    {
+                                                        <td><input class="campo-linha" type="date" value="@Iso(it.Inicio)" @onchange="e => MudarItem(it, () => it.Inicio = DeIso(e))" /></td>
+                                                        <td><input class="campo-linha @(n.Atrasado ? "erro" : "")" type="date" value="@Iso(it.Fim)" min="@Iso(it.Inicio)" @onchange="e => MudarItem(it, () => it.Fim = DeIso(e))" /></td>
+                                                        <td><input class="campo-linha al-d" type="number" min="0" step="0.01" value="@(it.Custo?.ToString(CultureInfo.InvariantCulture))" @onchange="e => MudarItem(it, () => it.Custo = Num(e))" placeholder="—" /></td>
+                                                        <td>
+                                                            <select class="campo-linha eap-status s@(Array.IndexOf(Eap.Status, n.Status))" value="@n.Status" @onchange="e => MudarStatus(it, Str(e))">
+                                                                @foreach (var s in Eap.Status) { <option value="@s">@s</option> }
+                                                            </select>
+                                                        </td>
+                                                    }
+                                                    else
+                                                    {
+                                                        <td class="muted">@(n.Inicio is DateOnly a ? Texto.Dmy(a) : "—")</td>
+                                                        <td class="@(n.Atrasado ? "txt-erro" : "muted")">@(n.Fim is DateOnly b ? Texto.Dmy(b) : "—")</td>
+                                                        <td class="al-d"><b>@(n.Custo > 0 ? Moeda(n.Custo, false) : "—")</b></td>
+                                                        <td><div class="eap-prog" title="@($"{Texto.F(n.Progresso, 0)}% · {n.Status}")"><span style="width:@Pc(n.Progresso)"></span><b>@Texto.F(n.Progresso, 0)%</b></div></td>
+                                                    }
+                                                    <td class="eap-acoes">
+                                                        <button class="btn-icone" title="Adicionar subitem" @onclick="() => NovoSub(it)"><Icone Nome="mais" Tamanho="16" /></button>
+                                                        <button class="btn-icone" title="Subir" @onclick="() => Op(() => Eap.Mover(p, it.Id, -1))"><Icone Nome="cima" Tamanho="16" /></button>
+                                                        <button class="btn-icone" title="Descer" @onclick="() => Op(() => Eap.Mover(p, it.Id, 1))"><Icone Nome="baixo" Tamanho="16" /></button>
+                                                        <button class="btn-icone" title="Subir um nível" disabled="@(it.PaiId == null)" @onclick="() => Op(() => Eap.Recuar(p, it.Id))"><Icone Nome="esquerda" Tamanho="16" /></button>
+                                                        <button class="btn-icone" title="Virar subitem do item de cima" @onclick="() => Op(() => Eap.Avancar(p, it.Id))"><Icone Nome="direita" Tamanho="16" /></button>
+                                                        <button class="btn-icone" title="Mais detalhes" @onclick="() => EditarItem(n)"><Icone Nome="editar" Tamanho="16" /></button>
+                                                        <button class="btn-icone perigo" title="Excluir" @onclick="() => ExcluirItem(n)"><Icone Nome="lixo" Tamanho="16" /></button>
+                                                    </td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                    <datalist id="dl-resp-eap">@foreach (var r in Responsaveis()) { <option value="@r"></option> }</datalist>
+                                </div>
+                            </Painel>
+                            <p class="muted pequeno">Dica: <b>→</b> transforma o item em subitem do de cima; <b>←</b> sobe um nível. Datas, custos e status são informados nos pacotes de trabalho (itens sem subitens); os níveis de cima são calculados.</p>
+                        }
+                        else if (_visao == "diagrama")
+                        {
+                            <Painel Classe="eap-painel">
+                                <div class="eap-org">
+                                    <div class="eap-raiz">
+                                        <div class="eap-caixa raiz">
+                                            <span class="eap-caixa-cod">0</span>
+                                            <span class="eap-caixa-nome">@(p.Nome == "" ? "Projeto" : p.Nome)</span>
+                                            @if (p.Gerente != "") { <span class="eap-caixa-resp">@p.Gerente</span> }
+                                            <span class="eap-caixa-prog"><span style="width:@Pc(res!.Progresso)"></span></span>
+                                        </div>
+                                    </div>
+                                    <div class="eap-fases" style="--n:@_arvore.Count">
+                                        @foreach (var f in _arvore)
+                                        {
+                                            <div class="eap-col">
+                                                @Caixa(f)
+                                                @if (f.Filhos.Count > 0) { <div class="eap-ramo">@Ramo(f.Filhos)</div> }
+                                            </div>
+                                        }
+                                    </div>
+                                </div>
+                            </Painel>
+                            <p class="muted pequeno">Clique em uma caixa para editar. A cor da borda mostra o status: cinza não iniciado, azul em andamento, verde concluído, vermelho atrasado.</p>
+                        }
+                        else
+                        {
+                            @Cronograma()
+                        }
+                    </div>
+                }
+            </div>
+        }
+    </ChildContent>
+</Pagina>
+
+@code {
+    protected override string Chave => "eap";
+    static readonly string[] Cores = { "#4F46E5", "#0891B2", "#D97706", "#16A34A", "#DB2777", "#7C3AED", "#0D9488", "#DC2626" };
+    readonly DateOnly _hoje = DateOnly.FromDateTime(DateTime.Today);
+    string _visao = "estrutura";
+    string? _novo;
+    readonly HashSet<string> _fechados = new();
+    List<NoEap> _arvore = new(), _todos = new();
+    ResumoEap? _resumo;
+
+    ProjetoEap? Projeto => E.EapDados.Projetos.FirstOrDefault(x => x.Id == E.EapDados.Selecionado) ?? E.EapDados.Projetos.FirstOrDefault();
+
+    void Montar()
+    {
+        var p = Projeto;
+        _arvore = p == null ? new() : Eap.Arvore(p, _hoje);
+        _todos = Eap.EmOrdem(_arvore).ToList();
+        _resumo = p == null ? null : Eap.Resumo(_arvore);
+    }
+
+    IEnumerable<NoEap> Visiveis()
+    {
+        foreach (var n in _todos)
+        {
+            bool oculto = false;
+            for (var a = n.Pai; a != null; a = a.Pai) if (_fechados.Contains(a.Item.Id)) { oculto = true; break; }
+            if (!oculto) yield return n;
+        }
+    }
+
+    void Alternar(string id) { if (!_fechados.Remove(id)) _fechados.Add(id); }
+
+    static string Str(ChangeEventArgs e) => (e.Value?.ToString() ?? "").Trim();
+    static double? Num(ChangeEventArgs e) => double.TryParse(e.Value?.ToString()?.Replace(',', '.'), NumberStyles.Float, CultureInfo.InvariantCulture, out var v) && v >= 0 ? v : null;
+    static string Iso(DateOnly? d) => d?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? "";
+    static DateOnly? DeIso(ChangeEventArgs e) => DateOnly.TryParseExact(e.Value?.ToString(), "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var d) ? d : null;
+    static string Pc(double x) => Math.Clamp(x, 0, 100).ToString("0.#", CultureInfo.InvariantCulture) + "%";
+    static string Moeda(double v, bool simbolo = true)
+    {
+        // formato brasileiro sem depender da cultura do navegador
+        var s = Math.Round(v, 2).ToString("#,##0.00", CultureInfo.InvariantCulture).Replace(",", "\u0001").Replace(".", ",").Replace("\u0001", ".");
+        return v <= 0 ? "—" : (simbolo ? "R$ " : "") + s;
+    }
+
+    string CorFase(NoEap n)
+    {
+        var f = n; while (f.Pai != null) f = f.Pai;
+        return Cores[Math.Max(0, _arvore.IndexOf(f)) % Cores.Length];
+    }
+
+    List<string> Responsaveis() => E.EapDados.Projetos.SelectMany(x => x.Itens).Select(i => i.Responsavel.Trim()).Where(x => x != "").Distinct().OrderBy(x => x).ToList();
+
+    // ---------------- projetos ----------------
+    async Task Selecionar(ProjetoEap p) { E.EapDados.Selecionado = p.Id; _fechados.Clear(); await E.SalvarEap(); }
+
+    async Task NovoProjeto()
+    {
+        var nome = await J.Entrada("Novo projeto", "Nome do projeto", "");
+        if (nome == null) return;
+        nome = nome.Trim();
+        if (nome == "") nome = $"Projeto {E.EapDados.Projetos.Count + 1}";
+        var modelo = await J.Pergunta("Novo projeto", "Começar com um modelo de fases (Iniciação, Planejamento, Execução, Monitoramento e Encerramento)?\n\nEscolha “Não” para começar em branco.");
+        var p = modelo ? Eap.Modelo(nome) : new ProjetoEap { Nome = nome };
+        E.EapDados.Projetos.Add(p);
+        E.EapDados.Selecionado = p.Id;
+        _visao = "estrutura";
+        _fechados.Clear();
+        await E.SalvarEap();
+    }
+
+    async Task MudarProjeto(Action mudar) { mudar(); await E.SalvarEap(); }
+
+    async Task Duplicar()
+    {
+        if (Projeto is not ProjetoEap p) return;
+        var c = Eap.Duplicar(p);
+        E.EapDados.Projetos.Insert(E.EapDados.Projetos.IndexOf(p) + 1, c);
+        E.EapDados.Selecionado = c.Id;
+        await E.SalvarEap();
+    }
+
+    async Task ExcluirProjeto()
+    {
+        if (Projeto is not ProjetoEap p) return;
+        if (!await J.Pergunta("Excluir projeto", $"Excluir o projeto “{p.Nome}” e todos os seus {p.Itens.Count} itens? Se quiser guardar uma cópia, use antes “Salvar backup”.")) return;
+        E.EapDados.Projetos.Remove(p);
+        E.EapDados.Selecionado = E.EapDados.Projetos.FirstOrDefault()?.Id;
+        await E.SalvarEap();
+    }
+
+    async Task UsarModelo()
+    {
+        if (Projeto is not ProjetoEap p) return;
+        p.Itens = Eap.Modelo(p.Nome).Itens;
+        await E.SalvarEap();
+    }
+
+    // ---------------- itens ----------------
+    async Task MudarItem(ItemEap it, Action mudar) { mudar(); await E.SalvarEap(); }
+
+    async Task MudarStatus(ItemEap it, string s)
+    {
+        it.Status = s;
+        it.Progresso = s == Eap.Concluido ? 100 : s == Eap.NaoIniciado ? 0 : it.Progresso is 0 or 100 ? 10 : it.Progresso;
+        await E.SalvarEap();
+    }
+
+    async Task Op(Func<bool> f) { if (f()) await E.SalvarEap(); }
+
+    async Task NovaFase()
+    {
+        if (Projeto is not ProjetoEap p) return;
+        var it = Eap.NovoFilho(p, null, "");
+        await Focar(it);
+    }
+
+    async Task NovoSub(ItemEap pai)
+    {
+        if (Projeto is not ProjetoEap p) return;
+        _fechados.Remove(pai.Id);
+        var it = Eap.NovoFilho(p, pai.Id, "");
+        await Focar(it);
+    }
+
+    async Task Focar(ItemEap it)
+    {
+        _novo = it.Id;
+        _visao = "estrutura";
+        await E.SalvarEap();
+        StateHasChanged();
+        await Task.Yield();
+        try { await E.Nav.Focar("eap-" + it.Id); } catch { }
+    }
+
+    async Task ExcluirItem(NoEap n)
+    {
+        if (Projeto is not ProjetoEap p) return;
+        int sub = Eap.Descendentes(p, n.Item.Id);
+        var nome = n.Item.Nome == "" ? n.Codigo : $"{n.Codigo} {n.Item.Nome}";
+        if ((sub > 0 || n.Item.Nome != "") && !await J.Pergunta("Excluir item", sub > 0 ? $"Excluir “{nome}” e os {sub} subitens dele?" : $"Excluir “{nome}”?")) return;
+        Eap.Excluir(p, n.Item.Id);
+        await E.SalvarEap();
+    }
+
+    async Task EditarItem(NoEap n)
+    {
+        if (Projeto is not ProjetoEap p) return;
+        var it = n.Item;
+        var copia = new ItemEap { Id = it.Id, PaiId = it.PaiId, Nome = it.Nome, Responsavel = it.Responsavel, Inicio = it.Inicio, Fim = it.Fim, Custo = it.Custo, Status = it.Status, Progresso = it.Progresso, Notas = it.Notas };
+        var r = await J.Abrir<object>(typeof(DlgItemEap), new()
+        {
+            ["Item"] = copia, ["Codigo"] = n.Codigo, ["Tipo"] = n.TipoNivel, ["Folha"] = n.Folha, ["Responsaveis"] = Responsaveis(),
+        });
+        if (r is string s && s == DlgItemEap.Excluir) { await ExcluirItem(n); return; }
+        if (r is not ItemEap novo) return;
+        it.Nome = novo.Nome.Trim(); it.Responsavel = novo.Responsavel.Trim(); it.Inicio = novo.Inicio; it.Fim = novo.Fim; it.Custo = novo.Custo;
+        it.Status = novo.Status; it.Progresso = novo.Progresso; it.Notas = novo.Notas;
+        await E.SalvarEap();
+    }
+
+    // ---------------- diagrama ----------------
+    string ClasseStatus(NoEap n) => n.Atrasado ? "atrasado" : n.Status == Eap.Concluido ? "concluido" : n.Status == Eap.EmAndamento ? "andamento" : "";
+
+    RenderFragment Caixa(NoEap n) => __builder =>
+    {
+        <button class="eap-caixa n@(Math.Min(n.Nivel, 3)) @ClasseStatus(n)" style="--cf:@CorFase(n)" @onclick="() => EditarItem(n)"
+                title="@($"{n.Codigo} {n.Item.Nome}\n{n.TipoNivel} · {n.Status} · {Texto.F(n.Progresso, 0)}%" + (n.Inicio is DateOnly a && n.Fim is DateOnly b ? $"\n{Texto.Dmy(a)} a {Texto.Dmy(b)}" : "") + (n.Custo > 0 ? $"\n{Moeda(n.Custo)}" : ""))">
+            <span class="eap-caixa-cod">@n.Codigo</span>
+            <span class="eap-caixa-nome">@(n.Item.Nome == "" ? "(sem nome)" : n.Item.Nome)</span>
+            @if (n.Item.Responsavel != "") { <span class="eap-caixa-resp">@n.Item.Responsavel</span> }
+            @if (n.Fim is DateOnly fim) { <span class="eap-caixa-data">@(n.Atrasado ? "atrasado · " : "até ")@Texto.Dm(fim)</span> }
+            <span class="eap-caixa-prog"><span style="width:@Pc(n.Progresso)"></span></span>
+        </button>
+    };
+
+    RenderFragment Ramo(List<NoEap> nos) => __builder =>
+    {
+        @foreach (var n in nos)
+        {
+            <div class="eap-galho">
+                @Caixa(n)
+                @if (n.Filhos.Count > 0) { <div class="eap-ramo">@Ramo(n.Filhos)</div> }
+            </div>
+        }
+    };
+
+    // ---------------- cronograma ----------------
+    RenderFragment Cronograma() => __builder =>
+    {
+        var datas = _todos.SelectMany(n => new[] { n.Inicio, n.Fim }).Where(d => d != null).Select(d => d!.Value).ToList();
+        if (datas.Count == 0)
+        {
+            <div class="vazio-grande pequeno"><h3>Sem datas ainda</h3><p class="muted">Informe início e fim dos pacotes de trabalho (na Estrutura) para ver o cronograma.</p></div>
+            return;
+        }
+        var ini = new DateOnly(datas.Min().Year, datas.Min().Month, 1);
+        var ult = datas.Max();
+        var fim = new DateOnly(ult.Year, ult.Month, DateTime.DaysInMonth(ult.Year, ult.Month));
+        int total = fim.DayNumber - ini.DayNumber + 1;
+        string L(DateOnly d) => ((d.DayNumber - ini.DayNumber) * 100.0 / total).ToString("0.###", CultureInfo.InvariantCulture) + "%";
+        string W(DateOnly a, DateOnly b) => (Math.Max(b.DayNumber - a.DayNumber + 1, 1) * 100.0 / total).ToString("0.###", CultureInfo.InvariantCulture) + "%";
+        var meses = new List<DateOnly>();
+        for (var m = ini; m <= fim; m = m.AddMonths(1)) meses.Add(m);
+        <Painel Classe="eap-painel">
+            <div class="eap-gantt">
+                <div class="eap-g-linha cab">
+                    <div class="eap-g-nome"></div>
+                    <div class="eap-g-trilho">
+                        @foreach (var m in meses)
+                        {
+                            var fm = new DateOnly(m.Year, m.Month, DateTime.DaysInMonth(m.Year, m.Month));
+                            <span class="eap-g-mes" style="left:@L(m);width:@W(m, fm)">@($"{Texto.MesesPt[m.Month - 1][..3]}/{m.Year % 100:00}")</span>
+                        }
+                    </div>
+                </div>
+                @foreach (var n in Visiveis())
+                {
+                    <div class="eap-g-linha n@(Math.Min(n.Nivel, 3))">
+                        <div class="eap-g-nome" style="padding-left:@((n.Nivel - 1) * 14 + 6)px" title="@($"{n.Codigo} {n.Item.Nome}")">
+                            @if (!n.Folha) { <button class="eap-seta" @onclick="() => Alternar(n.Item.Id)">@(_fechados.Contains(n.Item.Id) ? "▸" : "▾")</button> }
+                            <span class="muted">@n.Codigo</span> @(n.Item.Nome == "" ? "(sem nome)" : n.Item.Nome)
+                        </div>
+                        <div class="eap-g-trilho">
+                            @foreach (var m in meses.Skip(1)) { <span class="eap-g-div" style="left:@L(m)"></span> }
+                            @if (_hoje >= ini && _hoje <= fim) { <span class="fer-hoje" style="left:@L(_hoje)" title="Hoje"></span> }
+                            @if (n.Inicio is DateOnly a && n.Fim is DateOnly b && b >= a)
+                            {
+                                <button class="eap-g-barra @(n.Folha ? "folha" : "resumo") @ClasseStatus(n)" style="left:@L(a);width:@W(a, b);--cf:@CorFase(n)" @onclick="() => EditarItem(n)"
+                                        title="@($"{n.Codigo} {n.Item.Nome}\n{Texto.Dmy(a)} a {Texto.Dmy(b)} ({Ferias.Plural(b.DayNumber - a.DayNumber + 1, "dia")})\n{n.Status} · {Texto.F(n.Progresso, 0)}%")">
+                                    <span class="eap-g-feito" style="width:@Pc(n.Progresso)"></span>
+                                </button>
+                            }
+                            else if (n.Folha)
+                            {
+                                <button class="eap-g-sem" @onclick="() => EditarItem(n)">sem datas</button>
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+        </Painel>
+    };
+
+    // ---------------- arquivos ----------------
+    async Task Exportar()
+    {
+        if (Projeto is not ProjetoEap p) return;
+        var nome = string.Concat((p.Nome == "" ? "projeto" : p.Nome).Select(c => Path.GetInvalidFileNameChars().Contains(c) || c == ' ' ? '_' : c));
+        await E.Salvar($"EAP_{nome}.xlsx", Eap.Exportar(p, _hoje), Navegador.MimeXlsx);
+    }
+
+    async Task Backup()
+    {
+        var bytes = System.Text.Encoding.UTF8.GetBytes(Eap.Gravar(E.EapDados));
+        await E.Salvar($"QSmart_eap_backup_{Estado.Agora("yyyy-MM-dd_HHmm")}.json", bytes, Navegador.MimeJson, "Backup salvo");
+    }
+
+    async Task Restaurar(List<Arquivo> arqs)
+    {
+        DadosEap novo;
+        try { novo = Eap.Ler(System.Text.Encoding.UTF8.GetString(arqs[0].Dados)); }
+        catch (Exception ex) { await J.Erro("Restaurar backup", $"Esse arquivo não é um backup de projetos do QSmart.\n\n{ex.Message}"); return; }
+        if (novo.Projetos.Count == 0) { await J.Aviso("Restaurar backup", "O backup não tem nenhum projeto."); return; }
+        if (E.EapDados.Projetos.Count > 0 &&
+            !await J.Pergunta("Restaurar backup", $"O backup tem {Ferias.Plural(novo.Projetos.Count, "projeto")}. Ele vai substituir os {Ferias.Plural(E.EapDados.Projetos.Count, "projeto")} de agora. Continuar?"))
+            return;
+        E.EapDados = novo;
+        _fechados.Clear();
+        await E.SalvarEap();
+        await J.Info("Restaurar backup", $"Pronto: {Ferias.Plural(novo.Projetos.Count, "projeto")} carregado(s).");
+    }
+}

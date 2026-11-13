@@ -25,14 +25,26 @@ public static class Abas
             "Tempo ocioso por colaborador e por dia a partir das finalizações.", "monitor"),
         new("corredor", "Corredor (unir compilados e PDFs)", "Corredor", "corredor", "Operação",
             "Une vários compilados num só e junta PDFs na ordem escolhida.", "corredor"),
+        new("ferias", "Férias", "Férias", "ferias", "Coordenação",
+            "Organiza as férias da equipe, avisa choques e datas muito próximas e marca quem quer vender dias.", "ferias"),
+        new("pontos", "Pontos de ação mensal", "Pontos de ação", "pontos", "Coordenação",
+            "Média diária de ações por usuário no mês e painel só com quem fica abaixo de 150.", "pontos"),
+        new("eap", "EAP (estrutura analítica de projeto)", "EAP", "eap", "Coordenação",
+            "Divide projetos em fases, entregas e pacotes de trabalho, com responsáveis, prazos e custos.", "eap"),
         new("depurador", "Depurador de leitura", "Depurador", "depurador", "Ferramentas",
             "Mostra, linha a linha, o que o sistema lê de uma planilha e o que fica de fora.", "depurador"),
     };
 
     /// <summary>Ordem da lista de abas nas Configurações (igual ao original).</summary>
-    public static readonly string[] OrdemConfig = { "resumo", "usuarios", "evolucao", "inspecao", "volume", "monitor", "corredor", "historico", "pareceres", "depurador" };
+    public static readonly string[] OrdemConfig = { "resumo", "usuarios", "evolucao", "inspecao", "volume", "monitor", "corredor", "historico", "pareceres", "ferias", "pontos", "eap", "depurador" };
 
-    public static readonly string[] Grupos = { "Decisões", "Inspeção", "Conformidade", "Operação", "Ferramentas" };
+    public static readonly string[] Grupos = { "Decisões", "Inspeção", "Conformidade", "Operação", "Coordenação", "Ferramentas" };
+
+    /// <summary>Cor de cada grupo (classe g-N no CSS).</summary>
+    public static int Cor(string grupo) => grupo switch
+    {
+        "Decisões" => 0, "Inspeção" => 1, "Conformidade" => 2, "Operação" => 3, "Ferramentas" => 4, "Coordenação" => 5, _ => 4,
+    };
 
     public static Aba? Por(string chave) => Todas.FirstOrDefault(a => a.Chave == chave);
 }

@@ -1,0 +1,269 @@
+@page "/ferias"
+@inherits PaginaBase
+@using QSmart.Core.Coordenacao
+
+@{ Calcular(); var d = E.Ferias; }
+<Pagina Titulo="Férias" Grupo="@A.Grupo" Sub="Organize as férias da equipe: o QSmart avisa na hora quando as datas se chocam ou ficam próximas demais. Tudo fica salvo só neste navegador.">
+    <Acoes>
+        <button class="btn btn-hero" disabled="@(d.Periodos.Count == 0)" @onclick="Exportar"><Icone Nome="download" Tamanho="17" /> Exportar Excel</button>
+        <button class="btn btn-hero" disabled="@(d.Periodos.Count == 0)" @onclick="Backup" title="Baixa um arquivo com todas as férias para guardar no computador"><Icone Nome="salvar" Tamanho="17" /> Salvar backup</button>
+        <BotaoArquivo Texto="Restaurar backup" Variante="hero" Icone="upload" Aceita=".json" AoEscolher="Restaurar" Dica="Carrega um backup de férias salvo antes" />
+        <button class="btn btn-pri" @onclick="() => Editar(null)"><Icone Nome="mais" Tamanho="17" /> Nova férias</button>
+    </Acoes>
+    <Kpis>
+        <Kpi Titulo="Em férias hoje" Cor="blue" Valor="@Fmt(_hoje.Count)" Detalhe="@(_hoje.Count == 0 ? "ninguém fora hoje" : Texto.Cortar(string.Join(", ", _hoje.Select(p => p.Colaborador)), 60))" />
+        <Kpi Titulo="Saem nos próximos 30 dias" Cor="purple" Valor="@Fmt(_proximos.Count)" Detalhe="@(_proximos.Count == 0 ? "nenhuma saída marcada" : $"próxima: {_proximos[0].Colaborador} em {Texto.Dm(_proximos[0].Inicio)}")" />
+        <Kpi Titulo="Choques de datas" Cor="red" Valor="@Fmt(_choques)" Detalhe="@(_choques == 0 ? "nenhum colaborador fora ao mesmo tempo" : "colaboradores fora ao mesmo tempo")" />
+        <Kpi Titulo="Datas muito próximas" Cor="amber" Valor="@Fmt(_perto)" Detalhe="@($"menos de {Ferias.Plural(d.DistanciaMinima, "dia")} de intervalo")" />
+        <Kpi Titulo="Querem vender dias" Cor="green" Valor="@Fmt(_vender.Count)" Detalhe="@(_vender.Count == 0 ? "ninguém por enquanto" : $"{Fmt(_vender.Sum(p => p.DiasVender))} dias no total")" />
+    </Kpis>
+    <ChildContent>
+        <div class="barra-ferr">
+            <span class="rotulo">Ano</span>
+            <select class="campo" value="@_ano" @onchange="e => _ano = int.Parse(e.Value!.ToString()!)">
+                @foreach (var a in Anos()) { <option value="@a">@a</option> }
+            </select>
+            <span class="rotulo">Equipe</span>
+            <select class="campo" style="min-width:150px" value="@_equipe" @onchange="e => _equipe = e.Value?.ToString() ?? EquipeTodas">
+                <option value="@EquipeTodas">Todas</option>
+                @foreach (var q in Equipes()) { <option value="@q">@(q == "" ? "Sem equipe" : q)</option> }
+            </select>
+            <div class="campo-busca"><Icone Nome="busca" Tamanho="16" /><input class="campo" placeholder="Procurar colaborador" @bind="_busca" @bind:event="oninput" /></div>
+            <span class="mola"></span>
+            <span class="muted">Avisar quando o intervalo entre férias for menor que</span>
+            <input class="campo num" type="number" min="0" max="90" value="@d.DistanciaMinima" @onchange="MudarDistancia" title="Dias livres entre a volta de um e a saída de outro" />
+            <span class="muted">dias</span>
+            <button class="alternador @(d.PorEquipe ? "on" : "")" @onclick="AlternarEquipe" title="Ligado: só compara colaboradores da mesma equipe. Desligado: compara todos.">
+                <span class="bolinha"></span> Só na mesma equipe
+            </button>
+        </div>
+
+        @if (d.Periodos.Count == 0)
+        {
+            <div class="vazio-grande">
+                <span class="vazio-ic"><Icone Nome="ferias" Tamanho="34" /></span>
+                <h3>Nenhuma férias cadastrada ainda</h3>
+                <p class="muted">Cadastre as férias de cada colaborador. O QSmart mostra a linha do tempo da equipe e avisa quando as datas se chocam
+                    ou ficam muito próximas. Os dados ficam só neste navegador; use <b>Salvar backup</b> para guardar uma cópia no computador.</p>
+                <button class="btn btn-pri" @onclick="() => Editar(null)"><Icone Nome="mais" Tamanho="17" /> Cadastrar a primeira férias</button>
+            </div>
+        }
+        else
+        {
+            <Painel Titulo="@($"Linha do tempo · {_ano}")" Classe="fer-painel">
+                <Extra>
+                    <div class="fer-legenda">
+                        <span><i class="ok"></i>Sem conflito</span>
+                        <span><i class="proximo"></i>Datas próximas</span>
+                        <span><i class="choque"></i>Choque</span>
+                        <span><i class="planejado"></i>Planejado (tracejado)</span>
+                        <span><i class="vende"></i>Quer vender</span>
+                    </div>
+                </Extra>
+                <ChildContent>
+                    @{ var ini = new DateOnly(_ano, 1, 1); int diasAno = DateTime.IsLeapYear(_ano) ? 366 : 365; var hoje = DateOnly.FromDateTime(DateTime.Today); }
+                    <div class="fer-gantt">
+                        <div class="fer-linha fer-cab">
+                            <div class="fer-nome"></div>
+                            <div class="fer-trilho">
+                                @for (int m = 1; m <= 12; m++)
+                                {
+                                    var dm = new DateOnly(_ano, m, 1);
+                                    <span class="fer-mes" style="left:@Pct(dm.DayNumber - ini.DayNumber, diasAno);width:@Pct(DateTime.DaysInMonth(_ano, m), diasAno)">@Texto.MesesPt[m - 1][..3]</span>
+                                }
+                            </div>
+                        </div>
+                        @if (_linhas.Count == 0)
+                        {
+                            <div class="g-vazio">Nenhuma férias em @_ano@(Filtrando ? " com esses filtros" : "").</div>
+                        }
+                        @foreach (var grupo in _linhas.GroupBy(l => l.equipe))
+                        {
+                            @if (_linhas.Select(l => l.equipe).Distinct().Count() > 1)
+                            {
+                                <div class="fer-grupo">@(grupo.Key == "" ? "Sem equipe" : grupo.Key)</div>
+                            }
+                            @foreach (var (nome, _, periodos) in grupo)
+                            {
+                                <div class="fer-linha">
+                                    <div class="fer-nome" title="@nome">@nome</div>
+                                    <div class="fer-trilho">
+                                        @for (int m = 2; m <= 12; m++) { <span class="fer-div" style="left:@Pct(new DateOnly(_ano, m, 1).DayNumber - ini.DayNumber, diasAno)"></span> }
+                                        @if (hoje.Year == _ano) { <span class="fer-hoje" style="left:@Pct(hoje.DayNumber - ini.DayNumber + 0.5, diasAno)" title="Hoje"></span> }
+                                        @foreach (var p in periodos)
+                                        {
+                                            var a = Math.Max(p.Inicio.DayNumber, ini.DayNumber) - ini.DayNumber;
+                                            var b = Math.Min(p.Fim.DayNumber, ini.DayNumber + diasAno - 1) - ini.DayNumber + 1;
+                                            var n = Ferias.Nivel(p, _alertas);
+                                            <button class="fer-barra @Classe(n) @(p.Status == "Planejado" ? "planejado" : "") @(p.Vender ? "vende" : "")"
+                                                    style="left:@Pct(a, diasAno);width:@Pct(Math.Max(b - a, 1), diasAno)"
+                                                    title="@Dica(p, n)" @onclick="() => Editar(p)">
+                                                <span>@Texto.Dm(p.Inicio)–@Texto.Dm(p.Fim) · @(p.Dias)d@(p.Vender ? " · $" : "")</span>
+                                            </button>
+                                        }
+                                    </div>
+                                </div>
+                            }
+                        }
+                    </div>
+                </ChildContent>
+            </Painel>
+
+            <Painel Titulo="Alertas" Classe="fer-painel-alertas" Nota="@(_alertasVis.Count == 0 ? "" : $"{_alertasVis.Count} no total")">
+                <div class="fer-alertas">
+                    @if (_alertasVis.Count == 0)
+                    {
+                        <div class="fer-alerta ok grande"><Icone Nome="check" Tamanho="18" /> Tudo certo: nenhuma férias se choca ou fica próxima demais@(Filtrando ? " com esses filtros" : "").</div>
+                    }
+                    @foreach (var al in _alertasVis)
+                    {
+                        <button class="fer-alerta @Classe(al.Nivel)" @onclick="() => Editar(al.B)" title="Clique para editar as férias de @al.B.Colaborador">
+                            <Icone Nome="alerta" Tamanho="16" />
+                            <span><b>@al.Titulo</b>@(al.A.Equipe != "" && Norm(al.A.Equipe) == Norm(al.B.Equipe) ? $" · {al.A.Equipe}" : "")<br />@al.Texto</span>
+                        </button>
+                    }
+                </div>
+            </Painel>
+            <Painel Titulo="Períodos" Nota="clique para editar" Sangrar="true">
+                <div class="tabela-rolagem" style="max-height:460px">
+                    <table class="tabela fer-tabela">
+                        <thead><tr><th>Colaborador</th><th>Equipe</th><th>Início</th><th>Fim</th><th class="al-c">Dias</th><th>Volta em</th><th class="al-c">Vender</th><th>Status</th><th>Situação</th></tr></thead>
+                        <tbody>
+                            @foreach (var p in _tabela)
+                            {
+                                var n = Ferias.Nivel(p, _alertas);
+                                <tr class="clicavel" @onclick="() => Editar(p)">
+                                    <td><b>@p.Colaborador</b>@if (p.Obs != "") { <span class="muted" title="@p.Obs"> · @Texto.Cortar(p.Obs, 26)</span> }</td>
+                                    <td>@p.Equipe</td>
+                                    <td>@Texto.DiaSemana(p.Inicio), @Texto.Dmy(p.Inicio)</td>
+                                    <td>@Texto.Dmy(p.Fim)</td>
+                                    <td class="al-c"><b>@p.Dias</b></td>
+                                    <td>@Texto.DiaSemana(p.Retorno), @Texto.Dmy(p.Retorno)</td>
+                                    <td class="al-c">@if (p.Vender) { <span class="etq verde">@p.DiasVender dias</span> } else { <span class="muted">não</span> }</td>
+                                    <td><span class="etq @(p.Status == "Aprovado" ? "verde" : "cinza")">@p.Status</span></td>
+                                    <td><span class="etq @Classe(n)">@(n == NivelFerias.Choque ? "Choque" : n == NivelFerias.Proximo ? "Datas próximas" : "OK")</span></td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                    @if (_tabela.Count == 0) { <div class="tabela-vazia">Nenhum período com esses filtros.</div> }
+                </div>
+            </Painel>
+        }
+    </ChildContent>
+</Pagina>
+
+@code {
+    protected override string Chave => "ferias";
+    const string EquipeTodas = "\u0001todas";
+    int _ano = DateTime.Today.Year;
+    string _equipe = EquipeTodas, _busca = "";
+    List<AlertaFerias> _alertas = new(), _alertasVis = new();
+    List<PeriodoFerias> _hoje = new(), _proximos = new(), _vender = new(), _tabela = new();
+    List<(string nome, string equipe, List<PeriodoFerias> periodos)> _linhas = new();
+    int _choques, _perto;
+
+    static string Norm(string s) => Ferias.Norm(s);
+    bool Filtrando => _equipe != EquipeTodas || _busca.Trim() != "";
+    static string Pct(double v, int total) => (v * 100.0 / total).ToString("0.###", CultureInfo.InvariantCulture) + "%";
+    static string Classe(NivelFerias n) => n switch { NivelFerias.Choque => "choque", NivelFerias.Proximo => "proximo", _ => "ok" };
+
+    static string Dica(PeriodoFerias p, NivelFerias n)
+        => $"{p.Colaborador}{(p.Equipe != "" ? $" ({p.Equipe})" : "")}\n{Texto.Dmy(p.Inicio)} a {Texto.Dmy(p.Fim)} · {Ferias.Plural(p.Dias, "dia")}\nVolta em {Texto.Dmy(p.Retorno)}\n{p.Status}"
+           + (p.Vender ? $" · quer vender {p.DiasVender} dias" : "") + (n == NivelFerias.Choque ? "\n⚠ Choque de datas" : n == NivelFerias.Proximo ? "\n⚠ Datas muito próximas" : "");
+
+    IEnumerable<int> Anos()
+    {
+        var anos = E.Ferias.Periodos.SelectMany(p => new[] { p.Inicio.Year, p.Fim.Year }).Append(DateTime.Today.Year).Append(DateTime.Today.Year + 1).Append(_ano);
+        return anos.Distinct().OrderBy(a => a);
+    }
+
+    IEnumerable<string> Equipes() => E.Ferias.Periodos.Select(p => p.Equipe.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x);
+
+    bool Passa(PeriodoFerias p)
+    {
+        if (_equipe != EquipeTodas && Norm(p.Equipe) != Norm(_equipe)) return false;
+        var b = Texto.NormalizarBusca(_busca);
+        return b == "" || Texto.NormalizarBusca(p.Colaborador + " " + p.Equipe).Contains(b);
+    }
+
+    void Calcular()
+    {
+        var d = E.Ferias;
+        var hoje = DateOnly.FromDateTime(DateTime.Today);
+        _alertas = Ferias.Alertas(d.Periodos, d.DistanciaMinima, d.PorEquipe);
+        _choques = _alertas.Count(a => a.Nivel == NivelFerias.Choque);
+        _perto = _alertas.Count(a => a.Nivel == NivelFerias.Proximo);
+        _hoje = d.Periodos.Where(p => p.Inicio <= hoje && p.Fim >= hoje).OrderBy(p => p.Fim).ToList();
+        _proximos = d.Periodos.Where(p => p.Inicio > hoje && p.Inicio <= hoje.AddDays(30)).OrderBy(p => p.Inicio).ToList();
+        _vender = d.Periodos.Where(p => p.Vender && p.Fim >= hoje).ToList();
+        var vis = d.Periodos.Where(Passa).ToList();
+        _tabela = vis.OrderBy(p => p.Inicio).ThenBy(p => p.Colaborador, StringComparer.Ordinal).ToList();
+        _alertasVis = _alertas.Where(a => Passa(a.A) || Passa(a.B)).ToList();
+        _linhas = vis.Where(p => p.Inicio.Year <= _ano && p.Fim.Year >= _ano)
+            .GroupBy(p => (Norm(p.Equipe), Norm(p.Colaborador)))
+            .Select(g => (g.First().Colaborador, g.First().Equipe, g.OrderBy(p => p.Inicio).ToList()))
+            .OrderBy(x => x.Item2 == "" ? 1 : 0).ThenBy(x => x.Item2, StringComparer.OrdinalIgnoreCase).ThenBy(x => x.Item3[0].Inicio).ThenBy(x => x.Item1)
+            .ToList();
+    }
+
+    async Task Editar(PeriodoFerias? p)
+    {
+        var novo = p == null;
+        var hoje = DateOnly.FromDateTime(DateTime.Today);
+        var inicio = Ferias.ProximoDiaUtil(_ano == hoje.Year ? hoje.AddDays(30) : new DateOnly(_ano, 1, 1));
+        var copia = p?.Copia() ?? new PeriodoFerias
+        {
+            Inicio = inicio, Fim = inicio.AddDays(29),
+            Equipe = _equipe != EquipeTodas ? _equipe : "",
+        };
+        var r = await J.Abrir<object>(typeof(DlgFerias), new() { ["P"] = copia, ["Novo"] = novo, ["Todos"] = E.Ferias.Periodos, ["Config"] = E.Ferias });
+        if (r is "excluir" && p != null)
+        {
+            if (!await J.Pergunta("Excluir férias", $"Excluir as férias de {p.Colaborador} ({Texto.Dmy(p.Inicio)} a {Texto.Dmy(p.Fim)})?")) return;
+            E.Ferias.Periodos.RemoveAll(x => x.Id == p.Id);
+        }
+        else if (r is PeriodoFerias np)
+        {
+            var i = E.Ferias.Periodos.FindIndex(x => x.Id == np.Id);
+            if (i >= 0) E.Ferias.Periodos[i] = np; else E.Ferias.Periodos.Add(np);
+            if (np.Inicio.Year != _ano && np.Fim.Year != _ano) _ano = np.Inicio.Year;
+        }
+        else return;
+        await E.SalvarFerias();
+    }
+
+    async Task MudarDistancia(ChangeEventArgs e)
+    {
+        if (!int.TryParse(e.Value?.ToString(), out var n)) return;
+        E.Ferias.DistanciaMinima = Math.Clamp(n, 0, 90);
+        await E.SalvarFerias();
+    }
+
+    async Task AlternarEquipe()
+    {
+        E.Ferias.PorEquipe = !E.Ferias.PorEquipe;
+        await E.SalvarFerias();
+    }
+
+    async Task Exportar() => await E.Salvar($"Ferias_{Estado.Agora("yyyy-MM-dd")}.xlsx", Ferias.Exportar(E.Ferias), Navegador.MimeXlsx);
+
+    async Task Backup()
+    {
+        var bytes = System.Text.Encoding.UTF8.GetBytes(Ferias.Gravar(E.Ferias));
+        await E.Salvar($"QSmart_ferias_backup_{Estado.Agora("yyyy-MM-dd_HHmm")}.json", bytes, Navegador.MimeJson, "Backup salvo");
+    }
+
+    async Task Restaurar(List<Arquivo> arqs)
+    {
+        DadosFerias novo;
+        try { novo = Ferias.Ler(System.Text.Encoding.UTF8.GetString(arqs[0].Dados)); }
+        catch (Exception ex) { await J.Erro("Restaurar backup", $"Esse arquivo não é um backup de férias do QSmart.\n\n{ex.Message}"); return; }
+        if (E.Ferias.Periodos.Count > 0 &&
+            !await J.Pergunta("Restaurar backup", $"O backup tem {Ferias.Plural(novo.Periodos.Count, "período")}. Ele vai substituir {Ferias.Plural(E.Ferias.Periodos.Count, "período")} cadastrado(s) agora. Continuar?"))
+            return;
+        E.Ferias = novo;
+        await E.SalvarFerias();
+        await J.Info("Restaurar backup", $"Pronto: {Ferias.Plural(novo.Periodos.Count, "período")} de férias carregado(s).");
+    }
+}

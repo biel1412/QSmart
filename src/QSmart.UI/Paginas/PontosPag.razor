@@ -1,0 +1,227 @@
+@page "/pontos"
+@inherits PaginaBase
+@using QSmart.Core.Coordenacao
+
+@{ Calcular(); var r = E.PtsRes; var lim = E.PtsLimite; }
+<Pagina Titulo="Pontos de ação mensal" Grupo="@A.Grupo" Sub="@E.SubPts">
+    <Acoes>
+        <button class="btn btn-hero" disabled="@(r == null || E.Carregando)" @onclick="Exportar"><Icone Nome="download" Tamanho="17" /> Exportar Excel</button>
+        <BotaoArquivo Texto="@(r == null ? "Anexar compilado do mês" : "Trocar compilado")" Variante="pri" Icone="upload" Aceita=".xlsx,.xlsm,.csv" Varios="true"
+                      Desativado="E.Carregando" AoEscolher="Abrir" Dica="O compilado mensal (ou vários diários do mesmo mês)" />
+    </Acoes>
+    <Kpis>
+        <Kpi Titulo="Usuários analisados" Cor="blue" Valor="@(r != null ? Fmt(_todos.Count) : "—")"
+             Detalhe="@(r == null ? "" : r.Dias.Count == 0 ? "sem datas" : $"{Texto.Dm(r.Dias[0])} a {Texto.Dm(r.Dias[^1])} · {Ferias.Plural(r.Dias.Count, "dia")} com registros")" />
+        <Kpi Titulo="@($"Abaixo de {Texto.G(lim)} por dia")" Cor="red" Valor="@(r != null ? Fmt(_abaixo.Count) : "—")"
+             Detalhe="@(r == null ? "" : _todos.Count == 0 ? "" : $"{Texto.F(_abaixo.Count * 100.0 / _todos.Count)}% dos usuários")" />
+        <Kpi Titulo="Média de quem está abaixo" Cor="amber" Valor="@(r != null && _abaixo.Count > 0 ? Fv(_abaixo.Average(u => u.Media)) : "—")"
+             Detalhe="@(r != null && _abaixo.Count > 0 ? $"faltam {Fv(lim - _abaixo.Average(u => u.Media))} ações por dia, em média" : "")" />
+        <Kpi Titulo="Média geral" Cor="green" Valor="@(r != null && _todos.Count > 0 ? Fv(_todos.Average(u => u.Media)) : "—")"
+             Detalhe="@(r != null ? $"{Fmt(r.Acoes)} ações no período" : "")" />
+        <Kpi Titulo="Menor média" Cor="purple" Valor="@(_abaixo.Count > 0 ? Fv(_abaixo[0].Media) : "—")" Detalhe="@(_abaixo.Count > 0 ? _abaixo[0].Usuario : "")" />
+    </Kpis>
+    <ChildContent>
+        <div class="barra-ferr">
+            <span class="rotulo">Meta</span>
+            <input class="campo num" type="number" min="1" step="1" value="@Texto.G(lim)" @onchange="MudarLimite" title="Média de ações por dia" />
+            <span class="muted">ações por dia</span>
+            <span class="rotulo" style="margin-left:10px">Média por</span>
+            <div class="segmentado">
+                <button class="seg @(E.PtsPorDiaTrabalhado ? "on" : "")" @onclick="() => MudarDivisor(true)" title="Total de ações ÷ dias em que o usuário teve ações (folgas e férias não puxam a média para baixo)">Dia trabalhado</button>
+                <button class="seg @(!E.PtsPorDiaTrabalhado ? "on" : "")" @onclick="() => MudarDivisor(false)" title="Total de ações ÷ todos os dias com registros no compilado">Todos os dias do mês</button>
+            </div>
+            <span class="rotulo" style="margin-left:10px">Ignorar quem trabalhou menos de</span>
+            <input class="campo num" type="number" min="1" max="31" value="@E.PtsMinDias" @onchange="MudarMinDias" title="Tira da conta quem apareceu poucos dias no mês (ex.: gestores ou quem entrou no fim do mês)" />
+            <span class="muted">dia(s)</span>
+            <span class="mola"></span>
+            <div class="campo-busca"><Icone Nome="busca" Tamanho="16" /><input class="campo" placeholder="Procurar usuário" @bind="_busca" @bind:event="oninput" /></div>
+        </div>
+
+        @if (r == null)
+        {
+            <div class="vazio-grande">
+                <span class="vazio-ic"><Icone Nome="pontos" Tamanho="34" /></span>
+                <h3>Anexe o compilado do mês</h3>
+                <p class="muted">Pode ser o compilado mensal ou vários compilados diários. Cada linha conta como uma ação do usuário; a média é o total de ações
+                    dividido pelos dias trabalhados. O painel mostra só quem fica abaixo de @Texto.G(lim) ações por dia.</p>
+                <BotaoArquivo Texto="Anexar compilado do mês" Variante="pri" Icone="upload" Aceita=".xlsx,.xlsm,.csv" Varios="true" Desativado="E.Carregando" AoEscolher="Abrir" />
+            </div>
+        }
+        else if (_abaixo.Count == 0)
+        {
+            <div class="vazio-grande">
+                <span class="vazio-ic ok"><Icone Nome="check" Tamanho="34" /></span>
+                <h3>Ninguém abaixo de @Texto.G(lim) ações por dia</h3>
+                <p class="muted">Todos os @Fmt(_todos.Count) usuários analisados ficaram na meta ou acima@(_busca != "" ? " (com a busca atual)" : "").</p>
+            </div>
+        }
+        else
+        {
+            <div class="pts-faixas">
+                @for (int f = 0; f < 3; f++)
+                {
+                    var n = _abaixo.Count(u => PontosAcao.Faixa(u.Media, lim) == f);
+                    <div class="pts-faixa f@(f)">
+                        <span class="pts-faixa-n">@n</span>
+                        <span class="pts-faixa-t">@(f == 0 ? "Crítico" : f == 1 ? "Atenção" : "Perto da meta")</span>
+                        <span class="pts-faixa-d">@(f == 0 ? $"menos de {Texto.G(lim * .5)} por dia" : f == 1 ? $"de {Texto.G(lim * .5)} a {Texto.G(lim * .8)}" : $"de {Texto.G(lim * .8)} a {Texto.G(lim)}")</span>
+                    </div>
+                }
+            </div>
+
+            <div class="grade-32">
+                <Painel Titulo="@($"Abaixo de {Texto.G(lim)} — média de ações por dia")" Nota="a linha marca a meta">
+                    <div class="pts-barras">
+                        @foreach (var u in _abaixo)
+                        {
+                            var f = PontosAcao.Faixa(u.Media, lim);
+                            <div class="pts-linha" title="@($"{u.Usuario}: {Fv(u.Media)} por dia ({Texto.F(u.Media / lim * 100)}% da meta) · {Fmt(u.Total)} ações em {Ferias.Plural(u.DiasTrabalhados, "dia")}")">
+                                <span class="pts-nome">@u.Usuario</span>
+                                <span class="pts-trilho">
+                                    <span class="pts-barra f@(f)" style="width:@P(u.Media / lim)"></span>
+                                    <span class="pts-meta"></span>
+                                </span>
+                                <span class="pts-val">@Fv(u.Media)</span>
+                                <span class="pts-pct">@(Texto.F(u.Media / lim * 100, 0))%</span>
+                            </div>
+                        }
+                    </div>
+                </Painel>
+                <Painel Titulo="Ações por dia" Nota="só quem está abaixo da meta">
+                    <div class="pts-mapa">
+                        <table>
+                            <thead>
+                                <tr><th></th>@foreach (var d in r.Dias) { <th title="@($"{Texto.DiaSemana(d)}, {Texto.Dmy(d)}")">@d.Day</th> }</tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var u in _abaixo)
+                                {
+                                    <tr>
+                                        <td class="pts-mapa-nome" title="@u.Usuario">@u.Usuario</td>
+                                        @foreach (var d in r.Dias)
+                                        {
+                                            var n = u.PorDia.GetValueOrDefault(d);
+                                            <td style="@CorDia(n, lim)" title="@($"{u.Usuario} · {Texto.DiaSemana(d)} {Texto.Dmy(d)}: {(n == 0 ? "sem ações" : Fmt(n) + " ações")}")">@(n == 0 ? "" : n.ToString())</td>
+                                        }
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="pts-mapa-leg"><span><i style="background:color-mix(in srgb, var(--red) 70%, transparent)"></i>bem abaixo</span><span><i style="background:color-mix(in srgb, var(--amber) 55%, transparent)"></i>abaixo</span><span><i style="background:color-mix(in srgb, var(--green) 45%, transparent)"></i>meta no dia</span><span><i class="vazio"></i>sem ações</span></div>
+                </Painel>
+            </div>
+
+            <Painel Titulo="Detalhe de quem está abaixo da meta" Nota="clique no título de uma coluna para ordenar" Sangrar="true">
+                <Tabela Colunas="_cols" Linhas="_linhas" Altura="520px" />
+            </Painel>
+        }
+    </ChildContent>
+</Pagina>
+
+@code {
+    protected override string Chave => "pontos";
+    string _busca = "";
+    string? _ass;
+    List<LinhaPontos> _todos = new(), _abaixo = new();
+    List<LinhaTab> _linhas = new();
+    readonly List<ColunaTab> _cols = new()
+    {
+        new("Usuário", 0), new("Média/dia", 96, 'c'), new("% da meta", 96, 'c'), new("Faltam/dia", 96, 'c'), new("Total de ações", 116, 'c'),
+        new("Dias trabalhados", 124, 'c'), new("Menor dia", 120, 'c'), new("Maior dia", 120, 'c'), new("Faixa", 150),
+    };
+
+    static string P(double x) => (Math.Clamp(x, 0.005, 1) * 100).ToString("0.##", CultureInfo.InvariantCulture) + "%";
+
+    static string CorDia(long n, double lim)
+    {
+        if (n == 0) return "";
+        var x = n / lim;
+        var (cor, forca) = x < .5 ? ("var(--red)", 30 + (int)(40 * (1 - x / .5))) : x < 1 ? ("var(--amber)", 25 + (int)(30 * (1 - (x - .5) / .5))) : ("var(--green)", 35);
+        return $"background:color-mix(in srgb, {cor} {forca}%, transparent)";
+    }
+
+    void Calcular()
+    {
+        var ass = $"{E.PtsRes?.GetHashCode()}|{E.PtsLimite}|{E.PtsMinDias}|{_busca}";
+        if (ass == _ass) return;
+        _ass = ass;
+        var r = E.PtsRes;
+        if (r == null) { _todos = new(); _abaixo = new(); _linhas = new(); return; }
+        var b = Texto.NormalizarBusca(_busca);
+        _todos = r.Usuarios.Where(u => u.DiasTrabalhados >= E.PtsMinDias).ToList();
+        _abaixo = _todos.Where(u => u.Media < E.PtsLimite).OrderBy(u => u.Media).ThenBy(u => u.Usuario, StringComparer.Ordinal)
+            .Where(u => b == "" || Texto.NormalizarBusca(u.Usuario).Contains(b)).ToList();
+        var lim = E.PtsLimite;
+        string[] corFaixa = { "var(--red)", "var(--amber)", "#CA8A04" };
+        _linhas = _abaixo.Select(u =>
+        {
+            int f = PontosAcao.Faixa(u.Media, lim);
+            return new LinhaTab
+            {
+                Valores = new object?[] { u.Usuario, Fv(u.Media), Texto.F(u.Media / lim * 100) + "%", Fv(lim - u.Media), Fmt(u.Total), u.DiasTrabalhados,
+                    u.DataMenor is DateOnly a ? $"{Fmt(u.MenorDia)} ({Texto.Dm(a)})" : "", u.DataMaior is DateOnly c ? $"{Fmt(u.MaiorDia)} ({Texto.Dm(c)})" : "",
+                    f == 0 ? "Crítico" : f == 1 ? "Atenção" : "Perto da meta" },
+                Chaves = new object?[] { u.Usuario, u.Media, u.Media / lim, lim - u.Media, u.Total, u.DiasTrabalhados, u.MenorDia, u.MaiorDia, f },
+                Celulas = new() { [1] = new EstiloCelula(Negrito: true, Cor: corFaixa[f]), [8] = new EstiloCelula(Cor: corFaixa[f], Negrito: true) },
+            };
+        }).ToList();
+    }
+
+    void Recalcular()
+    {
+        if (E.PtsBase == null) return;
+        E.PtsRes = PontosAcao.Calcular(E.PtsBase, E.PtsPorDiaTrabalhado);
+        _ass = null;
+    }
+
+    async Task Abrir(List<Arquivo> arqs)
+    {
+        await E.Executar(prog => Compilados.Preparar(arqs, prog),
+            async b =>
+            {
+                E.PtsBase = b;
+                E.PtsArquivos = arqs.Count == 1 ? arqs[0].Nome : $"{arqs.Count} compilados";
+                Recalcular();
+                var r = E.PtsRes!;
+                E.SubPts = $"{E.PtsArquivos} · {Fmt(r.Acoes)} ações de {Fmt(r.Usuarios.Count)} usuários" +
+                           (r.Dias.Count > 0 ? $" · {Texto.Dmy(r.Dias[0])} a {Texto.Dmy(r.Dias[^1])}" : "") +
+                           (r.SemData > 0 ? $" · {Fmt(r.SemData)} linha(s) sem data ficaram fora" : "");
+                if (r.Dias.Count == 1)
+                    await J.Aviso("Pontos de ação mensal", $"Esse compilado tem só um dia ({Texto.Dmy(r.Dias[0])}). A média vale para esse dia; para o mês, anexe o compilado mensal ou todos os diários do mês.");
+            },
+            async ex => { _ass = null; await J.Erro("Erro ao ler o compilado", Estado.Mensagem(ex)); },
+            (s, msg) => E.SubPts = $"Lendo {arqs.Count} arquivo(s)… {msg} {s}s");
+    }
+
+    void MudarLimite(ChangeEventArgs e)
+    {
+        if (double.TryParse(e.Value?.ToString()?.Replace(',', '.'), NumberStyles.Float, CultureInfo.InvariantCulture, out var v) && v > 0) E.PtsLimite = v;
+        _ass = null;
+    }
+
+    void MudarMinDias(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var n)) E.PtsMinDias = Math.Clamp(n, 1, 31);
+        _ass = null;
+    }
+
+    void MudarDivisor(bool porDiaTrabalhado)
+    {
+        E.PtsPorDiaTrabalhado = porDiaTrabalhado;
+        Recalcular();
+    }
+
+    async Task Exportar()
+    {
+        if (E.PtsRes == null) return;
+        var r = E.PtsRes;
+        var filtrado = new ResultadoPontos
+        {
+            Usuarios = r.Usuarios.Where(u => u.DiasTrabalhados >= E.PtsMinDias).ToList(), Dias = r.Dias, Acoes = r.Acoes,
+            SemData = r.SemData, SemUsuario = r.SemUsuario, PorDiaTrabalhado = r.PorDiaTrabalhado, Arquivos = r.Arquivos,
+        };
+        var mes = r.Dias.Count > 0 ? r.Dias[^1].ToString("yyyy-MM", CultureInfo.InvariantCulture) : Estado.Agora("yyyy-MM");
+        await E.Salvar($"Pontos_de_acao_{mes}.xlsx", PontosAcao.Exportar(filtrado, E.PtsLimite), Navegador.MimeXlsx);
+    }
+}

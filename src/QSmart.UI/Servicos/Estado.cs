@@ -1,6 +1,7 @@
 using Microsoft.JSInterop;
 using QSmart.Core;
 using QSmart.Core.Planilhas;
+using QSmart.Core.Coordenacao;
 
 namespace QSmart.UI.Servicos;
 
@@ -97,6 +98,55 @@ public sealed class Estado
     public int DepLimite;
     public string SubDep = "Abra uma planilha para ver, linha a linha, o que o programa lê e o que fica de fora.";
 
+    // ----- Coordenação: pontos de ação -----
+    public BaseCompilados? PtsBase;
+    public ResultadoPontos? PtsRes;
+    public string PtsArquivos = "";
+    public double PtsLimite = PontosAcao.LimitePadrao;
+    public bool PtsPorDiaTrabalhado = true;
+    public int PtsMinDias = 1;
+    public string SubPts = "Anexe o compilado do mês: o QSmart calcula a média de ações por dia de cada usuário e mostra quem fica abaixo da meta.";
+
+    // ----- Coordenação: férias e EAP (guardados só neste navegador, fora da pasta de dados) -----
+    public const string ChFerias = "coordenacao/ferias.json", ChEap = "coordenacao/eap.json";
+    public DadosFerias Ferias = new();
+    public DadosEap EapDados = new();
+    public bool CoordCarregada;
+
+    public string? FeriasResumo
+    {
+        get
+        {
+            if (Ferias.Periodos.Count == 0) return null;
+            var al = Core.Coordenacao.Ferias.Alertas(Ferias.Periodos, Ferias.DistanciaMinima, Ferias.PorEquipe);
+            int ch = al.Count(a => a.Nivel == NivelFerias.Choque), pr = al.Count(a => a.Nivel == NivelFerias.Proximo);
+            return $"{Ferias.Periodos.Count} período(s)" + (ch > 0 ? $" · {ch} choque(s)" : "") + (pr > 0 ? $" · {pr} data(s) próxima(s)" : "");
+        }
+    }
+    public string? EapResumo => EapDados.Projetos.Count == 0 ? null : $"{EapDados.Projetos.Count} projeto(s)";
+
+    public async Task CarregarCoordenacao()
+    {
+        if (CoordCarregada) return;
+        CoordCarregada = true;
+        try { Ferias = Core.Coordenacao.Ferias.Ler(await Nav.Ler(ChFerias)); } catch { Ferias = new(); }
+        try { EapDados = Eap.Ler(await Nav.Ler(ChEap)); } catch { EapDados = new(); }
+    }
+
+    public async Task SalvarFerias()
+    {
+        if (!await Nav.Gravar(ChFerias, Core.Coordenacao.Ferias.Gravar(Ferias)))
+            await Janelas.Erro("Férias", "Não foi possível salvar neste navegador (armazenamento cheio ou bloqueado).");
+        Notificar();
+    }
+
+    public async Task SalvarEap()
+    {
+        if (!await Nav.Gravar(ChEap, Eap.Gravar(EapDados)))
+            await Janelas.Erro("EAP", "Não foi possível salvar neste navegador (armazenamento cheio ou bloqueado).");
+        Notificar();
+    }
+
     // ================= início =================
     public async Task Iniciar()
     {
@@ -114,6 +164,7 @@ public sealed class Estado
         Historico = await Dados.CarregarHistorico();
         CarregarPareceres(await Dados.CarregarPareceres());
         await Nav.Tema(Prefs.Tema);
+        await CarregarCoordenacao();
         Iniciado = true;
         await AtualizarRodapeBackup();
         Notificar();

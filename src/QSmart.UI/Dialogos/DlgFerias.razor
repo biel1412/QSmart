@@ -1,0 +1,152 @@
+@using QSmart.Core.Coordenacao
+@* Cadastro / edição de um período de férias, com conferência de choques na hora *@
+<Modal Titulo="@(Novo ? "Nova férias" : "Editar férias")" Icone="ferias" Classe="media" AoCancelar="() => Fechar(null)">
+    <ChildContent>
+        <div class="form-grade">
+            <label class="form-campo">
+                <span class="rotulo">Colaborador</span>
+                <input class="campo" list="dl-colab" @bind="P.Colaborador" @bind:event="oninput" @bind:after="EscolheuColaborador" id="fer-colab" placeholder="Nome do colaborador" />
+                <datalist id="dl-colab">@foreach (var c in Colaboradores) { <option value="@c"></option> }</datalist>
+            </label>
+            <label class="form-campo">
+                <span class="rotulo">Equipe <span class="opcional">(opcional)</span></span>
+                <input class="campo" list="dl-equipe" @bind="P.Equipe" @bind:event="oninput" placeholder="Ex.: Crédito" />
+                <datalist id="dl-equipe">@foreach (var c in Equipes) { <option value="@c"></option> }</datalist>
+            </label>
+            <label class="form-campo">
+                <span class="rotulo">Início</span>
+                <input class="campo" type="date" value="@Iso(P.Inicio)" @onchange="e => MudarInicio(e.Value?.ToString())" />
+            </label>
+            <label class="form-campo">
+                <span class="rotulo">Fim</span>
+                <input class="campo" type="date" value="@Iso(P.Fim)" min="@Iso(P.Inicio)" @onchange="e => MudarFim(e.Value?.ToString())" />
+            </label>
+        </div>
+
+        <div class="fer-dias">
+            @foreach (var d in new[] { 5, 10, 15, 20, 30 })
+            {
+                <button class="chip @(P.Dias == d ? "ativo" : "")" @onclick="() => DefinirDias(d)">@d dias</button>
+            }
+            <span class="mola"></span>
+            @if (P.Fim >= P.Inicio)
+            {
+                <span class="fer-resumo"><b>@Ferias.Plural(P.Dias, "dia")</b> · volta ao trabalho <b>@Texto.DiaSemana(P.Retorno), @Texto.Dmy(P.Retorno)</b></span>
+            }
+        </div>
+
+        <div class="form-grade">
+            <div class="form-campo">
+                <span class="rotulo">Interesse em vender dias?</span>
+                <div class="segmentado">
+                    <button class="seg @(!P.Vender ? "on" : "")" @onclick="() => P.Vender = false">Não</button>
+                    <button class="seg @(P.Vender ? "on c-aprov" : "")" @onclick="() => { P.Vender = true; if (P.DiasVender <= 0) P.DiasVender = Ferias.MaxVenda; }">Sim</button>
+                </div>
+            </div>
+            @if (P.Vender)
+            {
+                <label class="form-campo">
+                    <span class="rotulo">Quantos dias vender (até @Ferias.MaxVenda)</span>
+                    <input class="campo num" type="number" min="1" max="@Ferias.MaxVenda" @bind="P.DiasVender" />
+                </label>
+            }
+            <div class="form-campo">
+                <span class="rotulo">Status</span>
+                <div class="segmentado">
+                    <button class="seg @(P.Status == "Planejado" ? "on" : "")" @onclick="@(() => P.Status = "Planejado")">Planejado</button>
+                    <button class="seg @(P.Status == "Aprovado" ? "on c-aprov" : "")" @onclick="@(() => P.Status = "Aprovado")">Aprovado</button>
+                </div>
+            </div>
+        </div>
+        <label class="form-campo">
+            <span class="rotulo">Observação <span class="opcional">(opcional)</span></span>
+            <input class="campo" @bind="P.Obs" placeholder="Ex.: viagem marcada, cobrir com fulano…" />
+        </label>
+
+        @{ var conflitos = Conflitos(); var clt = P.Colaborador.Trim() == "" ? new() : Ferias.AvisosClt(P, Todos); }
+        @if (P.Colaborador.Trim() != "" && P.Fim >= P.Inicio)
+        {
+            @if (conflitos.Count == 0)
+            {
+                <div class="fer-alerta ok"><Icone Nome="check" Tamanho="16" /> Sem choque com as férias já cadastradas@(Config.PorEquipe && P.Equipe.Trim() != "" ? $" da equipe {P.Equipe.Trim()}" : "").</div>
+            }
+            @foreach (var c in conflitos)
+            {
+                <div class="fer-alerta @(c.Nivel == NivelFerias.Choque ? "choque" : "proximo")">
+                    <Icone Nome="alerta" Tamanho="16" /> <span><b>@c.Titulo:</b> @c.Texto</span>
+                </div>
+            }
+        }
+        @foreach (var a in clt)
+        {
+            <div class="fer-alerta clt"><Icone Nome="info" Tamanho="16" /> @a</div>
+        }
+        @if (_erro != "") { <div class="fer-alerta choque"><Icone Nome="alerta" Tamanho="16" /> @_erro</div> }
+    </ChildContent>
+    <Rodape>
+        @if (!Novo) { <button class="btn btn-perigo" @onclick="Excluir"><Icone Nome="lixo" Tamanho="16" /> Excluir</button> }
+        <span class="mola"></span>
+        <button class="btn btn-sec" @onclick="() => Fechar(null)">Cancelar</button>
+        <button class="btn btn-pri" @onclick="Salvar"><Icone Nome="check" Tamanho="16" /> Salvar</button>
+    </Rodape>
+</Modal>
+
+@code {
+    [Parameter] public PeriodoFerias P { get; set; } = new();
+    [Parameter] public bool Novo { get; set; }
+    [Parameter] public List<PeriodoFerias> Todos { get; set; } = new();
+    [Parameter] public DadosFerias Config { get; set; } = new();
+    [Parameter] public Action<object?> Fechar { get; set; } = _ => { };
+    [Inject] Navegador Nav { get; set; } = null!;
+    List<string> Colaboradores = new(), Equipes = new();
+    string _erro = "";
+
+    protected override void OnInitialized()
+    {
+        Colaboradores = Todos.Select(x => x.Colaborador.Trim()).Where(x => x != "").Distinct().OrderBy(x => x).ToList();
+        Equipes = Todos.Select(x => x.Equipe.Trim()).Where(x => x != "").Distinct().OrderBy(x => x).ToList();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool primeira) { if (primeira && Novo) await Nav.Focar("fer-colab"); }
+
+    static string Iso(DateOnly d) => d.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+    static DateOnly? DeIso(string? s) => DateOnly.TryParseExact(s, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var d) ? d : null;
+
+    void MudarInicio(string? v)
+    {
+        if (DeIso(v) is not DateOnly d) return;
+        int dias = Math.Max(1, P.Dias);
+        P.Inicio = d;
+        P.Fim = d.AddDays(dias - 1);         // mantém a duração ao mudar o início
+    }
+
+    void MudarFim(string? v) { if (DeIso(v) is DateOnly d) P.Fim = d; }
+    void DefinirDias(int n) => P.Fim = P.Inicio.AddDays(n - 1);
+
+    void EscolheuColaborador()
+    {
+        // colaborador já cadastrado: traz a equipe dele
+        if (P.Equipe.Trim() != "") return;
+        var ant = Todos.LastOrDefault(x => Ferias.Norm(x.Colaborador) == Ferias.Norm(P.Colaborador) && x.Equipe.Trim() != "");
+        if (ant != null) P.Equipe = ant.Equipe;
+    }
+
+    List<AlertaFerias> Conflitos()
+    {
+        if (P.Fim < P.Inicio) return new();
+        var lista = Todos.Where(x => x.Id != P.Id).Append(P).ToList();
+        return Ferias.Alertas(lista, Config.DistanciaMinima, Config.PorEquipe).Where(a => a.A.Id == P.Id || a.B.Id == P.Id).ToList();
+    }
+
+    void Salvar()
+    {
+        P.Colaborador = P.Colaborador.Trim();
+        P.Equipe = P.Equipe.Trim();
+        if (P.Colaborador == "") { _erro = "Informe o colaborador."; return; }
+        if (P.Fim < P.Inicio) { _erro = "A data de fim é anterior ao início."; return; }
+        if (P.Vender) P.DiasVender = Math.Clamp(P.DiasVender, 1, 30); else P.DiasVender = 0;
+        Fechar(P);
+    }
+
+    void Excluir() => Fechar("excluir");
+}

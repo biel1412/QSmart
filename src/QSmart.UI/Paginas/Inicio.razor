@@ -97,7 +97,7 @@
         if (a != null) Rotas.NavigateTo(a.Rota);
     }
 
-    static int Indice(string g) => Array.IndexOf(Abas.Grupos, g);
+    static int Indice(string g) => Abas.Cor(g);
 
     static string DescGrupo(string g) => g switch
     {
@@ -105,6 +105,7 @@
         "Inspeção" => "desvios, inspeções internas e histórico mensal",
         "Conformidade" => "pareceres conferidos com o padrão",
         "Operação" => "volume, ociosidade e consolidação de arquivos",
+        "Coordenação" => "férias da equipe, produtividade do mês e projetos",
         _ => "diagnóstico das planilhas",
     };
 
@@ -119,6 +120,9 @@
         "monitor" when E.MonBase != null => $"{E.MonBase.Arquivos.Count} planilha(s) anexada(s)",
         "corredor" when E.CorItens.Count > 0 => $"{E.CorItens.Count} compilado(s) na fila",
         "depurador" when E.DepRes != null => $"{E.DepRes.Arquivo} em análise",
+        "pontos" when E.PtsRes != null => $"{E.PtsArquivos} carregado",
+        "ferias" when E.FeriasResumo != null => E.FeriasResumo,
+        "eap" when E.EapResumo != null => E.EapResumo,
         _ => null,
     };
 }
