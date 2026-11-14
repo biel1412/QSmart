@@ -119,9 +119,9 @@ public sealed class Estado
         get
         {
             if (Ferias.Periodos.Count == 0) return null;
-            var al = Core.Coordenacao.Ferias.Alertas(Ferias.Periodos, Ferias.DistanciaMinima, Ferias.PorEquipe);
-            int ch = al.Count(a => a.Nivel == NivelFerias.Choque), pr = al.Count(a => a.Nivel == NivelFerias.Proximo);
-            return $"{Ferias.Periodos.Count} período(s)" + (ch > 0 ? $" · {ch} choque(s)" : "") + (pr > 0 ? $" · {pr} data(s) próxima(s)" : "");
+            var al = Core.Coordenacao.Ferias.Alertas(Ferias);
+            int ch = al.Count(a => a.Nivel == NivelFerias.Choque), pr = al.Count(a => a.Nivel is NivelFerias.Proximo or NivelFerias.MuitoProximo);
+            return $"{Ferias.Periodos.Count} pedido(s)" + (ch > 0 ? $" · {ch} choque(s)" : "") + (pr > 0 ? $" · {pr} data(s) próxima(s)" : "");
         }
     }
 

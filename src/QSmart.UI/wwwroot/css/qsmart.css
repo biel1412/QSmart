@@ -16,8 +16,8 @@
   --ink: #101326; --ink2: #2B3050; --muted: #6A7090; --line: #E3E6F0; --line2: #D3D8E8;
   --accent: #4F46E5; --accent-h: #4338CA; --on-accent: #FFFFFF; --accent-soft: #EEEDFF; --accent2: #06B6D4;
   --grad: linear-gradient(135deg, #4F46E5 0%, #4361EE 55%, #06B6D4 100%);
-  --green: #16A34A; --red: #DC2626; --blue: #0EA5E9; --amber: #D97706; --purple: #8B5CF6;
-  --green-soft: #E8F7EE; --red-soft: #FDECEC; --amber-soft: #FEF3E2;
+  --green: #16A34A; --red: #DC2626; --blue: #0EA5E9; --amber: #D97706; --purple: #8B5CF6; --orange: #EA580C;
+  --green-soft: #E8F7EE; --red-soft: #FDECEC; --amber-soft: #FEF3E2; --orange-soft: #FDE8DA;
   --err-bg: #FDECEC; --sel: #E4E6FF; --row-alt: #FAFBFE; --warn: #B45309;
   --side: #0E1230; --side2: #141A42; --side-ink: #E9EBFA; --side-muted: #8F95BD; --side-hover: rgba(255,255,255,.06);
   --side-active: rgba(99,102,241,.22); --side-line: rgba(255,255,255,.08); --side-bar: #22D3EE;
@@ -30,8 +30,8 @@
   --bg: #0A0D19; --surface: #121629; --surface2: #191E36; --surface3: #20264A;
   --ink: #E8EAF7; --ink2: #C7CBE6; --muted: #8C92B6; --line: #242A47; --line2: #2E355A;
   --accent: #818CF8; --accent-h: #A5B4FC; --on-accent: #0B0E1E; --accent-soft: #1E2350; --accent2: #22D3EE;
-  --green: #3FB950; --red: #F85149; --blue: #38BDF8; --amber: #E3A43A; --purple: #A78BFA;
-  --green-soft: #12301F; --red-soft: #3A1D22; --amber-soft: #3A2A12;
+  --green: #3FB950; --red: #F85149; --blue: #38BDF8; --amber: #E3A43A; --purple: #A78BFA; --orange: #F0883E;
+  --green-soft: #12301F; --red-soft: #3A1D22; --amber-soft: #3A2A12; --orange-soft: #3A2214;
   --err-bg: #3A1D22; --sel: #262D63; --row-alt: #141932; --warn: #E3B341;
   --side: #070A16; --side2: #0C1022; --side-ink: #E8EAF7; --side-muted: #7F86AE; --side-hover: rgba(255,255,255,.05);
   --side-active: rgba(129,140,248,.18); --side-line: rgba(255,255,255,.06);
@@ -495,7 +495,7 @@ button.fer-alerta:hover { filter: brightness(.97); }
 .fer-barra.ok { background: var(--green); } .fer-barra.proximo { background: var(--amber); } .fer-barra.choque { background: var(--red); }
 .fer-barra.planejado { outline: 2px dashed color-mix(in srgb, #000 35%, transparent); outline-offset: -2px; opacity: .88; }
 .fer-barra.vende { background-image: repeating-linear-gradient(135deg, rgba(255,255,255,.22) 0 4px, transparent 4px 9px); }
-.fer-tabela td { cursor: pointer; }
+.fer-tabela td { cursor: default; }
 
 /* pontos de ação */
 .pts-faixas { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
@@ -572,3 +572,42 @@ button.fer-alerta:hover { filter: brightness(.97); }
 .pts-sel { border-color: var(--line); background: var(--surface); cursor: pointer; }
 .pts-sel.on { border-color: color-mix(in srgb, #0D9488 45%, transparent); color: #0D9488; font-weight: 650; background: color-mix(in srgb, #0D9488 7%, var(--surface)); }
 .pts-tabela { table-layout: fixed; width: 100%; min-width: 1040px; } .pts-tabela td:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Férias — coleta por planilha */
+.etq.muito { background: var(--orange-soft); color: var(--orange); }
+.etq.azul { background: color-mix(in srgb, var(--blue) 14%, transparent); color: color-mix(in srgb, var(--blue) 80%, var(--ink)); }
+.fer-alerta.muito { background: var(--orange-soft); color: color-mix(in srgb, var(--orange) 85%, var(--ink)); border-color: color-mix(in srgb, var(--orange) 30%, transparent); }
+.fer-barra.muito { background: var(--orange); }
+.fer-barra { cursor: default; }
+.fer-legenda i.muito { background: var(--orange); }
+.fer-etapas { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.fer-etapa { display: flex; align-items: center; gap: 14px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); box-shadow: var(--shadow-1); min-width: 0; }
+.fer-etapa.feita { border-color: color-mix(in srgb, #0D9488 40%, var(--line)); background: color-mix(in srgb, #0D9488 5%, var(--surface)); }
+.fer-etapa-n { flex: none; width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; font-weight: 750; font-size: 15px; background: color-mix(in srgb, #0D9488 14%, transparent); color: #0D9488; }
+.fer-etapa.feita .fer-etapa-n { background: #0D9488; color: #fff; }
+.fer-etapa-txt { flex: 1; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.fer-etapa-txt > span { overflow: hidden; text-overflow: ellipsis; }
+.fer-etapa .btn, .fer-etapa .botao-arquivo { flex: none; }
+.fer-arq { color: var(--ink); }
+.fer-colunas { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 2px; }
+.fer-colunas span { font-size: 11.5px; font-weight: 600; padding: 2px 8px; border-radius: 6px; background: var(--surface2); border: 1px solid var(--line); color: var(--ink2); }
+.fer-lista { display: flex; flex-direction: column; max-height: 330px; overflow: auto; }
+.fer-lista-vazia { padding: 14px 2px; }
+.fer-item { display: flex; align-items: center; gap: 12px; padding: 8px 2px; border-bottom: 1px solid color-mix(in srgb, var(--line) 60%, transparent); }
+.fer-item:last-child { border-bottom: 0; }
+.fer-cont { flex: none; width: 46px; height: 40px; border-radius: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.05;
+  background: color-mix(in srgb, var(--purple) 12%, transparent); color: var(--purple); font-size: 10.5px; }
+.fer-cont b { font-size: 16px; }
+.fer-item.urgente .fer-cont { background: var(--purple); color: #fff; }
+.fer-item.agora .fer-cont { background: color-mix(in srgb, var(--blue) 15%, transparent); color: var(--blue); }
+.fer-item.agora .fer-cont b { font-size: 12px; }
+.fer-cont.vende { background: var(--green-soft); color: var(--green); }
+.fer-item-nome { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.fer-item-nome > * { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fer-item-nome .muted { font-size: 12.5px; }
+@media (max-width: 1100px) { .fer-etapas { grid-template-columns: 1fr; } }
+.fer-regras { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.fer-regras .campo.num { width: 58px; }
+.fer-tabela { min-width: 980px; }
+.fer-tabela td { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fer-barra.proximo, .fer-legenda i.proximo { background: #EAB308; }

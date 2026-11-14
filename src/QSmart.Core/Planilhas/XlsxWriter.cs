@@ -16,6 +16,8 @@ public sealed class XlsxWriter
         internal readonly Dictionary<int, int> EstiloLinha = new();
         internal readonly Dictionary<int, double> Larguras = new();
         internal (int linhas, int cols)? Congela;
+        internal readonly List<string> Validacoes = new();
+        internal readonly List<(string sqref, string formula, int dxf)> Condicionais = new();
         internal Aba(XlsxWriter wb, string nome) { Wb = wb; Nome = nome; }
 
         public int N => Linhas.Count;
@@ -24,6 +26,43 @@ public sealed class XlsxWriter
         public void NegritoLinha(int linha) => EstiloLinha[linha] = Wb.Estilo(true, null);
         public void Congelar(int linhas, int cols) => Congela = (linhas, cols);
         public void Largura(int col, double largura) => Larguras[col] = largura;
+
+        /// <summary>Formato dd/mm/aaaa nas células (vazias ou não) da coluna, da linha ini até fim (0-based).</summary>
+        public void FormatoData(int col, int ini, int fim)
+        {
+            var e = Wb.Estilo(false, null, soData: true);
+            for (int l = ini; l <= fim; l++) Estilos[((long)l << 20) | (uint)col] = e;
+        }
+
+        /// <summary>Validação de dados em lista (menu suspenso). Recusa valores fora da lista.</summary>
+        public void ValidacaoLista(string sqref, IEnumerable<string> lista, string? titulo = null, string? mensagem = null)
+            => Validacoes.Add(Validacao("list", null, Esc("\"" + string.Join(",", lista) + "\""), null, sqref, titulo, mensagem, "Escolha uma das opções da lista."));
+
+        /// <summary>Validação de número inteiro entre min e max.</summary>
+        public void ValidacaoInteiro(string sqref, int min, int max, string? titulo = null, string? mensagem = null)
+            => Validacoes.Add(Validacao("whole", "between", min.ToString(CultureInfo.InvariantCulture), max.ToString(CultureInfo.InvariantCulture), sqref, titulo, mensagem, $"Digite um número inteiro de {min} a {max}."));
+
+        /// <summary>Validação de data entre duas datas.</summary>
+        public void ValidacaoData(string sqref, DateOnly min, DateOnly max, string? titulo = null, string? mensagem = null)
+            => Validacoes.Add(Validacao("date", "between", (min.DayNumber - new DateOnly(1899, 12, 30).DayNumber).ToString(CultureInfo.InvariantCulture),
+                (max.DayNumber - new DateOnly(1899, 12, 30).DayNumber).ToString(CultureInfo.InvariantCulture), sqref, titulo, mensagem,
+                $"Digite uma data válida (dd/mm/aaaa) entre {min:dd/MM/yyyy} e {max:dd/MM/yyyy}."));
+
+        static string Validacao(string tipo, string? op, string f1, string? f2, string sqref, string? titulo, string? msg, string erro)
+        {
+            var sb = new StringBuilder($"<dataValidation type=\"{tipo}\"");
+            if (op != null) sb.Append($" operator=\"{op}\"");
+            sb.Append($" allowBlank=\"1\" showInputMessage=\"1\" showErrorMessage=\"1\" errorStyle=\"stop\" errorTitle=\"Valor inválido\" error=\"{Esc(erro)}\"");
+            if (titulo != null) sb.Append($" promptTitle=\"{Esc(titulo)}\"");
+            if (msg != null) sb.Append($" prompt=\"{Esc(msg)}\"");
+            sb.Append($" sqref=\"{sqref}\"><formula1>{f1}</formula1>");
+            if (f2 != null) sb.Append($"<formula2>{f2}</formula2>");
+            return sb.Append("</dataValidation>").ToString();
+        }
+
+        /// <summary>Formatação condicional por fórmula: pinta o fundo quando verdadeira.</summary>
+        public void CondicionalCor(string sqref, string formula, string corHex, bool negrito = false)
+            => Condicionais.Add((sqref, formula, Wb.Dxf(corHex, negrito)));
 
         public void Preencher(int linha, int col, string corHex, bool negrito = false)
             => Estilos[((long)linha << 20) | (uint)col] = Wb.Estilo(negrito, corHex);
@@ -56,7 +95,15 @@ public sealed class XlsxWriter
     }
 
     readonly List<Aba> _abas = new();
-    readonly List<(bool negrito, string? cor, bool data)> _estilos = new() { (false, null, false) };
+    readonly List<(bool negrito, string? cor, int fmt)> _estilos = new() { (false, null, 0) };   // fmt: 0 geral, 164 data e hora, 165 só data
+    readonly List<(string cor, bool negrito)> _dxfs = new();
+    internal int Dxf(string cor, bool negrito)
+    {
+        var k = (cor.ToUpperInvariant(), negrito);
+        var i = _dxfs.IndexOf(k);
+        if (i < 0) { _dxfs.Add(k); i = _dxfs.Count - 1; }
+        return i;
+    }
     readonly Dictionary<string, int> _shared = new(StringComparer.Ordinal);
     readonly List<string> _sharedLista = new();
 
@@ -85,9 +132,9 @@ public sealed class XlsxWriter
         return k;
     }
 
-    internal int Estilo(bool negrito, string? cor, bool data = false)
+    internal int Estilo(bool negrito, string? cor, bool data = false, bool soData = false)
     {
-        var chave = (negrito, cor?.ToUpperInvariant(), data);
+        var chave = (negrito, cor?.ToUpperInvariant(), soData ? 165 : data ? 164 : 0);
         var i = _estilos.IndexOf(chave);
         if (i >= 0) return i;
         _estilos.Add(chave);
@@ -196,6 +243,10 @@ public sealed class XlsxWriter
                         var estD = Estilo(est != 0 && _estilos[est].negrito, est != 0 ? _estilos[est].cor : null, true);
                         sb.Append($"<c r=\"{refc}\" s=\"{estD}\"><v>{serial.ToString("R", CultureInfo.InvariantCulture)}</v></c>");
                         break;
+                    case DateOnly dO:
+                        var estO = Estilo(est != 0 && _estilos[est].negrito, est != 0 ? _estilos[est].cor : null, soData: true);
+                        sb.Append($"<c r=\"{refc}\" s=\"{estO}\"><v>{dO.DayNumber - new DateOnly(1899, 12, 30).DayNumber}</v></c>");
+                        break;
                     case Celula cel:
                         if (cel.Tipo is TipoCelula.Inteiro or TipoCelula.Numero)
                             sb.Append($"<c r=\"{refc}\"{sAttr}><v>{cel.Numero.ToString("R", CultureInfo.InvariantCulture)}</v></c>");
@@ -212,6 +263,11 @@ public sealed class XlsxWriter
             sb.Append("</row>");
         }
         sb.Append("</sheetData>");
+        int prio = 1;
+        foreach (var (sq, fo, dxf) in a.Condicionais)
+            sb.Append($"<conditionalFormatting sqref=\"{sq}\"><cfRule type=\"expression\" dxfId=\"{dxf}\" priority=\"{prio++}\"><formula>{Esc(fo)}</formula></cfRule></conditionalFormatting>");
+        if (a.Validacoes.Count > 0)
+            sb.Append($"<dataValidations count=\"{a.Validacoes.Count}\">").Append(string.Concat(a.Validacoes)).Append("</dataValidations>");
         sb.Append("<pageMargins left=\"0.7\" right=\"0.7\" top=\"0.75\" bottom=\"0.75\" header=\"0.3\" footer=\"0.3\"/></worksheet>");
         return Encoding.UTF8.GetBytes(sb.ToString());
     }
@@ -275,20 +331,28 @@ public sealed class XlsxWriter
     {
         var cores = _estilos.Where(e => e.cor != null).Select(e => e.cor!).Distinct().ToList();
         var sb = new StringBuilder("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<styleSheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">");
-        sb.Append("<numFmts count=\"1\"><numFmt numFmtId=\"164\" formatCode=\"dd/mm/yyyy hh:mm:ss\"/></numFmts>");
+        sb.Append("<numFmts count=\"2\"><numFmt numFmtId=\"164\" formatCode=\"dd/mm/yyyy hh:mm:ss\"/><numFmt numFmtId=\"165\" formatCode=\"dd/mm/yyyy\"/></numFmts>");
         sb.Append("<fonts count=\"2\"><font><sz val=\"11\"/><name val=\"Calibri\"/><family val=\"2\"/></font><font><b/><sz val=\"11\"/><name val=\"Calibri\"/><family val=\"2\"/></font></fonts>");
         sb.Append($"<fills count=\"{2 + cores.Count}\"><fill><patternFill patternType=\"none\"/></fill><fill><patternFill patternType=\"gray125\"/></fill>");
         foreach (var c in cores) sb.Append($"<fill><patternFill patternType=\"solid\"><fgColor rgb=\"FF{c}\"/><bgColor indexed=\"64\"/></patternFill></fill>");
         sb.Append("</fills><borders count=\"1\"><border><left/><right/><top/><bottom/><diagonal/></border></borders>");
         sb.Append("<cellStyleXfs count=\"1\"><xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\"/></cellStyleXfs>");
         sb.Append($"<cellXfs count=\"{_estilos.Count}\">");
-        foreach (var (neg, cor, data) in _estilos)
+        foreach (var (neg, cor, fmt) in _estilos)
         {
             int fill = cor == null ? 0 : 2 + cores.IndexOf(cor);
-            sb.Append($"<xf numFmtId=\"{(data ? 164 : 0)}\" fontId=\"{(neg ? 1 : 0)}\" fillId=\"{fill}\" borderId=\"0\" xfId=\"0\"" +
-                      $"{(neg ? " applyFont=\"1\"" : "")}{(cor != null ? " applyFill=\"1\"" : "")}{(data ? " applyNumberFormat=\"1\"" : "")}/>");
+            sb.Append($"<xf numFmtId=\"{fmt}\" fontId=\"{(neg ? 1 : 0)}\" fillId=\"{fill}\" borderId=\"0\" xfId=\"0\"" +
+                      $"{(neg ? " applyFont=\"1\"" : "")}{(cor != null ? " applyFill=\"1\"" : "")}{(fmt != 0 ? " applyNumberFormat=\"1\"" : "")}/>");
         }
-        sb.Append("</cellXfs><cellStyles count=\"1\"><cellStyle name=\"Normal\" xfId=\"0\" builtinId=\"0\"/></cellStyles></styleSheet>");
+        sb.Append("</cellXfs><cellStyles count=\"1\"><cellStyle name=\"Normal\" xfId=\"0\" builtinId=\"0\"/></cellStyles>");
+        if (_dxfs.Count > 0)
+        {
+            sb.Append($"<dxfs count=\"{_dxfs.Count}\">");
+            foreach (var (cor, neg) in _dxfs)
+                sb.Append($"<dxf>{(neg ? "<font><b/></font>" : "")}<fill><patternFill patternType=\"solid\"><fgColor rgb=\"FF{cor}\"/><bgColor rgb=\"FF{cor}\"/></patternFill></fill></dxf>");
+            sb.Append("</dxfs>");
+        }
+        sb.Append("</styleSheet>");
         return sb.ToString();
     }
 }

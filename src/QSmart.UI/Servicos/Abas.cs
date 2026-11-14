@@ -26,7 +26,7 @@ public static class Abas
         new("corredor", "Corredor (unir compilados e PDFs)", "Corredor", "corredor", "Operação",
             "Une vários compilados num só e junta PDFs na ordem escolhida.", "corredor"),
         new("ferias", "Férias", "Férias", "ferias", "Coordenação",
-            "Organiza as férias da equipe, avisa choques e datas muito próximas e marca quem quer vender dias.", "ferias"),
+            "Gera o modelo de planilha para a equipe pedir férias e compara os pedidos: choques, datas próximas, quem vende e quem sai em breve.", "ferias"),
         new("pontos", "Pontos de ação mensal", "Pontos de ação", "pontos", "Coordenação",
             "Média diária de ações por usuário no mês e painel só com quem fica abaixo de 150.", "pontos"),
         new("depurador", "Depurador de leitura", "Depurador", "depurador", "Ferramentas",
