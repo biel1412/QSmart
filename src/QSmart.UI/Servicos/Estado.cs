@@ -108,6 +108,13 @@ public sealed class Estado
     public string SubPts = "Anexe o compilado do mês: o QSmart calcula a média de ações por dia de cada usuário e mostra quem fica abaixo da meta.";
 
     // ----- Coordenação: férias e justificativas (guardados só neste navegador, fora da pasta de dados) -----
+    // ----- Operação: estratégia do dia
+    public QSmart.Core.Operacao.BaseEstrategia? EstBase;
+    public QSmart.Core.Operacao.MensagemEstrategia EstMsg = new();
+    public string SubEst = "";
+    public const string ChEstrategia = "operacao/estrategia.json";
+    public async Task SalvarEstMsg() => await Nav.Gravar(ChEstrategia, QSmart.Core.Operacao.Estrategia.Gravar(EstMsg));
+
     public const string ChFerias = "coordenacao/ferias.json", ChPtsJust = "coordenacao/pontos_justificativas.json";
     /// <summary>Justificativas do Pontos de ação, por mês e usuário.</summary>
     public Dictionary<string, Dictionary<string, string>> PtsJust = new();
@@ -130,6 +137,7 @@ public sealed class Estado
         if (CoordCarregada) return;
         CoordCarregada = true;
         try { Ferias = Core.Coordenacao.Ferias.Ler(await Nav.Ler(ChFerias)); } catch { Ferias = new(); }
+        try { EstMsg = QSmart.Core.Operacao.Estrategia.Ler(await Nav.Ler(ChEstrategia)); } catch { EstMsg = new(); }
         try { PtsJust = PontosAcao.LerJustificativas(await Nav.Ler(ChPtsJust)); } catch { PtsJust = new(); }
     }
 

@@ -1,0 +1,295 @@
+@page "/estrategia"
+@inherits PaginaBase
+@using QSmart.Core.Operacao
+
+@{ Calcular(); var r = _res; var M = E.EstMsg; }
+<Pagina Titulo="Estratégia do dia" Grupo="@A.Grupo" Sub="@(E.SubEst != "" ? E.SubEst : "Anexe o compilado do dia: o QSmart mostra o resumo dos serviços, o TMA e o volume do dia, e já preenche a mensagem da estratégia para o Teams.")">
+    <Acoes>
+        <button class="btn btn-hero" @onclick="Copiar"><Icone Nome="copiar" Tamanho="17" /> Copiar mensagem</button>
+        <button class="btn btn-hero" @onclick="AbrirTeams"><Icone Nome="enviar" Tamanho="17" /> Abrir no Teams</button>
+        <BotaoArquivo Texto="@(E.EstBase == null ? "Anexar compilado(s)" : "Trocar compilado")" Variante="pri" Icone="upload" Aceita=".xlsx,.xlsm,.csv" Varios="true" Desativado="E.Carregando" AoEscolher="Abrir" />
+    </Acoes>
+    <Kpis>
+        <Kpi Titulo="Registros" Cor="blue" Valor="@(r != null ? Fmt(r.Registros) : "—")" Detalhe="@(r != null ? $"{Fmt(r.Usuarios)} usuário(s)" : "linhas do compilado")" />
+        <Kpi Titulo="Serviços distintos" Cor="green" Valor="@(r != null ? Fmt(r.Distintos) : "—")" Detalhe="@(r?.MaisFrequente is { } mf ? $"mais frequente: {mf.Servico}" : "")" />
+        <Kpi Titulo="Média por serviço" Cor="amber" Valor="@(r != null ? Texto.F(r.MediaPorServico, 1) : "—")" Detalhe="@(r != null ? "registros por serviço" : "")" />
+        <Kpi Titulo="Top 3 concentram" Cor="accent" Valor="@(r != null ? Texto.F(r.Top3, 1) + "%" : "—")" Detalhe="@(r != null ? "dos registros" : "")" Proporcao="@(r != null ? r.Top3 / 100 : null)" />
+        <Kpi Titulo="TMA médio geral" Cor="purple" Valor="@(r != null && r.FluxosDia > 0 ? Estrategia.Hms(r.TmaSeg) : "—")" Detalhe="@(r != null ? $"{Fmt(r.FluxosDia)} fluxos com início e fim em {Texto.Dm(r.Dia)}" : "tempo médio por fluxo")" />
+    </Kpis>
+    <ChildContent>
+        @if (E.EstBase == null)
+        {
+            <div class="vazio-grande">
+                <span class="vazio-ic"><Icone Nome="estrategia" Tamanho="34" /></span>
+                <h3>Nenhum compilado anexado</h3>
+                <p class="muted">Anexe o compilado do dia para ver o resumo dos serviços, o TMA e o volume realizado.
+                    A mensagem do Teams, mais abaixo, já pode ser preenchida mesmo sem o compilado.</p>
+            </div>
+        }
+        else
+        {
+            <div class="barra-ferr">
+                <span class="rotulo">Fonte</span>
+                <div class="segmentado">
+                    <button class="seg @(!_minhaLista ? "on" : "")" @onclick="() => Fonte(false)">Todos da base</button>
+                    <button class="seg @(_minhaLista ? "on" : "")" @onclick="() => Fonte(true)">Minha lista@(E.VolLista.Count > 0 ? $" ({E.VolLista.Count})" : "")</button>
+                </div>
+                @if (_minhaLista)
+                {
+                    <BotaoArquivo Texto="Anexar lista" Variante="sec" Icone="usuarios" Aceita=".xlsx,.xls,.csv,.txt" AoEscolher="AbrirLista" Dica="A mesma lista da aba Volume" />
+                    <button class="btn btn-sec" @onclick="ColarLista">Colar lista</button>
+                }
+                <span class="rotulo" style="margin-left:8px">Data</span>
+                <select class="campo" style="min-width:170px" value="@_dia.ToString("yyyy-MM-dd")" @onchange="MudarDia">
+                    @foreach (var d in E.EstBase.DiasFim) { <option value="@d.ToString("yyyy-MM-dd")">@($"{Texto.Dmy(d)} ({Texto.DiaSemana(d)})")</option> }
+                </select>
+                <span class="mola"></span>
+                <span class="muted pequeno">@string.Join(", ", E.EstBase.Arquivos.Select(x => $"{x.nome} ({Fmt(x.linhas)} linhas)"))</span>
+            </div>
+            @if (_minhaLista && E.VolLista.Count == 0)
+            {
+                <p class="hero-aviso"><Icone Nome="alerta" Tamanho="15" /> “Minha lista” está vazia: anexe ou cole os usuários. Enquanto isso, nada é contado.</p>
+            }
+
+            <div class="grade-32">
+                <Painel Titulo="Distribuição por serviço" Nota="@(r != null ? $"{Fmt(r.Registros)} registros" : "")" Sangrar="true">
+                    <Extra>
+                        <div class="segmentado">
+                            <button class="seg @(!_az ? "on" : "")" @onclick="() => _az = false">Maiores primeiro</button>
+                            <button class="seg @(_az ? "on" : "")" @onclick="() => _az = true">A-Z</button>
+                        </div>
+                    </Extra>
+                    <ChildContent>
+                        @if (r != null)
+                        {
+                            <table class="tabela est-tabela">
+                                <colgroup><col style="width:25%" /><col style="width:14%" /><col style="width:31%" /><col style="width:12%" /><col style="width:18%" /></colgroup>
+                                <thead><tr><th>Serviço</th><th class="al-c">Quantidade</th><th>Participação</th><th class="al-c" title="Fluxos com início e fim no dia escolhido">Do dia</th><th class="al-c" title="TMA dos fluxos com data do dia">TMA do dia</th></tr></thead>
+                                <tbody>
+                                    @foreach (var s in (_az ? r.Servicos.OrderBy(x => x.Servico, StringComparer.Ordinal) : r.Servicos.AsEnumerable()))
+                                    {
+                                        var pct = r.Registros == 0 ? 0 : s.Quantidade * 100.0 / r.Registros;
+                                        <tr>
+                                            <td><b>@s.Servico</b></td>
+                                            <td class="al-c">@Fmt(s.Quantidade)</td>
+                                            <td><div class="est-part"><span class="est-trilho"><span style="width:@(pct.ToString("0.###", CultureInfo.InvariantCulture))%"></span></span><b>@Texto.F(pct, 1)%</b></div></td>
+                                            <td class="al-c">@(s.QtdDia > 0 ? Fmt(s.QtdDia) : "—")</td>
+                                            <td class="al-c muted">@(s.QtdDia > 0 ? Estrategia.Hms(s.TmaDiaSeg) : "—")</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                                <tfoot><tr><td>TOTAL GERAL</td><td class="al-c">@Fmt(r.Registros)</td><td><div class="est-part"><span class="est-trilho"><span style="width:100%"></span></span><b>100%</b></div></td><td class="al-c">@Fmt(r.FluxosDia)</td><td class="al-c">@(r.FluxosDia > 0 ? Estrategia.Hms(r.TmaSeg) : "—")</td></tr></tfoot>
+                            </table>
+                            @if (r.Servicos.Count == 0) { <div class="tabela-vazia">Nenhum registro com essa fonte.</div> }
+                        }
+                    </ChildContent>
+                </Painel>
+
+                <div class="est-coluna">
+                    <Painel Titulo="TMA do dia">
+                        <div class="est-tma">
+                            <span class="rotulo">TMA médio geral</span>
+                            <b class="est-tma-valor">@(r != null && r.FluxosDia > 0 ? Estrategia.Hms(r.TmaSeg) : "--:--:--")</b>
+                            <span class="muted">tempo médio por fluxo (HH:MM:SS)</span>
+                        </div>
+                        <div class="est-tma-info">
+                            <div><span class="rotulo">Fluxos considerados</span><b>@(r != null ? Fmt(r.FluxosDia) : "—")</b></div>
+                            <div><span class="rotulo">Data considerada</span><b>@Texto.Dmy(_dia)</b></div>
+                        </div>
+                        <p class="muted pequeno est-nota">Considerados apenas fluxos com início e fim no mesmo dia, a partir de DATAHORAINICIOATIVIDADE e DATAHORAFIMATIVIDADE.</p>
+                    </Painel>
+                    <Painel Titulo="Destaques">
+                        <div class="est-destaques">
+                            <div><span class="est-dot g"></span><span>Mais frequente</span><b>@(r?.MaisFrequente is { } a ? $"{a.Servico} ({Fmt(a.Quantidade)})" : "—")</b></div>
+                            <div><span class="est-dot r"></span><span>Menos frequente</span><b>@(r?.MenosFrequente is { } b ? $"{b.Servico} ({Fmt(b.Quantidade)})" : "—")</b></div>
+                            <div><span class="est-dot b"></span><span>Realizado em @Texto.Dm(_dia)</span><b>@(r != null ? $"{Fmt(r.RealizadoDia)} fluxos" : "—")</b></div>
+                            @if (r != null)
+                            {
+                                @foreach (var p in r.Procedimentos.OrderByDescending(x => x.Value).Take(4))
+                                {
+                                    <div><span class="est-dot n"></span><span>@(char.ToUpperInvariant(p.Key[0]) + Texto.Lower(p.Key)[1..])</span><b>@Fmt(p.Value) <span class="muted">(@Texto.F(p.Value * 100.0 / Math.Max(1, r.Registros), 1)%)</span></b></div>
+                                }
+                            }
+                        </div>
+                    </Painel>
+                </div>
+            </div>
+        }
+
+        <Painel Titulo="Mensagem do dia para o Teams" Nota="preencha, escolha um modelo de estratégia e copie">
+            <div class="est-msg">
+                <div class="est-form">
+                    <label class="form-campo"><span class="etq-campo">Saudação</span>
+                        <input class="campo" @bind="M.Saudacao" @bind:event="oninput" @bind:after="Salvar" /></label>
+
+                    <div class="est-bloco">
+                        <span class="est-bloco-tit">Início do dia <span class="muted">(digite)</span></span>
+                        <div class="est-filas">
+                            <span></span><span class="etq-campo">Páginas</span><span class="etq-campo">Fluxos</span>
+                            <span class="est-fila">Centralizada</span>
+                            <input class="campo num" placeholder="x" @bind="M.CentralizadaPaginas" @bind:event="oninput" @bind:after="Salvar" />
+                            <input class="campo num" placeholder="x" @bind="M.CentralizadaFluxos" @bind:event="oninput" @bind:after="Salvar" />
+                            <span class="est-fila">Autorizar</span>
+                            <input class="campo num" placeholder="x" @bind="M.AutorizarPaginas" @bind:event="oninput" @bind:after="Salvar" />
+                            <input class="campo num" placeholder="x" @bind="M.AutorizarFluxos" @bind:event="oninput" @bind:after="Salvar" />
+                        </div>
+                    </div>
+
+                    <div class="est-bloco">
+                        <span class="est-bloco-tit">Texto da estratégia <span class="muted">clique num modelo para adicionar e depois ajuste</span></span>
+                        <div class="est-modelos">
+                            @foreach (var mo in Estrategia.Modelos(r, M))
+                            {
+                                <button class="est-modelo" title="@mo.Texto" @onclick="() => Adicionar(mo.Texto)"><b>+ @mo.Nome</b><span>@mo.Dica</span></button>
+                            }
+                        </div>
+                        <textarea class="campo est-texto" rows="5" placeholder="Escreva a estratégia do dia ou escolha um modelo acima" @bind="M.Texto" @bind:event="oninput" @bind:after="Salvar"></textarea>
+                        @if (M.Texto != "") { <button class="btn btn-sec btn-peq est-limpar" @onclick="LimparTexto">Limpar texto</button> }
+                    </div>
+
+                    <div class="est-bloco">
+                        <span class="est-bloco-tit">Dados do dia <span class="muted">@(r != null ? "vêm do compilado, pode ajustar" : "anexe o compilado ou digite")</span>
+                            @if (r != null) { <button class="btn btn-sec btn-peq" @onclick="Preencher" title="Volta a usar os números do compilado">Usar números do compilado</button> }</span>
+                        <div class="est-dados">
+                            <label>Dia dos dados <input class="campo" @bind="M.DiaDados" @bind:event="oninput" @bind:after="Salvar" /></label>
+                            <label>📊 Volume total realizado <input class="campo" @bind="M.VolumeTotal" @bind:event="oninput" @bind:after="Salvar" /></label>
+                            <label>Data dos fluxos
+                                @if (E.EstBase != null)
+                                {
+                                    <select class="campo" value="@_dataFluxos.ToString("yyyy-MM-dd")" @onchange="MudarDataFluxos">
+                                        @foreach (var d in E.EstBase.DiasInicio.Where(x => x <= _dia).OrderByDescending(x => x)) { <option value="@d.ToString("yyyy-MM-dd")">@Texto.Dmy(d)</option> }
+                                    </select>
+                                }
+                                else { <input class="campo" @bind="M.DataFluxos" @bind:event="oninput" @bind:after="Salvar" /> }
+                            </label>
+                            <label>📅 Realizado com essa data <input class="campo" @bind="M.VolumeComData" @bind:event="oninput" @bind:after="Salvar" /></label>
+                            <label>📥 Entraram nesse dia <input class="campo destaque" placeholder="digite" @bind="M.Entraram" @bind:event="oninput" @bind:after="Salvar" /></label>
+                            <label>⏳ SLA a partir da entrada <input class="campo" @bind="M.Sla" @bind:event="oninput" @bind:after="Salvar" /></label>
+                        </div>
+                        <span class="muted pequeno">Volume total = atividades que terminaram no dia. Realizado com essa data = terminaram no dia e começaram na data dos fluxos. SLA = TMA do dia. “Entraram” não está no compilado: digite.</span>
+                    </div>
+                </div>
+                <div class="est-previa">
+                    <div class="est-previa-cab"><span class="rotulo">Prévia</span>
+                        <span class="mola"></span>
+                        <button class="btn btn-sec btn-peq" @onclick="Copiar"><Icone Nome="copiar" Tamanho="15" /> Copiar</button>
+                        <button class="btn btn-pri btn-peq" @onclick="AbrirTeams"><Icone Nome="enviar" Tamanho="15" /> Abrir no Teams</button>
+                    </div>
+                    <pre class="est-texto-previa">@Estrategia.Mensagem(M)</pre>
+                    @if (_status != "") { <span class="est-status">@_status</span> }
+                </div>
+            </div>
+        </Painel>
+    </ChildContent>
+</Pagina>
+
+@code {
+    protected override string Chave => "estrategia";
+    bool _minhaLista, _az;
+    DateOnly _dia, _dataFluxos;
+    string? _ass;
+    string _status = "";
+    ResultadoEstrategia? _res;
+
+    HashSet<string>? Lista() => _minhaLista ? E.VolLista.Select(Compilados.NormUsuario).ToHashSet() : null;
+
+    void Calcular()
+    {
+        var b = E.EstBase;
+        var ass = $"{b?.GetHashCode()}|{_minhaLista}|{string.Join(",", E.VolLista)}|{_dia}|{_dataFluxos}";
+        if (ass == _ass) return;
+        _ass = ass;
+        if (b == null) { _res = null; return; }
+        if (!b.DiasFim.Contains(_dia)) { _dia = Estrategia.DiaPadrao(b); _dataFluxos = _dia; }
+        _res = Estrategia.Calcular(b, _dia, Lista());
+        E.SubEst = $"Compilado com {Fmt(b.N)} linhas · dados do dia {Texto.Dmy(_dia)}" + (_minhaLista ? " · só a minha lista" : "");
+        PreencherCampos();
+    }
+
+    void PreencherCampos()
+    {
+        var b = E.EstBase; var r = _res;
+        if (b == null || r == null) return;
+        var M = E.EstMsg;
+        M.DiaDados = Texto.Dmy(_dia);
+        M.VolumeTotal = Estrategia.Num(r.RealizadoDia);
+        M.DataFluxos = Texto.Dmy(_dataFluxos);
+        M.VolumeComData = Estrategia.Num(Estrategia.RealizadoComData(b, _dia, _dataFluxos, Lista()));
+        M.Sla = r.FluxosDia > 0 ? Estrategia.Hms(r.TmaSeg) : "";
+        _ = E.SalvarEstMsg();
+    }
+
+    async Task Preencher() { PreencherCampos(); await Task.CompletedTask; }
+
+    void Fonte(bool lista) { _minhaLista = lista; _ass = null; }
+
+    void MudarDia(ChangeEventArgs e)
+    {
+        _dia = DateOnly.Parse(e.Value!.ToString()!, CultureInfo.InvariantCulture);
+        _dataFluxos = _dia;
+        _ass = null;
+    }
+
+    void MudarDataFluxos(ChangeEventArgs e)
+    {
+        _dataFluxos = DateOnly.Parse(e.Value!.ToString()!, CultureInfo.InvariantCulture);
+        var b = E.EstBase;
+        if (b == null) return;
+        E.EstMsg.DataFluxos = Texto.Dmy(_dataFluxos);
+        E.EstMsg.VolumeComData = Estrategia.Num(Estrategia.RealizadoComData(b, _dia, _dataFluxos, Lista()));
+        _ = E.SalvarEstMsg();
+    }
+
+    async Task Salvar() { _status = ""; await E.SalvarEstMsg(); }
+
+    async Task Adicionar(string texto)
+    {
+        var M = E.EstMsg;
+        M.Texto = string.IsNullOrWhiteSpace(M.Texto) ? texto : M.Texto.TrimEnd() + "\n\n" + texto;
+        await Salvar();
+    }
+
+    async Task LimparTexto() { E.EstMsg.Texto = ""; await Salvar(); }
+
+    async Task Copiar()
+    {
+        _status = await E.Nav.Copiar(Estrategia.Mensagem(E.EstMsg)) ? "Mensagem copiada. Cole no Teams com Ctrl+V." : "Não consegui copiar: selecione o texto da prévia e copie.";
+    }
+
+    async Task AbrirTeams()
+    {
+        var t = Estrategia.Mensagem(E.EstMsg);
+        await E.Nav.Copiar(t);
+        var url = "https://teams.microsoft.com/l/chat/0/0?message=" + Uri.EscapeDataString(t);
+        if (url.Length > 1900) { url = "https://teams.microsoft.com/l/chat/0/0"; _status = "Copiado. No Teams, escolha o chat ou canal e cole com Ctrl+V."; }
+        else _status = "Teams aberto com a mensagem (também copiada).";
+        await E.Nav.AbrirUrl(url);
+    }
+
+    async Task Abrir(List<Arquivo> cs)
+    {
+        await E.Executar(prog => Estrategia.Preparar(cs, prog),
+            async b => { E.EstBase = b; _dia = Estrategia.DiaPadrao(b); _dataFluxos = _dia; _ass = null; await Task.CompletedTask; },
+            async ex => { _ass = null; await J.Erro("Erro ao ler o compilado", Estado.Mensagem(ex)); },
+            (s, _) => E.SubEst = $"Lendo {cs.Count} compilado(s)… {s}s");
+    }
+
+    async Task AbrirLista(List<Arquivo> arqs)
+    {
+        var a = arqs[0];
+        List<string> lista;
+        try { lista = await Compilados.LerListaUsuarios(a); }
+        catch (Exception ex) { await J.Erro("Erro ao ler a lista", Estado.Mensagem(ex)); return; }
+        if (lista.Count == 0) { await J.Aviso("Lista de usuários", "Não achei nenhum usuário nessa planilha."); return; }
+        E.VolLista = lista; E.VolListaNome = a.Nome; _ass = null;
+    }
+
+    async Task ColarLista()
+    {
+        var txt = await J.Entrada("Colar lista de usuários", "Um usuário por linha (ex.: gabriel.militz). Vírgula ou ponto e vírgula também servem.", string.Join("\n", E.VolLista), true);
+        if (txt == null) return;
+        E.VolLista = Compilados.ExtrairUsuarios(new[] { txt });
+        E.VolListaNome = "lista colada";
+        _ass = null;
+    }
+}

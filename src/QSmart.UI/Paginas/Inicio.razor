@@ -104,7 +104,7 @@
         "Decisões" => "aprovações, reprovações e quem decide",
         "Inspeção" => "desvios, inspeções internas e histórico mensal",
         "Conformidade" => "pareceres conferidos com o padrão",
-        "Operação" => "volume, ociosidade e consolidação de arquivos",
+        "Operação" => "volume, ociosidade, consolidação de arquivos e estratégia do dia",
         "Coordenação" => "férias da equipe, produtividade do mês e projetos",
         _ => "diagnóstico das planilhas",
     };
@@ -116,6 +116,7 @@
         "historico" when E.Historico.Count > 0 => $"{E.Historico.Count} mês(es) no histórico",
         "pareceres" when E.ParDf != null => $"{E.ParArquivo?.Nome} carregado",
         "inspecao" when E.IntRes != null => $"{E.IntRes.Arquivo} carregado",
+        "estrategia" when E.EstBase != null => $"{E.EstBase.Arquivos.Count} compilado(s) anexado(s)",
         "volume" when E.VolComp != null => $"{E.VolComp.Arquivos.Count} compilado(s) anexado(s)",
         "monitor" when E.MonBase != null => $"{E.MonBase.Arquivos.Count} planilha(s) anexada(s)",
         "corredor" when E.CorItens.Count > 0 => $"{E.CorItens.Count} compilado(s) na fila",
