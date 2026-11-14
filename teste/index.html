@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-tema="claro">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>QSmart · Insi</title>
+    <base href="/QSmart/teste/" />
+    <meta name="description" content="QSmart by Insi — plataforma de qualidade: decisões, inspeções, pareceres e operação. As planilhas são processadas no navegador." />
+    <meta name="theme-color" content="#F6F7FB" />
+    <link rel="icon" type="image/svg+xml" href="_content/QSmart.UI/img/qsmart-simbolo.svg" />
+    <link rel="icon" type="image/png" sizes="192x192" href="icone-192.png" />
+    <link rel="apple-touch-icon" href="icone-192.png" />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="preload" href="_content/QSmart.UI/fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="_content/QSmart.UI/css/qsmart.css" />
+    <script>
+        // aplica o tema salvo antes de desenhar (evita piscar)
+        {
+            const teste = /\/teste\/?$/.test(new URL(document.baseURI).pathname);   // versão de teste: …/teste/
+            if (teste) document.documentElement.dataset.ambiente = 'teste';
+            try { const p = JSON.parse(localStorage.getItem((teste ? 'qsmart-teste' : 'qsmart') + ':tema') || 'null'); if (p) document.documentElement.dataset.tema = p; } catch (e) { }
+        }
+    </script>
+    <style>
+        #qs-carregando .qc-barra i { width: var(--blazor-load-percentage, 30%); animation: none; transition: width .2s; }
+        #qs-carregando .qc-pct::after { content: var(--blazor-load-percentage-text, ""); }
+        #blazor-error-ui { display: none; position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 1000; background: #FDECEC; color: #7F1D1D;
+            border: 1px solid #F8B4B4; border-radius: 12px; padding: 12px 16px; font: 500 13.5px Inter, sans-serif; box-shadow: 0 10px 30px -10px rgba(0,0,0,.35); }
+        #blazor-error-ui a { color: #7F1D1D; font-weight: 700; margin-left: 10px; }
+    </style>
+</head>
+<body>
+    <div id="qs-carregando" aria-label="Carregando o QSmart">
+        <div class="qc">
+            <svg viewBox="0 0 64 64" width="84" height="84" aria-hidden="true">
+                <defs><linearGradient id="qcg" x1="6" y1="4" x2="60" y2="62" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#4F46E5" /><stop offset=".55" stop-color="#4361EE" /><stop offset="1" stop-color="#06B6D4" /></linearGradient></defs>
+                <rect width="64" height="64" rx="16" fill="url(#qcg)" />
+                <path d="M44.6 27.6 A15.5 15.5 0 1 1 33.6 17.6" fill="none" stroke="#fff" stroke-width="5.6" stroke-linecap="round" />
+                <path d="M39.6 42.2 L48.6 51.2" fill="none" stroke="#fff" stroke-width="5.6" stroke-linecap="round" />
+                <path d="M23.2 32.4 L28.6 37.6 L45.2 18.4" fill="none" stroke="#fff" stroke-width="5.6" stroke-linecap="round" stroke-linejoin="round" />
+                <path d="M51.5 6.5 L53.1 10.9 L57.5 12.5 L53.1 14.1 L51.5 18.5 L49.9 14.1 L45.5 12.5 L49.9 10.9 Z" fill="#CFFAFE" />
+            </svg>
+            <div class="qc-nome"><b>Q</b>Smart</div>
+            <div class="qc-emp">BY INSI</div>
+            <div class="qc-barra"><i></i></div>
+        </div>
+    </div>
+    <div id="app"></div>
+    <div id="blazor-error-ui">Ocorreu um erro inesperado no QSmart.<a href="" class="reload">Recarregar</a></div>
+    <script src="_content/QSmart.UI/js/qsmart.js"></script>
+    <script src="_framework/blazor.webassembly.js"></script>
+</body>
+</html>

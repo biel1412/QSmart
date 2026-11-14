@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 72" role="img" aria-label="QSmart by Insi">
+  <defs>
+    <linearGradient id="qs-g" x1="6" y1="4" x2="60" y2="62" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#4F46E5"/><stop offset="0.55" stop-color="#4361EE"/><stop offset="1" stop-color="#06B6D4"/>
+    </linearGradient>
+    <linearGradient id="qs-b" x1="0" y1="0" x2="0" y2="64" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity=".22"/><stop offset=".5" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="qs-t" x1="84" y1="0" x2="150" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#4F46E5"/><stop offset="1" stop-color="#0891B2"/>
+    </linearGradient>
+  </defs>
+  <g transform="translate(4 4)"><rect width="64" height="64" rx="16" fill="url(#qs-g)"/>
+  <rect width="64" height="64" rx="16" fill="url(#qs-b)"/>
+  <path d="M44.6 27.6 A15.5 15.5 0 1 1 33.6 17.6" fill="none" stroke="#FFFFFF" stroke-width="5.6" stroke-linecap="round"/>
+  <path d="M39.6 42.2 L48.6 51.2" fill="none" stroke="#FFFFFF" stroke-width="5.6" stroke-linecap="round"/>
+  <path d="M23.2 32.4 L28.6 37.6 L45.2 18.4" fill="none" stroke="#FFFFFF" stroke-width="5.6" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M51.5 6.5 L53.1 10.9 L57.5 12.5 L53.1 14.1 L51.5 18.5 L49.9 14.1 L45.5 12.5 L49.9 10.9 Z" fill="#CFFAFE"/></g>
+  <text x="84" y="44" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="34" font-weight="800" letter-spacing="-1" fill="url(#qs-t)">Q<tspan fill="#0F1222" font-weight="700">Smart</tspan></text>
+  <text x="86" y="62" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="11.5" font-weight="600" letter-spacing="2.4" fill="#6B7083">BY INSI</text>
+</svg>
