@@ -15,12 +15,12 @@
   --bg: #F5F6FB; --surface: #FFFFFF; --surface2: #EEF0F7; --surface3: #E6E9F3;
   --ink: #101326; --ink2: #2B3050; --muted: #6A7090; --line: #E3E6F0; --line2: #D3D8E8;
   --accent: #0D9488; --accent-h: #0F766E; --on-accent: #FFFFFF; --accent-soft: #E1F6F2; --accent2: #8B5CF6;
-  --grad: linear-gradient(135deg, #059669 0%, #0891B2 50%, #7C3AED 100%);
+  --grad: linear-gradient(135deg, #059669 0%, #0891B2 38%, #7C3AED 100%);
   --green: #16A34A; --red: #DC2626; --blue: #0EA5E9; --amber: #D97706; --purple: #8B5CF6; --orange: #EA580C;
   --green-soft: #E8F7EE; --red-soft: #FDECEC; --amber-soft: #FEF3E2; --orange-soft: #FDE8DA;
   --err-bg: #FDECEC; --sel: #E4E6FF; --row-alt: #FAFBFE; --warn: #B45309;
   --side: #04161B; --side2: #08242C; --side-ink: #E6F4F1; --side-muted: #86A8A6; --side-hover: rgba(255,255,255,.06);
-  --side-active: rgba(45,212,191,.20); --side-line: rgba(255,255,255,.08); --side-bar: #5EEAD4;
+  --side-active: linear-gradient(90deg, rgba(45,212,191,.20), rgba(139,92,246,.20)); --side-line: rgba(255,255,255,.08); --side-bar: #5EEAD4;
   --shadow-1: 0 1px 2px rgba(16,19,38,.05), 0 1px 1px rgba(16,19,38,.03);
   --shadow-2: 0 10px 30px -12px rgba(30,27,95,.25), 0 2px 6px rgba(16,19,38,.06);
   --shadow-3: 0 24px 60px -18px rgba(16,19,38,.45);
@@ -34,7 +34,7 @@
   --green-soft: #12301F; --red-soft: #3A1D22; --amber-soft: #3A2A12; --orange-soft: #3A2214;
   --err-bg: #3A1D22; --sel: #262D63; --row-alt: #141932; --warn: #E3B341;
   --side: #020C0F; --side2: #06181D; --side-ink: #E3F2EF; --side-muted: #7A9C9A; --side-hover: rgba(255,255,255,.05);
-  --side-active: rgba(45,212,191,.16); --side-line: rgba(255,255,255,.06);
+  --side-active: linear-gradient(90deg, rgba(45,212,191,.16), rgba(139,92,246,.18)); --side-line: rgba(255,255,255,.06);
   --shadow-1: 0 1px 2px rgba(0,0,0,.4); --shadow-2: 0 12px 30px -12px rgba(0,0,0,.7); --shadow-3: 0 24px 60px -18px rgba(0,0,0,.8);
   color-scheme: dark;
 }
@@ -78,7 +78,7 @@ a { color: var(--accent); }
 
 /* ---------------- menu lateral ---------------- */
 .lateral { position: relative; z-index: 30; display: flex; flex-direction: column; gap: 2px; height: 100vh; overflow: hidden;
-  padding: 0 12px 14px; color: var(--side-ink); background: radial-gradient(90% 40% at 0% 0%, rgba(16,185,129,.42), transparent 60%), radial-gradient(80% 35% at 100% 30%, rgba(139,92,246,.30), transparent 65%), radial-gradient(70% 30% at 0% 80%, rgba(34,211,238,.20), transparent 65%), linear-gradient(180deg, var(--side2), var(--side)); }
+  padding: 0 12px 14px; color: var(--side-ink); background: radial-gradient(90% 38% at 0% 0%, rgba(16,185,129,.38), transparent 60%), radial-gradient(95% 42% at 100% 32%, rgba(139,92,246,.42), transparent 66%), radial-gradient(80% 32% at 0% 82%, rgba(124,58,237,.22), transparent 66%), radial-gradient(60% 25% at 100% 100%, rgba(34,211,238,.14), transparent 65%), linear-gradient(180deg, #0A1F2E, #0A1424); }
 .lateral::after { content: ""; position: absolute; right: 0; top: 0; bottom: 0; width: 1px; background: var(--side-line); }
 .marca { display: flex; align-items: center; gap: 12px; height: 72px; padding: 0 6px; flex: none; }
 .marca-link { display: flex; border-radius: 12px; }
@@ -313,7 +313,7 @@ input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--accent); c
 /* ---------------- menu inicial ---------------- */
 .inicio { padding: 28px 32px 34px; display: flex; flex-direction: column; gap: 22px; max-width: 1360px; }
 .boas-vindas { position: relative; display: flex; align-items: center; gap: 30px; padding: 30px 34px; border-radius: 20px; overflow: hidden; color: #fff;
-  background: radial-gradient(70% 140% at 100% 0%, rgba(139,92,246,.55), transparent 60%), radial-gradient(60% 120% at 55% 120%, rgba(34,211,238,.40), transparent 60%), radial-gradient(70% 120% at 0% 100%, rgba(52,211,153,.55), transparent 60%), linear-gradient(120deg, #052E2B, #0B3B47 45%, #1E1B4B); box-shadow: var(--shadow-2); }
+  background: radial-gradient(80% 150% at 100% 0%, rgba(139,92,246,.68), transparent 62%), radial-gradient(60% 120% at 55% 120%, rgba(34,211,238,.34), transparent 60%), radial-gradient(65% 120% at 0% 100%, rgba(52,211,153,.48), transparent 60%), linear-gradient(120deg, #06302D, #0D3447 40%, #2A1B5E); box-shadow: var(--shadow-2); }
 .boas-vindas::after { content: ""; position: absolute; inset: 0; background-image: radial-gradient(rgba(255,255,255,.14) 1px, transparent 1px); background-size: 18px 18px; mask-image: linear-gradient(90deg, transparent 30%, #000); pointer-events: none; }
 .bv-texto { position: relative; z-index: 1; flex: 1 1 auto; min-width: 0; }
 .bv-saudacao { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 20px; background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.18); font-size: 12px; font-weight: 600; color: #CCFBF1; }
