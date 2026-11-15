@@ -125,12 +125,12 @@
                     <div class="est-bloco">
                         <span class="est-bloco-tit">Início do dia <span class="muted">(digite)</span></span>
                         <div class="est-filas">
-                            <span></span><span class="etq-campo">Páginas</span><span class="etq-campo">Fluxos</span>
+                            <span></span><span class="etq-campo">Páginas</span><span class="etq-campo" title="Calculado: páginas × 15 (pode ajustar)">Fluxos <span class="muted">(páginas × 15)</span></span>
                             <span class="est-fila">Centralizada</span>
-                            <input class="campo num" placeholder="x" @bind="M.CentralizadaPaginas" @bind:event="oninput" @bind:after="Salvar" />
+                            <input class="campo num" placeholder="x" @bind="M.CentralizadaPaginas" @bind:event="oninput" @bind:after="() => Paginas(true)" />
                             <input class="campo num" placeholder="x" @bind="M.CentralizadaFluxos" @bind:event="oninput" @bind:after="Salvar" />
                             <span class="est-fila">Autorizar</span>
-                            <input class="campo num" placeholder="x" @bind="M.AutorizarPaginas" @bind:event="oninput" @bind:after="Salvar" />
+                            <input class="campo num" placeholder="x" @bind="M.AutorizarPaginas" @bind:event="oninput" @bind:after="() => Paginas(false)" />
                             <input class="campo num" placeholder="x" @bind="M.AutorizarFluxos" @bind:event="oninput" @bind:after="Salvar" />
                         </div>
                     </div>
@@ -238,6 +238,18 @@
         E.EstMsg.DataFluxos = Texto.Dmy(_dataFluxos);
         E.EstMsg.VolumeComData = Estrategia.Num(Estrategia.RealizadoComData(b, _dia, _dataFluxos, Lista()));
         _ = E.SalvarEstMsg();
+    }
+
+    const int FluxosPorPagina = 15;
+
+    /// <summary>Ao digitar as páginas, preenche os fluxos (páginas × 15).</summary>
+    async Task Paginas(bool centralizada)
+    {
+        var M = E.EstMsg;
+        var txt = (centralizada ? M.CentralizadaPaginas : M.AutorizarPaginas).Trim().Replace(".", "");
+        var fluxos = int.TryParse(txt, NumberStyles.None, CultureInfo.InvariantCulture, out var n) ? Estrategia.Num((long)n * FluxosPorPagina) : "";
+        if (centralizada) M.CentralizadaFluxos = fluxos; else M.AutorizarFluxos = fluxos;
+        await Salvar();
     }
 
     async Task Salvar() { _status = ""; await E.SalvarEstMsg(); }
