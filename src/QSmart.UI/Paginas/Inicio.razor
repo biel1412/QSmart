@@ -43,6 +43,9 @@
     </section>
 
     @{ var visiveis = Abas.Todas.Where(a => E.AbaAtiva(a.Chave) && Combina(a)).ToList(); }
+    <section class="vitrine">
+        <span class="vt-luz l1"></span><span class="vt-luz l2"></span><span class="vt-luz l3"></span>
+        <div class="vt-conteudo">
     @if (visiveis.Count == 0)
     {
         <div class="g-vazio grande">Nenhum módulo corresponde a “@_busca”.</div>
@@ -52,7 +55,7 @@
         var itens = visiveis.Where(a => a.Grupo == g).ToList();
         if (itens.Count == 0) continue;
         <section class="grupo-mod">
-            <h2 class="grupo-titulo"><span class="gt-barra g-@Indice(g)"></span>@g <span class="gt-desc">@DescGrupo(g)</span></h2>
+            <h2 class="grupo-titulo"><span class="gt-ponto g-@Indice(g)"></span>@g <span class="gt-desc">@DescGrupo(g)</span></h2>
             <div class="cartoes">
                 @foreach (var a in itens)
                 {
@@ -69,6 +72,8 @@
             </div>
         </section>
     }
+        </div>
+    </section>
     <p class="inicio-rodape"><Icone Nome="escudo" Tamanho="15" /> QSmart · Insi — seus arquivos são processados no navegador e não são enviados para nenhum servidor.</p>
 </div>
 
@@ -105,7 +110,7 @@
         "Inspeção" => "desvios, inspeções internas e histórico mensal",
         "Conformidade" => "pareceres conferidos com o padrão",
         "Operação" => "volume, ociosidade, consolidação de arquivos e estratégia do dia",
-        "Coordenação" => "férias da equipe, produtividade do mês e projetos",
+        "Coordenação" => "férias da equipe e produtividade do mês",
         _ => "diagnóstico das planilhas",
     };
 
