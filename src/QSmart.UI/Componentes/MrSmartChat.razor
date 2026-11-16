@@ -1,0 +1,112 @@
+@using QSmart.Core
+@inject NavigationManager Rotas
+@implements IDisposable
+
+<div class="mr-fab @(_aberto ? "aberto" : "")">
+    @if (!_aberto && _dica)
+    {
+        <button class="mr-dica" @onclick="Abrir"><b>Precisa de ajuda?</b><span>Fale com o Mr Smart</span><i @onclick="FecharDica" @onclick:stopPropagation="true" title="Fechar">✕</i></button>
+    }
+    <button class="mr-btn" @onclick="Alternar" title="@(_aberto ? "Fechar o Mr Smart" : "Mr Smart · suporte do QSmart")" aria-label="Mr Smart">
+        @if (_aberto) { <span class="mr-x">✕</span> } else { <MrSmartLogo Tamanho="46" /> <span class="mr-on"></span> }
+    </button>
+</div>
+
+@if (_aberto)
+{
+    <div class="mr-jan" role="dialog" aria-label="Mr Smart">
+        <div class="mr-cab">
+            <MrSmartLogo Tamanho="42" />
+            <div><b>Mr Smart</b><span><i></i>Suporte do QSmart · online</span></div>
+            <button class="mr-cab-bt" @onclick="Limpar" title="Nova conversa">↺</button>
+            <button class="mr-cab-bt" @onclick="Alternar" title="Fechar">✕</button>
+        </div>
+        <div class="mr-corpo">
+            <div class="mr-rolagem">
+                @for (int i = _msgs.Count - 1; i >= 0; i--)
+                {
+                    var m = _msgs[i];
+                    if (m.eu)
+                    {
+                        <div class="mr-msg eu">@m.texto</div>
+                    }
+                    else
+                    {
+                        <div class="mr-linha">
+                            <MrSmartLogo Tamanho="26" />
+                            <div class="mr-msg bot">
+                                @((MarkupString)m.texto)
+                                @if (m.aba is string ch && Abas.Por(ch) is Aba a)
+                                {
+                                    <button class="mr-atalho" @onclick="() => Ir(a)"><Icone Nome="@a.Icone" Tamanho="15" /> Abrir @a.Nome <Icone Nome="seta" Tamanho="14" /></button>
+                                }
+                                @if (m.sugestoes != null)
+                                {
+                                    <div class="mr-chips">@foreach (var s in m.sugestoes) { <button class="mr-chip" @onclick="() => Perguntar(s)">@s</button> }</div>
+                                }
+                            </div>
+                        </div>
+                    }
+                }
+            </div>
+        </div>
+        <div class="mr-pe">
+            <input class="mr-campo" placeholder="Escreva sua dúvida…" @bind="_texto" @bind:event="oninput" @onkeydown="Tecla" id="mr-campo" autocomplete="off" />
+            <button class="mr-enviar" @onclick="Enviar" disabled="@string.IsNullOrWhiteSpace(_texto)" title="Enviar">➤</button>
+        </div>
+        <div class="mr-rod">Mr Smart · respostas prontas, nada sai do seu computador</div>
+    </div>
+}
+
+@code {
+    bool _aberto, _dica = true;
+    string _texto = "";
+    readonly List<(bool eu, string texto, string? aba, string[]? sugestoes)> _msgs = new();
+    System.Threading.Timer? _t;
+
+    protected override void OnInitialized()
+    {
+        Inicio();
+        _t = new System.Threading.Timer(_ => { _dica = false; InvokeAsync(StateHasChanged); }, null, 9000, System.Threading.Timeout.Infinite);
+    }
+
+    void Inicio()
+    {
+        _msgs.Clear();
+        _msgs.Add((false, "Olá! Eu sou o <b>Mr Smart</b> 👋<br>Posso te ajudar a encontrar uma ferramenta, explicar um cálculo ou tirar dúvidas sobre as planilhas.", null, MrSmart.Sugestoes));
+    }
+
+    void Alternar() { _aberto = !_aberto; _dica = false; }
+    void Abrir() { _aberto = true; _dica = false; }
+    void FecharDica() => _dica = false;
+    void Limpar() { Inicio(); _texto = ""; }
+
+    void Tecla(KeyboardEventArgs e) { if (e.Key == "Enter") Enviar(); else if (e.Key == "Escape") _aberto = false; }
+
+    void Enviar()
+    {
+        var t = _texto.Trim();
+        if (t == "") return;
+        _texto = "";
+        Perguntar(t);
+    }
+
+    void Perguntar(string t)
+    {
+        _msgs.Add((true, t, null, null));
+        if (MrSmart.Conversa(t) is string c) { _msgs.Add((false, c, null, null)); return; }
+        var r = MrSmart.Responder(t);
+        if (r != null) _msgs.Add((false, System.Net.WebUtility.HtmlEncode(r.Texto), r.Aba, null));
+        else _msgs.Add((false, "Hmm, ainda não sei responder isso. 🤔 Tente com outras palavras ou escolha um dos assuntos abaixo. Se for algo específico, fale com a coordenação.", null,
+            MrSmart.Base.OrderBy(_ => Random.Shared.Next()).Take(4).Select(x => x.Pergunta).ToArray()));
+    }
+
+    void Ir(Aba a)
+    {
+        if (a.Externo) return;
+        Rotas.NavigateTo(a.Rota);
+        _aberto = false;
+    }
+
+    public void Dispose() => _t?.Dispose();
+}
