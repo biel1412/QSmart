@@ -138,7 +138,17 @@ public sealed class Estado
         CoordCarregada = true;
         try { Ferias = Core.Coordenacao.Ferias.Ler(await Nav.Ler(ChFerias)); } catch { Ferias = new(); }
         try { EstMsg = QSmart.Core.Operacao.Estrategia.Ler(await Nav.Ler(ChEstrategia)); } catch { EstMsg = new(); }
-        try { PtsJust = PontosAcao.LerJustificativas(await Nav.Ler(ChPtsJust)); } catch { PtsJust = new(); }
+        try
+        {
+            var j = await Dados.LerJustificativas();
+            if (j == null && await Nav.Ler(ChPtsJust) is string antigo)          // versão anterior: só no navegador → passa para o arquivo
+            {
+                j = antigo;
+                await Dados.SalvarJustificativas(PontosAcao.GravarJustificativas(PontosAcao.LerJustificativas(antigo)));
+            }
+            PtsJust = PontosAcao.LerJustificativas(j);
+        }
+        catch { PtsJust = new(); }
     }
 
     public async Task SalvarFerias()
@@ -150,7 +160,7 @@ public sealed class Estado
 
     public async Task SalvarPtsJust()
     {
-        if (!await Nav.Gravar(ChPtsJust, PontosAcao.GravarJustificativas(PtsJust)))
+        if (!await Dados.SalvarJustificativas(PontosAcao.GravarJustificativas(PtsJust)))
             await Janelas.Erro("Pontos de ação", "Não foi possível salvar a justificativa neste navegador.");
         Notificar();
     }

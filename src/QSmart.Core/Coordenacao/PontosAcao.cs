@@ -91,6 +91,19 @@ public static class PontosAcao
     public static string Mes(ResultadoPontos r) => r.Dias.Count > 0 ? r.Dias[^1].ToString("yyyy-MM", System.Globalization.CultureInfo.InvariantCulture) : "";
 
     /// <summary>Justificativas por mês: { "2026-09": { "USUARIO": "Líder técnico" } }.</summary>
+    /// <summary>
+    /// Justificativa do usuário no mês. Se o mês não tem nada para ele, repete a do mês anterior mais recente
+    /// (herdada = true), para não precisar justificar de novo todo mês. "" no mês = tirada de propósito.
+    /// </summary>
+    public static (string? valor, bool herdada) Justificativa(Dictionary<string, Dictionary<string, string>> todas, string mes, string usuario)
+    {
+        var k = ChaveUsuario(usuario);
+        if (todas.TryGetValue(mes, out var d) && d.TryGetValue(k, out var v)) return (v == "" ? null : v, false);
+        foreach (var m in todas.Keys.Where(m => string.CompareOrdinal(m, mes) < 0).OrderByDescending(m => m, StringComparer.Ordinal))
+            if (todas[m].TryGetValue(k, out var a)) return (a == "" ? null : a, a != "");
+        return (null, false);
+    }
+
     public static Dictionary<string, Dictionary<string, string>> LerJustificativas(string? json)
     {
         var r = new Dictionary<string, Dictionary<string, string>>();
@@ -100,7 +113,7 @@ public static class PontosAcao
             if (v is not JsonObject us) continue;
             var d = new Dictionary<string, string>();
             foreach (var (u, j) in us)
-                if (j is JsonValue jv && jv.TryGetValue<string>(out var t) && Justificativas.Contains(t)) d[u] = t;
+                if (j is JsonValue jv && jv.TryGetValue<string>(out var t) && (t == "" || Justificativas.Contains(t))) d[u] = t;   // "" = tirada de propósito neste mês
             r[mes] = d;
         }
         return r;

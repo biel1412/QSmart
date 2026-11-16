@@ -83,8 +83,8 @@ public sealed class InfoBackup
 /// Ficam na pasta de dados escolhida pelo usuário (como no original) ou, sem pasta escolhida, no próprio navegador.</summary>
 public sealed class Dados
 {
-    public const string ChHistorico = "historico_qualidade.json", ChPrefs = "preferencias.json", ChPareceres = "pareceres_padrao.json";
-    public static readonly string[] Arquivos = { ChHistorico, ChPrefs, ChPareceres };
+    public const string ChHistorico = "historico_qualidade.json", ChPrefs = "preferencias.json", ChPareceres = "pareceres_padrao.json", ChJustificativas = "pontos_justificativas.json";
+    public static readonly string[] Arquivos = { ChHistorico, ChPrefs, ChPareceres, ChJustificativas };
     const string ChIndiceBackup = "backups/indice";
     readonly Navegador _nav;
     public Dados(Navegador nav) { _nav = nav; }
@@ -243,6 +243,9 @@ public sealed class Dados
         try { return ConfigPareceres.DeJson(await Ler(ChPareceres)); } catch { return new ConfigPareceres(); }
     }
     public async Task<bool> SalvarPareceres(ConfigPareceres c) => await Gravar(ChPareceres, c.ParaJson());
+
+    public async Task<string?> LerJustificativas() { try { return await Ler(ChJustificativas); } catch { return null; } }
+    public async Task<bool> SalvarJustificativas(string json) => await Gravar(ChJustificativas, json);
 
     // ---------------- backup ----------------
     /// <summary>Onde ficam os backups: pasta de backup escolhida; senão a subpasta “backups” da pasta de dados; senão o navegador.</summary>
