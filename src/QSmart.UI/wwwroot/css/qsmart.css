@@ -811,3 +811,61 @@ button.fer-alerta:hover { filter: brightness(.97); }
 .fer-cal-dia.choque { border-color: var(--red); background: color-mix(in srgb, var(--red) 8%, var(--surface2)); }
 .fer-cal-dia i { display: block; font-style: normal; font-size: 10.5px; font-weight: 650; color: #0A0F1C; padding: 1px 5px; border-radius: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .fer-cal-dia i.mais { background: var(--line); color: var(--ink); }
+
+/* Férias: raias com brilho e linha do tempo com cartões (painel escuro) */
+.fer-vis { position: relative; overflow: hidden; isolation: isolate; border-radius: 20px; padding: 18px 20px 22px; background: #070B16; color: #E2E8F0; border: 1px solid rgba(255,255,255,.06); box-shadow: 0 24px 50px -30px rgba(7,11,22,.8); }
+.fer-vis::before, .fer-vis::after { content: ''; position: absolute; z-index: -1; border-radius: 50%; filter: blur(110px); pointer-events: none; }
+.fer-vis::before { width: 420px; height: 420px; left: -180px; top: -160px; background: #059669; opacity: .18; }
+.fer-vis::after { width: 480px; height: 480px; right: -200px; bottom: -220px; background: #7C3AED; opacity: .22; }
+.fer-vis-cab { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+.fer-vis-cab > b { font-size: 15px; color: #F8FAFC; }
+.fer-vis-nota { font-size: 12.5px; color: #8B98AD; }
+.fer-vis-seg { margin-left: auto; display: flex; padding: 3px; border-radius: 11px; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.08); }
+.fer-vis-seg button { border: 0; background: none; color: #CBD5E1; font: inherit; font-size: 12.5px; font-weight: 650; padding: 6px 14px; border-radius: 8px; cursor: pointer; }
+.fer-vis-seg button.on { background: linear-gradient(135deg, #0D9488, #7C3AED); color: #fff; box-shadow: 0 6px 14px -8px #7C3AED; }
+.fer-vis-vazio { padding: 30px; text-align: center; color: #8B98AD; }
+.fer-av { flex: none; display: inline-grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; font-size: 11.5px; font-weight: 800; color: #0A0F1C; background: var(--c); box-shadow: 0 0 0 3px #070B16, 0 0 16px -4px var(--c); }
+.fer-raias { display: flex; flex-direction: column; }
+.fer-raia { display: grid; grid-template-columns: 200px 1fr; align-items: center; min-height: 52px; }
+.fer-raia-cab { min-height: 26px; }
+.fer-raia-trilho { position: relative; height: 34px; }
+.fer-raia-cab .fer-raia-trilho { height: 20px; }
+.fer-raia-mes { position: absolute; top: 0; padding-left: 6px; font-size: 11.5px; font-weight: 700; letter-spacing: .12em; color: #8B98AD; white-space: nowrap; }
+.fer-raias-corpo { position: relative; }
+.fer-raias-fundo { position: absolute; left: 200px; right: 0; top: 0; bottom: 0; pointer-events: none; }
+.fer-raias-fundo > span { pointer-events: auto; }
+.fer-raia-div { position: absolute; top: -26px; bottom: 0; width: 1px; background: rgba(255,255,255,.06); }
+.fer-raia-choque { position: absolute; top: -6px; bottom: 0; border-radius: 6px; background: rgba(248,113,113,.10); border-top: 3px solid #F87171; }
+.fer-raia-hoje { position: absolute; top: -26px; bottom: 0; width: 2px; margin-left: -1px; background: #2DD4BF; box-shadow: 0 0 10px #2DD4BF; }
+.fer-raia-nome { display: flex; align-items: center; gap: 10px; min-width: 0; padding-right: 10px; }
+.fer-raia-nome > div { min-width: 0; } .fer-raia-nome b { display: block; font-size: 13.5px; color: #F1F5F9; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fer-raia-nome small { font-size: 11.5px; color: #64748B; }
+.fer-raia-barra { position: absolute; top: 2px; height: 30px; border-radius: 15px; padding: 0 12px; display: flex; align-items: center; font-size: 12px; font-weight: 800; color: #0A0F1C; white-space: nowrap; overflow: hidden;
+  background: linear-gradient(90deg, var(--c), color-mix(in srgb, var(--c) 60%, transparent)); box-shadow: 0 0 22px -4px var(--c); min-width: 8px; z-index: 1; }
+.fer-tl { position: relative; height: calc(var(--acima) * 112px + var(--abaixo) * 112px + 60px); --topo: calc(var(--acima) * 112px + 20px); margin: 0 8px; }
+.fer-tl-eixo { position: absolute; left: 0; right: 0; top: var(--topo); height: 8px; border-radius: 4px; background: linear-gradient(90deg, #10B981, #0891B2, #7C3AED); }
+.fer-tl-mes { position: absolute; top: -4px; } .fer-tl-mes i { display: block; width: 14px; height: 14px; margin-left: -7px; border-radius: 50%; background: #070B16; border: 2px solid #fff; }
+.fer-tl-mes b { position: absolute; top: 20px; left: 0; transform: translateX(-50%); font-size: 11.5px; letter-spacing: .1em; color: #CBD5E1; }
+.fer-tl-hoje { position: absolute; top: -12px; width: 3px; height: 32px; margin-left: -1.5px; border-radius: 2px; background: #2DD4BF; box-shadow: 0 0 10px #2DD4BF; }
+.fer-tl-ponto { position: absolute; top: calc(var(--topo) - 2px); width: 12px; height: 12px; margin-left: -6px; border-radius: 50%; background: var(--c); box-shadow: 0 0 10px var(--c); z-index: 2; }
+.fer-tl-haste { position: absolute; width: 2px; margin-left: -1px; background: var(--c); }
+.fer-tl-haste.cima { bottom: calc(100% - var(--topo)); height: calc(var(--n) * 112px + 14px); }
+.fer-tl-haste.baixo { top: calc(var(--topo) + 8px); height: calc(var(--n) * 112px + 14px); }
+.fer-tl-card { position: absolute; width: 190px; margin-left: -95px; height: 96px; padding: 11px 12px; border-radius: 16px; background: rgba(255,255,255,.05); border: 1px solid color-mix(in srgb, var(--c) 40%, transparent);
+  backdrop-filter: blur(10px); box-shadow: 0 0 26px -12px var(--c); z-index: 3; }
+.fer-tl-card.cima { top: calc(var(--topo) - 110px - var(--n) * 112px); }
+.fer-tl-card.baixo { top: calc(var(--topo) + 22px + var(--n) * 112px); }
+.fer-tl-topo { display: flex; align-items: center; gap: 8px; } .fer-tl-topo .fer-av { width: 28px; height: 28px; font-size: 10.5px; }
+.fer-tl-topo b { font-size: 13px; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fer-tl-datas { margin-top: 7px; font-size: 12px; color: #CBD5E1; }
+.fer-tl-st { margin-top: 4px; font-size: 11.5px; font-weight: 700; } .fer-tl-st.ruim { color: #FCA5A5; } .fer-tl-st.bom { color: #6EE7B7; } .fer-tl-st.meio { color: #FDBA74; }
+.fer-raia-barra.curta { overflow: visible; padding: 0; }
+.fer-raia-barra.curta > span { position: absolute; left: calc(100% + 10px); color: #F1F5F9; font-weight: 700; text-shadow: 0 1px 6px #070B16; }
+.fer-tl-card { margin-left: -22px; }
+.fer-tl { margin: 0 20px; }
+.fer-tl-eixo { z-index: 4; }
+.fer-tl-mes b { top: 18px; padding: 1px 7px; border-radius: 8px; background: #0B1220; border: 1px solid rgba(255,255,255,.1); font-size: 10.5px; }
+.fer-tl-card.baixo { top: calc(var(--topo) + 40px + var(--n) * 112px); }
+.fer-tl-haste.baixo { height: calc(var(--n) * 112px + 32px); }
+.fer-tl { height: calc(var(--acima) * 112px + var(--abaixo) * 112px + 80px); }
+.fer-tl-ponto { z-index: 5; }

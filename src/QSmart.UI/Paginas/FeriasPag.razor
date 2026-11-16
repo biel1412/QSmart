@@ -145,43 +145,77 @@
                 </Painel>
             </div>
 
-            <Painel Titulo="Calendário" Nota="cada dia mostra quem está fora · borda vermelha = mais de uma pessoa do mesmo time fora" Classe="fer-painel">
-                <Extra>
-                    <div class="fer-cal-leg">
-                        @foreach (var (nome, cor) in _cores.Take(12)) { <span><i style="background:@cor"></i>@nome</span> }
+            <div class="fer-vis">
+                <div class="fer-vis-cab">
+                    <b>@(_vista == "raias" ? "Raias por pessoa" : "Linha do tempo")</b>
+                    <span class="fer-vis-nota">@(_vista == "raias" ? "barras com as férias de cada pessoa · colunas vermelhas = choque" : "um cartão em cada saída, no eixo do tempo")</span>
+                    <div class="fer-vis-seg">
+                        <button class="@(_vista == "raias" ? "on" : "")" @onclick="@(() => _vista = "raias")">Raias</button>
+                        <button class="@(_vista == "cartoes" ? "on" : "")" @onclick="@(() => _vista = "cartoes")">Cartões</button>
                     </div>
-                </Extra>
-                <ChildContent>
-                    @if (_meses.Count == 0)
-                    {
-                        <div class="g-vazio">Nenhum pedido@(Filtrando ? " com esses filtros" : "").</div>
-                    }
-                    <div class="fer-cal-meses">
-                        @foreach (var m in _meses)
-                        {
-                            <div class="fer-cal">
-                                <div class="fer-cal-tit">@Texto.MesesPt[m.Month - 1] @m.Year</div>
-                                <div class="fer-cal-grade">
-                                    @foreach (var ds in new[] { "seg", "ter", "qua", "qui", "sex", "sáb", "dom" }) { <div class="fer-cal-sem">@ds</div> }
-                                    @for (int k = 0; k < ((int)m.DayOfWeek + 6) % 7; k++) { <div class="fer-cal-dia vazio"></div> }
-                                    @for (var d = m; d.Month == m.Month; d = d.AddDays(1))
-                                    {
-                                        var dd = d;
-                                        var fora = _calVis.Where(p => p.Inicio <= dd && p.Fim >= dd).OrderBy(p => p.Colaborador).ToList();
-                                        var choque = fora.GroupBy(p => E.Ferias.PorEquipe ? Norm(p.Equipe) : "").Any(g => g.Select(p => Norm(p.Colaborador)).Distinct().Count() > 1);
-                                        <div class="fer-cal-dia @(choque ? "choque" : "") @(dd == _hojeD ? "hoje" : "") @(dd.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday ? "fds" : "")"
-                                             title="@(fora.Count == 0 ? Texto.Dmy(dd) : $"{Texto.Dmy(dd)}\n" + string.Join("\n", fora.Select(p => $"{p.Colaborador}{(p.Equipe != "" ? $" ({p.Equipe})" : "")}{(p.Vender ? " · vende" : "")}")))">
-                                            <b>@dd.Day</b>
-                                            @foreach (var p in fora.Take(3)) { <i style="background:@CorDe(p.Colaborador)">@Curto(p.Colaborador)</i> }
-                                            @if (fora.Count > 3) { <i class="mais">+@(fora.Count - 3)</i> }
-                                        </div>
-                                    }
+                </div>
+                @if (_calVis.Count == 0)
+                {
+                    <div class="fer-vis-vazio">Nenhum pedido@(Filtrando ? " com esses filtros" : "").</div>
+                }
+                else if (_vista == "raias")
+                {
+                    <div class="fer-raias">
+                        <div class="fer-raia fer-raia-cab">
+                            <div></div>
+                            <div class="fer-raia-trilho">
+                                @foreach (var m in MesesEixo()) { <span class="fer-raia-mes" style="left:@Pc(m)">@Texto.MesesPt[m.Month - 1][..3].ToUpperInvariant()@(m.Month == 1 || m == MesesEixo()[0] ? $" {m.Year % 100:00}" : "")</span> }
+                            </div>
+                        </div>
+                        <div class="fer-raias-corpo">
+                            <div class="fer-raias-fundo">
+                                @foreach (var m in MesesEixo()) { <span class="fer-raia-div" style="left:@Pc(m)"></span> }
+                                @foreach (var (de, ate) in Choques()) { <span class="fer-raia-choque" style="left:@Pc(de);width:@PcW(de, ate)" title="@($"Choque de {Texto.Dm(de)} a {Texto.Dm(ate)}")"></span> }
+                                @if (_hojeD >= _eixoIni && _hojeD <= _eixoFim) { <span class="fer-raia-hoje" style="left:@Pc(_hojeD)" title="Hoje"></span> }
+                            </div>
+                            @foreach (var g in _calVis.GroupBy(p => Norm(p.Colaborador)).OrderBy(g => g.Min(p => p.Inicio)))
+                            {
+                                var p0 = g.First(); var cor = CorDe(p0.Colaborador);
+                                <div class="fer-raia">
+                                    <div class="fer-raia-nome"><span class="fer-av" style="--c:@cor">@Iniciais(p0.Colaborador)</span><div><b title="@p0.Colaborador">@p0.Colaborador</b><small>@(p0.Equipe == "" ? "sem time" : p0.Equipe)</small></div></div>
+                                    <div class="fer-raia-trilho">
+                                        @foreach (var p in g)
+                                        {
+                                            var curta = (Math.Min(p.Fim.DayNumber, _eixoFim.DayNumber) - Math.Max(p.Inicio.DayNumber, _eixoIni.DayNumber) + 1) * 880.0 / EixoDias < 118;
+                                            <span class="fer-raia-barra @(curta ? "curta" : "")" style="--c:@cor;left:@Pc(p.Inicio);width:@PcW(p.Inicio, p.Fim)" title="@Dica(p, Ferias.Nivel(p, _alertas))">
+                                                <span>@Texto.Dm(p.Inicio) – @Texto.Dm(p.Fim)@(p.Vender ? " $" : "")</span>
+                                            </span>
+                                        }
+                                    </div>
                                 </div>
+                            }
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    var faixas = Faixas();
+                    int acima = faixas.Count(x => x.faixa % 2 == 0) == 0 ? 0 : faixas.Where(x => x.faixa % 2 == 0).Max(x => x.faixa / 2) + 1;
+                    int abaixo = faixas.Count(x => x.faixa % 2 == 1) == 0 ? 0 : faixas.Where(x => x.faixa % 2 == 1).Max(x => x.faixa / 2) + 1;
+                    <div class="fer-tl" style="--acima:@acima;--abaixo:@abaixo">
+                        <div class="fer-tl-eixo">
+                            @foreach (var m in MesesEixo()) { <span class="fer-tl-mes" style="left:@Pc(m)"><i></i><b>@Texto.MesesPt[m.Month - 1][..3].ToUpperInvariant()</b></span> }
+                            @if (_hojeD >= _eixoIni && _hojeD <= _eixoFim) { <span class="fer-tl-hoje" style="left:@Pc(_hojeD)" title="Hoje"></span> }
+                        </div>
+                        @foreach (var (p, fx) in faixas)
+                        {
+                            var cor = CorDe(p.Colaborador); var n = Ferias.Nivel(p, _alertas); bool cima = fx % 2 == 0; int nivel = fx / 2;
+                            <span class="fer-tl-ponto" style="--c:@cor;left:@Pc(p.Inicio)"></span>
+                            <span class="fer-tl-haste @(cima ? "cima" : "baixo")" style="--c:@cor;left:@Pc(p.Inicio);--n:@nivel"></span>
+                            <div class="fer-tl-card @(cima ? "cima" : "baixo")" style="--c:@cor;left:@Pc(p.Inicio);--n:@nivel" title="@Dica(p, n)">
+                                <div class="fer-tl-topo"><span class="fer-av" style="--c:@cor">@Iniciais(p.Colaborador)</span><b>@p.Colaborador</b></div>
+                                <div class="fer-tl-datas">@Texto.Dm(p.Inicio) → @Texto.Dm(p.Fim) · @(p.Dias)d</div>
+                                <div class="fer-tl-st @(n == NivelFerias.Choque ? "ruim" : n == NivelFerias.Ok ? "bom" : "meio")">@(n == NivelFerias.Choque ? "⚠ choque" : n == NivelFerias.Ok ? "✓ ok" : $"• {Ferias.NomeNivel(n).ToLowerInvariant()}")@(p.Vender ? " · vende" : "")</div>
                             </div>
                         }
                     </div>
-                </ChildContent>
-            </Painel>
+                }
+            </div>
 
             <Painel Titulo="Pedidos" Nota="@($"{_tabela.Count} de {d.Periodos.Count}")" Sangrar="true">
                 <div class="tabela-rolagem" style="max-height:460px">
@@ -242,6 +276,38 @@
     List<string> _clt = new();
     List<(string nome, string equipe, List<PeriodoFerias> periodos)> _linhas = new();
     List<DateOnly> _meses = new();
+    string _vista = "raias";
+    DateOnly _eixoIni, _eixoFim;
+    int EixoDias => Math.Max(1, _eixoFim.DayNumber - _eixoIni.DayNumber + 1);
+    string Pc(DateOnly d) => Pct(Math.Clamp(d.DayNumber - _eixoIni.DayNumber, 0, EixoDias), EixoDias);
+    string PcW(DateOnly a, DateOnly b) => Pct(Math.Max(1, Math.Min(b.DayNumber, _eixoFim.DayNumber) - Math.Max(a.DayNumber, _eixoIni.DayNumber) + 1), EixoDias);
+    List<DateOnly> MesesEixo() { var l = new List<DateOnly>(); for (var m = _eixoIni; m <= _eixoFim; m = m.AddMonths(1)) l.Add(m); return l; }
+    static string Iniciais(string nome) { var p = nome.Split('.', ' ', '_').Where(x => x != "").ToArray(); return (p.Length == 0 ? "?" : p.Length == 1 ? p[0][..Math.Min(2, p[0].Length)] : $"{p[0][0]}{p[1][0]}").ToUpperInvariant(); }
+    List<(DateOnly, DateOnly)> Choques()
+    {
+        var vis = _calVis.Select(p => p.Id).ToHashSet();
+        var l = _alertas.Where(a => a.Nivel == NivelFerias.Choque && a.De != null && (vis.Contains(a.A.Id) || vis.Contains(a.B.Id))).Select(a => (a.De!.Value, a.Ate!.Value)).OrderBy(x => x.Item1).ToList();
+        var r = new List<(DateOnly, DateOnly)>();
+        foreach (var x in l) { if (r.Count > 0 && x.Item1 <= r[^1].Item2.AddDays(1)) r[^1] = (r[^1].Item1, x.Item2 > r[^1].Item2 ? x.Item2 : r[^1].Item2); else r.Add(x); }
+        return r;
+    }
+    /// <summary>Distribui os cartões em faixas (0 = acima, 1 = abaixo, 2 = mais acima…) para não sobrepor.</summary>
+    List<(PeriodoFerias p, int faixa)> Faixas()
+    {
+        const double larg = 17.5;                                 // largura do cartão em % do eixo
+        var fim = new List<double>();
+        var r = new List<(PeriodoFerias, int)>();
+        foreach (var p in _calVis.OrderBy(p => p.Inicio).ThenBy(p => p.Colaborador))
+        {
+            double x = (p.Inicio.DayNumber - _eixoIni.DayNumber) * 100.0 / EixoDias;
+            int f = 0;
+            while (f < fim.Count && fim[f] > x) f++;
+            if (f == fim.Count) fim.Add(0);
+            fim[f] = x + larg;
+            r.Add((p, f));
+        }
+        return r;
+    }
     List<PeriodoFerias> _calVis = new();
     List<(string nome, string cor)> _cores = new();
     static readonly string[] Paleta = { "#38BDF8", "#A78BFA", "#34D399", "#F472B6", "#FBBF24", "#2DD4BF", "#FB923C", "#818CF8", "#A3E635", "#F87171", "#22D3EE", "#E879F9" };
@@ -309,6 +375,13 @@
         _alertasFilt = _filtroNivel < 0 ? _alertasVis : _alertasVis.Where(a => (int)a.Nivel == _filtroNivel).ToList();
         _clt = Ferias.AvisosClt(d.Periodos).Where(x => Passa(x.p)).Select(x => x.texto).ToList();
         _calVis = vis;
+        if (vis.Count > 0)
+        {
+            var mi = vis.Min(p => p.Inicio); var ma = vis.Max(p => p.Fim);
+            _eixoIni = new DateOnly(mi.Year, mi.Month, 1);
+            _eixoFim = new DateOnly(ma.Year, ma.Month, 1).AddMonths(1).AddDays(-1);
+            if ((_eixoFim.DayNumber - _eixoIni.DayNumber) < 75) _eixoFim = _eixoIni.AddMonths(3).AddDays(-1);
+        }
         _cores = d.Periodos.Select(p => p.Colaborador).GroupBy(Norm).Select(g => g.First()).OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
             .Select((n, i) => (n, Paleta[i % Paleta.Length])).ToList();
         _meses = vis.SelectMany(p => { var l = new List<DateOnly>(); for (var m = new DateOnly(p.Inicio.Year, p.Inicio.Month, 1); m <= p.Fim; m = m.AddMonths(1)) l.Add(m); return l; })
