@@ -751,23 +751,3 @@ button.fer-alerta:hover { filter: brightness(.97); }
 @media (prefers-reduced-motion: reduce) { .bv-slide { transition: none; transform: none; } }
 .bv-fatos span.ok { background: rgba(52,211,153,.16); border-color: rgba(110,231,183,.35); color: #D1FAE5; }
 .bv-pontos button { width: 20px; } .bv-pontos button.on { width: 38px; }
-
-/* Início: a tela inteira com o fundo escuro do painel */
-.conteudo:has(> .inicio) {
-  background:
-    radial-gradient(55% 45% at 0% 35%, rgba(5,150,105,.10), transparent 70%),
-    radial-gradient(55% 50% at 100% 70%, rgba(109,40,217,.12), transparent 70%),
-    radial-gradient(45% 35% at 45% 100%, rgba(14,116,144,.08), transparent 70%),
-    #070B16;
-  color-scheme: dark;
-}
-.inicio { --muted: #8B98AD; color: #E2E8F0; }
-.inicio .vitrine { background: transparent; border: 0; box-shadow: none; padding: 4px 0 0; border-radius: 0; overflow: visible; }
-.inicio .vt-luz { display: none; }
-.inicio .sit-card { background: rgba(255,255,255,.035); border-color: rgba(255,255,255,.08); box-shadow: none; }
-.inicio .sit-valor { color: #F1F5F9; }
-.inicio .boas-vindas { box-shadow: 0 20px 40px -28px rgba(0,0,0,.9); border: 1px solid rgba(255,255,255,.06); }
-.inicio .inicio-rodape { color: #64748B; }
-.principal:has(.inicio) .progresso { background: #070B16; }
-.principal:has(.inicio) .rodape { background: #070B16; border-top-color: rgba(255,255,255,.06); color: #8B98AD; }
-.principal:has(.inicio) .rodape b { color: #CBD5E1; }
