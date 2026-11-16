@@ -1,0 +1,73 @@
+@* Mapa de áreas (treemap): cada bloco tem área proporcional à quantidade. *@
+<div class="mapa-areas" style="height:@(Altura)px">
+    @if (Itens.Count == 0 || Itens.All(i => i.valor <= 0))
+    {
+        <div class="g-vazio">@Vazio</div>
+    }
+    else
+    {
+        var total = Total > 0 ? Total : Math.Max(1, Itens.Sum(x => x.valor));
+        int k = 0;
+        foreach (var (rot, val, x, y, w, h) in Blocos())
+        {
+            var cor = Cores[k++ % Cores.Length];
+            var pct = val / (double)total * 100;
+            double pw = w / 100 * Largura, ph = h / 100 * Altura;     // tamanho aproximado em px (para decidir o texto)
+            var tam = pw < 34 || ph < 30 ? "x" : pw * ph > 30000 && pw > 150 ? "g" : pw * ph > 9000 && pw > 95 ? "m" : "p";
+            <div class="ma-bloco ma-@tam" style="--c:@cor;left:@P(x);top:@P(y);width:@P(w);height:@P(h)" title="@($"{rot}: {Texto.Fmt(val)} ({Texto.F(pct)}%)")">
+                @if (tam != "x")
+                {
+                    <b>@rot</b>
+                    <span class="ma-num">@Texto.Fmt(val)@if (tam != "p" && pw > 120) { <em>@(Texto.F(pct))%</em> }</span>
+                }
+            </div>
+        }
+    }
+</div>
+
+@code {
+    [Parameter] public List<(string rotulo, long valor)> Itens { get; set; } = new();
+    [Parameter] public long Total { get; set; }
+    [Parameter] public string[] Cores { get; set; } = { "#2DD4BF", "#38BDF8", "#A78BFA", "#F472B6", "#FBBF24", "#34D399", "#FB923C", "#94A3B8" };
+    [Parameter] public string Vazio { get; set; } = "Sem dados";
+    [Parameter] public int Altura { get; set; } = 360;
+    /// <summary>Largura aproximada em px (só para escolher o lado do corte e o tamanho do texto).</summary>
+    [Parameter] public int Largura { get; set; } = 520;
+
+    static string P(double v) => v.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture) + "%";
+
+    /// <summary>Treemap "squarified": agrupa os itens em faixas para os blocos ficarem o mais quadrados possível.</summary>
+    IEnumerable<(string, long, double, double, double, double)> Blocos()
+    {
+        var itens = Itens.Where(i => i.valor > 0).OrderByDescending(i => i.valor).ToList();
+        double W = Largura, H = Altura, soma = itens.Sum(i => (double)i.valor);
+        var areas = itens.Select(i => i.valor / soma * W * H).ToList();
+        var res = new List<(string, long, double, double, double, double)>();
+        double x = 0, y = 0, w = W, h = H;
+        int ini = 0;
+        while (ini < itens.Count)
+        {
+            double lado = Math.Min(w, h);
+            int fim = ini + 1;
+            double Pior(int a, int b)
+            {
+                double s = 0, mx = 0, mn = double.MaxValue;
+                for (int k = a; k < b; k++) { s += areas[k]; mx = Math.Max(mx, areas[k]); mn = Math.Min(mn, areas[k]); }
+                return Math.Max(lado * lado * mx / (s * s), s * s / (lado * lado * mn));
+            }
+            while (fim < itens.Count && Pior(ini, fim + 1) <= Pior(ini, fim)) fim++;
+            double total = 0; for (int k = ini; k < fim; k++) total += areas[k];
+            double esp = total / lado, pos = 0;
+            for (int k = ini; k < fim; k++)
+            {
+                double comp = areas[k] / esp;
+                if (w >= h) res.Add((itens[k].rotulo, itens[k].valor, x, y + pos, esp, comp));
+                else res.Add((itens[k].rotulo, itens[k].valor, x + pos, y, comp, esp));
+                pos += comp;
+            }
+            if (w >= h) { x += esp; w -= esp; } else { y += esp; h -= esp; }
+            ini = fim;
+        }
+        return res.Select(r => (r.Item1, r.Item2, r.Item3 / W * 100, r.Item4 / H * 100, r.Item5 / W * 100, r.Item6 / H * 100));
+    }
+}

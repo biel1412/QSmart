@@ -7,24 +7,36 @@
         <BotaoArquivo Texto="@(E.Resultado != null ? "Abrir outra planilha" : "Abrir planilha")" Variante="pri" Icone="upload"
                       Aceita=".xlsx,.xlsm,.csv" Desativado="E.Carregando" AoEscolher="Carregar" />
     </Acoes>
-    <Kpis>
-        @{ var r = E.Resultado; }
-        <Kpi Titulo="Decisões analisadas" Cor="blue" Valor="@(r != null ? Fmt(r.Aprov + r.Reprov) : "—")"
-             Detalhe="@(r == null ? "" : r.Outros != 0 ? $"{Fmt(r.Outros)} fora da comparação" : "aprovações + reprovações")" />
-        <Kpi Titulo="Aprovações" Cor="green" Valor="@(r != null ? Fmt(r.Aprov) : "—")" Detalhe="@(r != null ? $"{F1(r.PctAprov)}% das decisões" : "")" Proporcao="@(r != null ? r.PctAprov / 100 : null)" />
-        <Kpi Titulo="Reprovações" Cor="red" Valor="@(r != null ? Fmt(r.Reprov) : "—")" Detalhe="@(r != null ? $"{F1(r.PctReprov)}% das decisões" : "")" Proporcao="@(r != null ? r.PctReprov / 100 : null)" />
-        @if (r != null && r.Tipos.Count > 0)
-        {
-            var t = r.Tipos[0];
-            <Kpi Titulo="Motivo mais frequente" Cor="purple" Valor="@Texto.Rotulo(t.tipo)" Tamanho="18"
-                 Detalhe="@($"{t.qtd} ocorrências, {F1(t.qtd / (double)(r.Reprov == 0 ? 1 : r.Reprov) * 100)}%")" />
-        }
-        else
-        {
-            <Kpi Titulo="Motivo mais frequente" Cor="purple" Valor="—" Tamanho="18" Detalhe="@(r != null ? "Sem reprovações" : "")" />
-        }
-    </Kpis>
     <ChildContent>
+        @{ var r = E.Resultado; }
+        <div class="rs-topo">
+            <div class="rs-nums">
+                <div><span>Decisões</span><b>@(r != null ? Fmt(r.Aprov + r.Reprov) : "—")</b>
+                    <small>@(r == null ? "aprovações + reprovações" : r.Outros != 0 ? $"{Fmt(r.Outros)} fora da comparação" : "aprovações + reprovações")</small></div>
+                <div><span>Aprovações</span><b class="verde">@(r != null ? Fmt(r.Aprov) : "—")</b><small>@(r != null ? $"{F1(r.PctAprov)}% das decisões" : "")</small></div>
+                <div><span>Reprovações</span><b class="verm">@(r != null ? Fmt(r.Reprov) : "—")</b><small>@(r != null ? $"{F1(r.PctReprov)}% das decisões" : "")</small></div>
+                <div class="rs-motivo"><span>Motivo nº 1</span>
+                    @if (r != null && r.Tipos.Count > 0)
+                    {
+                        var t = r.Tipos[0];
+                        <b>@Texto.Rotulo(t.tipo)</b><small>@($"{Fmt(t.qtd)} ocorrências · {F1(t.qtd / (double)(r.Reprov == 0 ? 1 : r.Reprov) * 100)}% das reprovações")</small>
+                    }
+                    else { <b>—</b><small>@(r != null ? "sem reprovações" : "")</small> }
+                </div>
+            </div>
+            @if (r != null && r.Aprov + r.Reprov > 0)
+            {
+                <div class="rs-barra">
+                    <div class="ap" style="flex:@(Math.Max(r.PctAprov, 0.5).ToString(System.Globalization.CultureInfo.InvariantCulture))" title="@($"Aprovações: {Fmt(r.Aprov)}")">@(r.PctAprov >= 16 ? $"Aprovações · {F1(r.PctAprov)}%" : "")</div>
+                    <div class="rp" style="flex:@(Math.Max(r.PctReprov, 0.5).ToString(System.Globalization.CultureInfo.InvariantCulture))" title="@($"Reprovações: {Fmt(r.Reprov)}")">@(r.PctReprov >= 16 ? $"Reprovações · {F1(r.PctReprov)}%" : "")</div>
+                </div>
+                @if (r.PctReprov < 16) { <div class="rs-barra-leg"><span>@(r.PctAprov < 16 ? $"Aprovações · {F1(r.PctAprov)}%" : "")</span><span class="verm">Reprovações · @F1(r.PctReprov)%</span></div> }
+            }
+            else
+            {
+                <div class="rs-barra vazia">Abra uma planilha para ver a divisão entre aprovações e reprovações</div>
+            }
+        </div>
         <div class="barra-ferr">
             <button class="btn btn-sec" @onclick="Classificar"><Icone Nome="tabela" Tamanho="16" /> Classificar procedimentos</button>
             @foreach (var (chave, rot) in new[] { ("usuarios", "Usuários"), ("segmentos", "Segmentos"), ("dias", "Dias") })
@@ -39,11 +51,13 @@
             <p class="muted">Filtros ativos: @E.Resultado.FiltrosTexto</p>
         }
         <div class="grade-2">
-            <Painel Titulo="Tipos de reprovação mais frequentes" Estilo="min-height:420px">
-                <BarrasLista Itens="Tipos()" Total="@(E.Resultado?.Reprov ?? 0)" Vazio="@(E.Resultado == null ? "Abra uma planilha para começar" : "Sem reprovações")" />
+            <Painel Titulo="Tipos de reprovação" Nota="área = quantidade · % das reprovações">
+                <MapaAreas Itens="@Tipos().Select(t => (t.Item1, t.Item2)).ToList()" Total="@(E.Resultado?.Reprov ?? 0)" Cores="CoresMotivos"
+                           Vazio="@(E.Resultado == null ? "Abra uma planilha para começar" : "Sem reprovações")" />
             </Painel>
-            <Painel Titulo="Devolutivas por segmento" Estilo="min-height:420px">
-                <BarrasLista Itens="Segmentos()" Total="@(E.Resultado?.Reprov ?? 0)" Vazio="@(E.Resultado == null ? "Abra uma planilha para começar" : "Sem devolutivas")" />
+            <Painel Titulo="Devolutivas por segmento" Nota="área = quantidade · % das devolutivas">
+                <MapaAreas Itens="@Segmentos().Select(t => (t.Item1, t.Item2)).ToList()" Total="@(E.Resultado?.Reprov ?? 0)"
+                           Vazio="@(E.Resultado == null ? "Abra uma planilha para começar" : "Sem devolutivas")" />
             </Painel>
         </div>
     </ChildContent>
@@ -51,6 +65,7 @@
 
 @code {
     protected override string Chave => "resumo";
+    static readonly string[] CoresMotivos = { "#F43F5E", "#FB7185", "#F97316", "#FB923C", "#F59E0B", "#EAB308", "#A855F7", "#8B5CF6", "#C084FC", "#E879F9" };
 
     List<(string, long, string?)> Tipos() => E.Resultado == null ? new() :
         E.Resultado.Tipos.Take(8).Select(t => (Texto.Rotulo(t.tipo), t.qtd, (string?)null)).ToList();
