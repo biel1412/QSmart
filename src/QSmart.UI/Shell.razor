@@ -14,7 +14,7 @@
             <span class="item-txt">Recolher menu</span>
         </button>
         <nav class="menu">
-            <NavLink class="item" href="" Match="NavLinkMatch.All" title="Início" @onclick="FecharMovel">
+            <NavLink class="item m-inicio" href="" Match="NavLinkMatch.All" title="Início" @onclick="FecharMovel">
                 <Icone Nome="inicio" /><span class="item-txt">Início</span>
             </NavLink>
             @foreach (var g in Abas.Grupos)
@@ -24,7 +24,7 @@
                 <div class="grupo">@g</div>
                 @foreach (var a in itens)
                 {
-                    <NavLink class="item" href="@a.Rota" title="@a.Nome" @onclick="FecharMovel">
+                    <NavLink class="@($"item m-{Abas.Cor(a.Grupo)}")" href="@a.Rota" title="@a.Nome" @onclick="FecharMovel">
                         <Icone Nome="@a.Icone" /><span class="item-txt">@a.Menu</span>
                         @if (Indicador(a.Chave)) { <span class="ponto" title="Planilha carregada"></span> }
                     </NavLink>

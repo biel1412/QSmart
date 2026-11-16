@@ -664,3 +664,13 @@ button.fer-alerta:hover { filter: brightness(.97); }
 @media (max-width: 1150px) { .est-msg { grid-template-columns: 1fr; } .est-previa { position: static; } }
 .est-limpar { align-self: flex-start; }
 .est-tabela th { white-space: nowrap; }
+
+/* Menu: cor do grupo no item selecionado e ao passar o mouse */
+.lateral .item { --gc: var(--side-bar); }
+.lateral .item.m-0 { --gc: #34D399; } .lateral .item.m-1 { --gc: #38BDF8; } .lateral .item.m-2 { --gc: #A78BFA; }
+.lateral .item.m-3 { --gc: #FBBF24; } .lateral .item.m-4 { --gc: #94A3B8; } .lateral .item.m-5 { --gc: #2DD4BF; } .lateral .item.m-inicio { --gc: #2DD4BF; }
+.lateral .item .ic { box-sizing: content-box; padding: 5px; margin: -5px 0 -5px -5px; border-radius: 8px; flex: none; transition: background .15s, color .15s, box-shadow .15s; }
+.lateral .item:hover .ic { background: color-mix(in srgb, var(--gc) 22%, transparent); color: var(--gc); }
+.lateral .item.active { background: color-mix(in srgb, var(--gc) 14%, transparent); }
+.lateral .item.active .ic { background: var(--gc); color: #06161A; box-shadow: 0 4px 14px -4px var(--gc); }
+.lateral .item.active::before { background: var(--gc); }
