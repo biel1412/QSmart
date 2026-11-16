@@ -1,6 +1,10 @@
 namespace QSmart.UI.Servicos;
 
-public sealed record Aba(string Chave, string Nome, string Menu, string Icone, string Grupo, string Descricao, string Rota);
+public sealed record Aba(string Chave, string Nome, string Menu, string Icone, string Grupo, string Descricao, string Rota)
+{
+    /// <summary>Link para outro sistema: abre em nova aba do navegador.</summary>
+    public bool Externo => Rota.StartsWith("http", StringComparison.OrdinalIgnoreCase);
+}
 
 /// <summary>As abas do sistema (mesma lista e mesmos nomes do original), agrupadas para o menu.</summary>
 public static class Abas
@@ -33,10 +37,14 @@ public static class Abas
             "Média diária de ações por usuário no mês e painel só com quem fica abaixo de 150.", "pontos"),
         new("depurador", "Depurador de leitura", "Depurador", "depurador", "Ferramentas",
             "Mostra, linha a linha, o que o sistema lê de uma planilha e o que fica de fora.", "depurador"),
+        new("insitalent", "InsiTalent", "InsiTalent", "talento", "Ferramentas",
+            "Abre o InsiTalent em uma nova aba.", "https://biel1412.github.io/insimatch/"),
+        new("mesa", "Mesa de Inspeção", "Mesa de Inspeção", "mesa", "Ferramentas",
+            "Abre o Pulso · Mesa de Inspeção em uma nova aba.", "https://biel1412.github.io/healthcoop/"),
     };
 
     /// <summary>Ordem da lista de abas nas Configurações (igual ao original).</summary>
-    public static readonly string[] OrdemConfig = { "resumo", "usuarios", "evolucao", "inspecao", "volume", "monitor", "corredor", "estrategia", "historico", "pareceres", "ferias", "pontos", "depurador" };
+    public static readonly string[] OrdemConfig = { "resumo", "usuarios", "evolucao", "inspecao", "volume", "monitor", "corredor", "estrategia", "historico", "pareceres", "ferias", "pontos", "depurador", "insitalent", "mesa" };
 
     public static readonly string[] Grupos = { "Decisões", "Inspeção", "Conformidade", "Operação", "Coordenação", "Ferramentas" };
 

@@ -59,14 +59,14 @@
             <div class="cartoes">
                 @foreach (var a in itens)
                 {
-                    <a class="cartao g-@Indice(g)" href="@a.Rota">
+                    <a class="cartao g-@Indice(g)" href="@a.Rota" target="@(a.Externo ? "_blank" : null)" rel="@(a.Externo ? "noopener" : null)">
                         <span class="cartao-ic"><Icone Nome="@a.Icone" Tamanho="22" /></span>
                         <span class="cartao-txt">
                             <span class="cartao-nome">@a.Nome</span>
                             <span class="cartao-desc">@a.Descricao</span>
                             @if (Status(a.Chave) is string st) { <span class="cartao-status"><i></i>@st</span> }
                         </span>
-                        <span class="cartao-seta"><Icone Nome="seta" Tamanho="18" /></span>
+                        <span class="cartao-seta"><Icone Nome="@(a.Externo ? "externo" : "seta")" Tamanho="18" /></span>
                     </a>
                 }
             </div>
@@ -99,7 +99,8 @@
     {
         if (e.Key != "Enter") return;
         var a = Abas.Todas.FirstOrDefault(x => E.AbaAtiva(x.Chave) && Combina(x));
-        if (a != null) Rotas.NavigateTo(a.Rota);
+        if (a == null) return;
+        if (a.Externo) _ = E.Nav.AbrirUrl(a.Rota); else Rotas.NavigateTo(a.Rota);
     }
 
     static int Indice(string g) => Abas.Cor(g);
@@ -111,7 +112,7 @@
         "Conformidade" => "pareceres conferidos com o padrão",
         "Operação" => "volume, ociosidade, consolidação de arquivos e estratégia do dia",
         "Coordenação" => "férias da equipe e produtividade do mês",
-        _ => "diagnóstico das planilhas",
+        _ => "diagnóstico das planilhas e outros sistemas da Insi",
     };
 
     string? Status(string chave) => chave switch

@@ -24,6 +24,13 @@
                 <div class="grupo">@g</div>
                 @foreach (var a in itens)
                 {
+                    if (a.Externo)
+                    {
+                        <a class="@($"item m-{Abas.Cor(a.Grupo)}")" href="@a.Rota" target="_blank" rel="noopener" title="@($"{a.Nome} (abre em nova aba)")" @onclick="FecharMovel">
+                            <Icone Nome="@a.Icone" /><span class="item-txt">@a.Menu</span><span class="item-ext"><Icone Nome="externo" Tamanho="13" /></span>
+                        </a>
+                        continue;
+                    }
                     <NavLink class="@($"item m-{Abas.Cor(a.Grupo)}")" href="@a.Rota" title="@a.Nome" @onclick="FecharMovel">
                         <Icone Nome="@a.Icone" /><span class="item-txt">@a.Menu</span>
                         @if (Indicador(a.Chave)) { <span class="ponto" title="Planilha carregada"></span> }

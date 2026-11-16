@@ -726,3 +726,5 @@ button.fer-alerta:hover { filter: brightness(.97); }
 .ma-g .ma-num { font-size: 28px; }
 .ma-m .ma-num { font-size: 20px; }
 .ma-p { padding: 7px 8px; } .ma-p b { font-size: 11px; -webkit-line-clamp: 2; } .ma-p .ma-num { font-size: 14px; }
+.lateral .item-ext { margin-left: auto; color: var(--side-muted); display: inline-flex; }
+.recolhido .lateral .item-ext { display: none; }
