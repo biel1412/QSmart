@@ -25,7 +25,33 @@
                     <h1 class="bv-curio"><span class="bv-curio-ic"><Icone Nome="@(ab?.Icone ?? "faisca")" Tamanho="22" /></span> <span class="grad">@(ab?.Nome ?? c.chave)</span></h1>
                     <p>@c.texto @if (ab != null && E.AbaAtiva(ab.Chave)) { <a class="bv-link" href="@ab.Rota">Abrir <Icone Nome="seta" Tamanho="14" /></a> }</p>
                 </div>
-                <div class="bv-slide bv-frase @(_slide == 3 ? "on" : "")">
+                <div class="bv-slide @(_slide == 3 ? "on" : "")">
+                    @{ var d = Dicas[_dica % Dicas.Length]; }
+                    <div class="bv-saudacao"><Icone Nome="busca" Tamanho="16" /> Dica rápida</div>
+                    <h1>@d.titulo</h1>
+                    <p>@d.texto</p>
+                </div>
+                <div class="bv-slide @(_slide == 4 ? "on" : "")">
+                    <div class="bv-saudacao"><Icone Nome="resumo" Tamanho="16" /> Seu painel agora</div>
+                    <h1>@(Carregadas() == 0 ? "Pronto para começar" : $"{Carregadas()} de 4 bases abertas")</h1>
+                    <div class="bv-fatos">
+                        <span class="@(E.Resultado != null ? "ok" : "")"><Icone Nome="@(E.Resultado != null ? "check" : "resumo")" Tamanho="15" /> Aprovações @(E.Resultado != null ? "· carregada" : "· não aberta")</span>
+                        <span class="@(E.Evolucao != null ? "ok" : "")"><Icone Nome="@(E.Evolucao != null ? "check" : "inspecao")" Tamanho="15" /> Inspeção @(E.Evolucao != null ? "· carregada" : "· não aberta")</span>
+                        <span class="@(E.Historico.Count > 0 ? "ok" : "")"><Icone Nome="@(E.Historico.Count > 0 ? "check" : "historico")" Tamanho="15" /> Histórico · @(E.Historico.Count) mês(es)</span>
+                        <span class="@(E.ParPadroes.Count > 0 ? "ok" : "")"><Icone Nome="@(E.ParPadroes.Count > 0 ? "check" : "pareceres")" Tamanho="15" /> Pareceres padrão · @(E.ParPadroes.Count)</span>
+                    </div>
+                </div>
+                <div class="bv-slide @(_slide == 5 ? "on" : "")">
+                    <div class="bv-saudacao"><Icone Nome="faisca" Tamanho="16" /> Novidades</div>
+                    <h1>O que há de <span class="grad">novo</span></h1>
+                    <div class="bv-fatos">
+                        <span><Icone Nome="estrategia" Tamanho="15" /> Estratégia do dia com mensagem para o Teams</span>
+                        <span><Icone Nome="ferias" Tamanho="15" /> Férias por planilha de coleta</span>
+                        <span><Icone Nome="pontos" Tamanho="15" /> Justificativas nos Pontos de ação</span>
+                        <span><Icone Nome="resumo" Tamanho="15" /> Resumo com mapa de áreas</span>
+                    </div>
+                </div>
+                <div class="bv-slide bv-frase @(_slide == 6 ? "on" : "")">
                     <h1><span class="grad">Digital.</span> Simple. <span class="grad">Human.</span></h1>
                     <p>QSmart · Insi</p>
                 </div>
@@ -113,8 +139,8 @@
     string _busca = "";
 
     // ---- outdoor da faixa de boas-vindas ----
-    const int Slides = 4, Intervalo = 3000;
-    int _slide, _cur = Random.Shared.Next(100);
+    const int Slides = 7, Intervalo = 5000;
+    int _slide, _cur = Random.Shared.Next(100), _dica = Random.Shared.Next(100);
     bool _pausa, _foco;
     bool Parado => _pausa || _foco || _busca != "";
     System.Threading.Timer? _timer;
@@ -131,6 +157,19 @@
         ("resumo", "Mostra aprovações, reprovações e os motivos mais frequentes, com relatório em PDF."),
     };
 
+    static readonly (string titulo, string texto)[] Dicas =
+    {
+        ("Busque e aperte Enter", "Digite o que quer fazer na busca abaixo (ex.: ociosidade) e aperte Enter para abrir a ferramenta direto."),
+        ("Recolha o menu", "Clique em “Recolher menu” para ganhar espaço na tela; os ícones continuam lá com as cores de cada área."),
+        ("Modo escuro", "No rodapé do menu você troca entre modo claro e escuro. A preferência fica salva neste navegador."),
+        ("Esconda o que não usa", "Em Configurações dá para desligar as abas que você não usa, deixando o menu mais limpo."),
+        ("Faça backup", "Em Configurações você salva um backup dos seus dados para não perder nada ao trocar de computador."),
+        ("Relatórios prontos", "Resumo e Evolução geram PDF com um clique; várias abas também exportam para Excel."),
+        ("Passe o mouse", "Nos gráficos e mapas, passe o mouse sobre um item para ver o nome completo, a quantidade e o percentual."),
+    };
+
+    int Carregadas() => (E.Resultado != null ? 1 : 0) + (E.Evolucao != null ? 1 : 0) + (E.Historico.Count > 0 ? 1 : 0) + (E.ParPadroes.Count > 0 ? 1 : 0);
+
     int Ferramentas() => Abas.Todas.Count(a => !a.Externo && a.Grupo != "Ferramentas");
     int Areas() => Abas.Todas.Where(a => !a.Externo && a.Grupo != "Ferramentas").Select(a => a.Grupo).Distinct().Count();
 
@@ -144,6 +183,7 @@
         if (Parado) return;
         _slide = (_slide + 1) % Slides;
         if (_slide == 2) _cur++;
+        if (_slide == 3) _dica++;
         InvokeAsync(StateHasChanged);
     }
 
@@ -151,6 +191,7 @@
     {
         _slide = k;
         if (k == 2) _cur++;
+        if (k == 3) _dica++;
         _timer?.Change(Intervalo, Intervalo);
     }
 

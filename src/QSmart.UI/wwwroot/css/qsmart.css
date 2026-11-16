@@ -749,3 +749,5 @@ button.fer-alerta:hover { filter: brightness(.97); }
 .bv-pontos button.on i { width: 100%; animation: bv-tempo linear forwards; }
 @keyframes bv-tempo { from { width: 0; } to { width: 100%; } }
 @media (prefers-reduced-motion: reduce) { .bv-slide { transition: none; transform: none; } }
+.bv-fatos span.ok { background: rgba(52,211,153,.16); border-color: rgba(110,231,183,.35); color: #D1FAE5; }
+.bv-pontos button { width: 20px; } .bv-pontos button.on { width: 38px; }
