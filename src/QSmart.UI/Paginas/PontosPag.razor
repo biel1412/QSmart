@@ -91,7 +91,7 @@
                                     <span class="pv-av">@Iniciais(u.Usuario)</span>
                                     <div class="pv-item-txt">
                                         <b>@u.Usuario.ToLowerInvariant()</b>
-                                        <small>@(j != null ? j + (herdada ? " · do mês anterior" : "") : $"{Texto.F(u.Media / lim * 100, 0)}% da meta")</small>
+                                        <small>@(j != null ? j + (herdada ? " · de outro mês" : "") : $"{Texto.F(u.Media / lim * 100, 0)}% da meta")</small>
                                     </div>
                                     <span class="pv-val">@Fv(u.Media)</span>
                                     <select class="pv-sel" value="@(j ?? "")" @onchange="e => Justificar(u, e.Value?.ToString())" title="Justificativa">
@@ -145,7 +145,7 @@
                     </div>
                 </ChildContent>
             </Painel>
-            <p class="muted pequeno">As justificativas ficam salvas @E.Dados.OndeGrava no arquivo pontos_justificativas.json e são repetidas nos meses seguintes, até você trocar. Use “Salvar justificativas” para guardar uma cópia .json no computador.</p>
+            <p class="muted pequeno">As justificativas ficam salvas @E.Dados.OndeGrava no arquivo pontos_justificativas.json e valem para os outros meses também, até você trocar. Use “Salvar justificativas” para guardar uma cópia .json no computador.</p>
         }
     </ChildContent>
 </Pagina>
@@ -187,7 +187,10 @@
             foreach (var (u, v) in us) d[u] = v;
         }
         await E.SalvarPtsJust();
-        await J.Info("Justificativas", $"{Ferias.Plural(n, "justificativa")} carregada(s) de “{arqs[0].Nome}”.");
+        var aqui = _abaixo.Count(u => Just(u) != null);
+        await J.Info("Justificativas", $"{Ferias.Plural(n, "justificativa")} carregada(s) de “{arqs[0].Nome}”." +
+            (E.PtsRes == null ? "" : $"\n\n{Ferias.Plural(aqui, "pessoa")} deste compilado agora aparece(m) em Justificado." +
+                (aqui == 0 ? " As pessoas do arquivo não estão abaixo da meta neste compilado." : "")));
     }
 
     static string DicaDias(LinhaPontos u)

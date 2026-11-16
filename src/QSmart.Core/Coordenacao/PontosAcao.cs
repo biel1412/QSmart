@@ -99,10 +99,16 @@ public static class PontosAcao
     {
         var k = ChaveUsuario(usuario);
         if (todas.TryGetValue(mes, out var d) && d.TryGetValue(k, out var v)) return (v == "" ? null : v, false);
-        foreach (var m in todas.Keys.Where(m => string.CompareOrdinal(m, mes) < 0).OrderByDescending(m => m, StringComparer.Ordinal))
-            if (todas[m].TryGetValue(k, out var a)) return (a == "" ? null : a, a != "");
+        // sem nada no mês: usa a do mês anterior mais próximo; se não houver, a do mês seguinte mais próximo
+        var meses = todas.Keys.Where(m => m != mes)
+            .OrderBy(m => string.CompareOrdinal(m, mes) < 0 ? 0 : 1)
+            .ThenBy(m => string.CompareOrdinal(m, mes) < 0 ? -MesNum(m) : MesNum(m));
+        foreach (var m in meses)
+            if (todas[m].TryGetValue(k, out var a) && a != "") return (a, true);
         return (null, false);
     }
+
+    static int MesNum(string m) => m.Length >= 7 && int.TryParse(m[..4], out var y) && int.TryParse(m[5..7], out var mm) ? y * 12 + mm : 0;
 
     public static Dictionary<string, Dictionary<string, string>> LerJustificativas(string? json)
     {
