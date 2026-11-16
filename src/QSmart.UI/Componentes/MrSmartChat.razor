@@ -54,7 +54,6 @@
             <input class="mr-campo" placeholder="Escreva sua dúvida…" @bind="_texto" @bind:event="oninput" @onkeydown="Tecla" id="mr-campo" autocomplete="off" />
             <button class="mr-enviar" @onclick="Enviar" disabled="@string.IsNullOrWhiteSpace(_texto)" title="Enviar">➤</button>
         </div>
-        <div class="mr-rod">Mr Smart · respostas prontas, nada sai do seu computador</div>
     </div>
 }
 
