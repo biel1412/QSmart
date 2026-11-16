@@ -56,10 +56,6 @@
         else
         {
             <div class="barra-ferr">
-                <span class="rotulo">Ano</span>
-                <select class="campo" value="@_ano" @onchange="e => _ano = int.Parse(e.Value!.ToString()!)">
-                    @foreach (var a in Anos()) { <option value="@a">@a</option> }
-                </select>
                 <span class="rotulo">Time</span>
                 <select class="campo" style="min-width:150px" value="@_equipe" @onchange="e => _equipe = e.Value?.ToString() ?? EquipeTodas">
                     <option value="@EquipeTodas">Todos</option>
@@ -149,59 +145,39 @@
                 </Painel>
             </div>
 
-            <Painel Titulo="@($"Linha do tempo · {_ano}")" Classe="fer-painel">
+            <Painel Titulo="Calendário" Nota="cada dia mostra quem está fora · borda vermelha = mais de uma pessoa do mesmo time fora" Classe="fer-painel">
                 <Extra>
-                    <div class="fer-legenda">
-                        <span><i class="ok"></i>Sem conflito</span>
-                        <span><i class="proximo"></i>Próximas</span>
-                        <span><i class="muito"></i>Muito próximas</span>
-                        <span><i class="choque"></i>Choque</span>
-                        <span><i class="vende"></i>Quer vender</span>
+                    <div class="fer-cal-leg">
+                        @foreach (var (nome, cor) in _cores.Take(12)) { <span><i style="background:@cor"></i>@nome</span> }
                     </div>
                 </Extra>
                 <ChildContent>
-                    @{ var ini = new DateOnly(_ano, 1, 1); int diasAno = DateTime.IsLeapYear(_ano) ? 366 : 365; }
-                    <div class="fer-gantt">
-                        <div class="fer-linha fer-cab">
-                            <div class="fer-nome"></div>
-                            <div class="fer-trilho">
-                                @for (int m = 1; m <= 12; m++)
-                                {
-                                    var dm = new DateOnly(_ano, m, 1);
-                                    <span class="fer-mes" style="left:@Pct(dm.DayNumber - ini.DayNumber, diasAno);width:@Pct(DateTime.DaysInMonth(_ano, m), diasAno)">@Texto.MesesPt[m - 1][..3]</span>
-                                }
-                            </div>
-                        </div>
-                        @if (_linhas.Count == 0)
+                    @if (_meses.Count == 0)
+                    {
+                        <div class="g-vazio">Nenhum pedido@(Filtrando ? " com esses filtros" : "").</div>
+                    }
+                    <div class="fer-cal-meses">
+                        @foreach (var m in _meses)
                         {
-                            <div class="g-vazio">Nenhum pedido em @_ano@(Filtrando ? " com esses filtros" : "").</div>
-                        }
-                        @foreach (var grupo in _linhas.GroupBy(l => l.equipe))
-                        {
-                            @if (_linhas.Select(l => l.equipe).Distinct().Count() > 1)
-                            {
-                                <div class="fer-grupo">@(grupo.Key == "" ? "Sem time" : grupo.Key)</div>
-                            }
-                            @foreach (var (nome, _, periodos) in grupo)
-                            {
-                                <div class="fer-linha">
-                                    <div class="fer-nome" title="@nome">@nome</div>
-                                    <div class="fer-trilho">
-                                        @for (int m = 2; m <= 12; m++) { <span class="fer-div" style="left:@Pct(new DateOnly(_ano, m, 1).DayNumber - ini.DayNumber, diasAno)"></span> }
-                                        @if (_hojeD.Year == _ano) { <span class="fer-hoje" style="left:@Pct(_hojeD.DayNumber - ini.DayNumber + 0.5, diasAno)" title="Hoje"></span> }
-                                        @foreach (var p in periodos)
-                                        {
-                                            var a = Math.Max(p.Inicio.DayNumber, ini.DayNumber) - ini.DayNumber;
-                                            var b = Math.Min(p.Fim.DayNumber, ini.DayNumber + diasAno - 1) - ini.DayNumber + 1;
-                                            var n = Ferias.Nivel(p, _alertas);
-                                            <span class="fer-barra @Classe(n) @(p.Vender ? "vende" : "")"
-                                                  style="left:@Pct(a, diasAno);width:@Pct(Math.Max(b - a, 1), diasAno)" title="@Dica(p, n)">
-                                                <span>@Texto.Dm(p.Inicio)–@Texto.Dm(p.Fim) · @(p.Dias)d@(p.Vender ? " · $" : "")</span>
-                                            </span>
-                                        }
-                                    </div>
+                            <div class="fer-cal">
+                                <div class="fer-cal-tit">@Texto.MesesPt[m.Month - 1] @m.Year</div>
+                                <div class="fer-cal-grade">
+                                    @foreach (var ds in new[] { "seg", "ter", "qua", "qui", "sex", "sáb", "dom" }) { <div class="fer-cal-sem">@ds</div> }
+                                    @for (int k = 0; k < ((int)m.DayOfWeek + 6) % 7; k++) { <div class="fer-cal-dia vazio"></div> }
+                                    @for (var d = m; d.Month == m.Month; d = d.AddDays(1))
+                                    {
+                                        var dd = d;
+                                        var fora = _calVis.Where(p => p.Inicio <= dd && p.Fim >= dd).OrderBy(p => p.Colaborador).ToList();
+                                        var choque = fora.GroupBy(p => E.Ferias.PorEquipe ? Norm(p.Equipe) : "").Any(g => g.Select(p => Norm(p.Colaborador)).Distinct().Count() > 1);
+                                        <div class="fer-cal-dia @(choque ? "choque" : "") @(dd == _hojeD ? "hoje" : "") @(dd.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday ? "fds" : "")"
+                                             title="@(fora.Count == 0 ? Texto.Dmy(dd) : $"{Texto.Dmy(dd)}\n" + string.Join("\n", fora.Select(p => $"{p.Colaborador}{(p.Equipe != "" ? $" ({p.Equipe})" : "")}{(p.Vender ? " · vende" : "")}")))">
+                                            <b>@dd.Day</b>
+                                            @foreach (var p in fora.Take(3)) { <i style="background:@CorDe(p.Colaborador)">@Curto(p.Colaborador)</i> }
+                                            @if (fora.Count > 3) { <i class="mais">+@(fora.Count - 3)</i> }
+                                        </div>
+                                    }
                                 </div>
-                            }
+                            </div>
                         }
                     </div>
                 </ChildContent>
@@ -265,6 +241,12 @@
     List<PeriodoFerias> _agora = new(), _breve = new(), _vender = new(), _tabela = new();
     List<string> _clt = new();
     List<(string nome, string equipe, List<PeriodoFerias> periodos)> _linhas = new();
+    List<DateOnly> _meses = new();
+    List<PeriodoFerias> _calVis = new();
+    List<(string nome, string cor)> _cores = new();
+    static readonly string[] Paleta = { "#38BDF8", "#A78BFA", "#34D399", "#F472B6", "#FBBF24", "#2DD4BF", "#FB923C", "#818CF8", "#A3E635", "#F87171", "#22D3EE", "#E879F9" };
+    string CorDe(string nome) { var n = Norm(nome); var i = _cores.FindIndex(c => Norm(c.nome) == n); return i < 0 ? "#94A3B8" : _cores[i].cor; }
+    static string Curto(string nome) { var t = nome.Split('.', ' ')[0]; return t.Length > 10 ? t[..10] : t; }
 
     static string Norm(string s) => Ferias.Norm(s);
     bool Filtrando => _equipe != EquipeTodas || _busca.Trim() != "";
@@ -326,6 +308,11 @@
         _alertasVis = _alertas.Where(a => Passa(a.A) || Passa(a.B)).ToList();
         _alertasFilt = _filtroNivel < 0 ? _alertasVis : _alertasVis.Where(a => (int)a.Nivel == _filtroNivel).ToList();
         _clt = Ferias.AvisosClt(d.Periodos).Where(x => Passa(x.p)).Select(x => x.texto).ToList();
+        _calVis = vis;
+        _cores = d.Periodos.Select(p => p.Colaborador).GroupBy(Norm).Select(g => g.First()).OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
+            .Select((n, i) => (n, Paleta[i % Paleta.Length])).ToList();
+        _meses = vis.SelectMany(p => { var l = new List<DateOnly>(); for (var m = new DateOnly(p.Inicio.Year, p.Inicio.Month, 1); m <= p.Fim; m = m.AddMonths(1)) l.Add(m); return l; })
+            .Distinct().OrderBy(m => m).ToList();
         _linhas = vis.Where(p => p.Inicio.Year <= _ano && p.Fim.Year >= _ano)
             .GroupBy(p => (Norm(p.Equipe), Norm(p.Colaborador)))
             .Select(g => (g.First().Colaborador, g.First().Equipe, g.OrderBy(p => p.Inicio).ToList()))

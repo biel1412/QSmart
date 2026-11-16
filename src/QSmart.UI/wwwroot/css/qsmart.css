@@ -794,3 +794,20 @@ button.fer-alerta:hover { filter: brightness(.97); }
 .mr-enviar:disabled { opacity: .45; cursor: default; }
 .mr-rod { padding: 0 0 8px; text-align: center; font-size: 11px; color: var(--muted); background: var(--surface); }
 @media print { .mr-fab, .mr-jan { display: none !important; } }
+
+/* Férias: calendário */
+.fer-cal-leg { display: flex; flex-wrap: wrap; gap: 6px 12px; font-size: 12px; color: var(--muted); }
+.fer-cal-leg i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
+.fer-cal-meses { display: grid; grid-template-columns: repeat(auto-fill, minmax(440px, 1fr)); gap: 16px; }
+.fer-cal { border: 1px solid var(--line); border-radius: 14px; padding: 12px; background: var(--surface); }
+.fer-cal-tit { font-weight: 700; font-size: 14px; margin: 0 0 10px 2px; }
+.fer-cal-grade { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.fer-cal-sem { text-align: center; font-size: 11px; font-weight: 700; color: var(--muted); text-transform: lowercase; padding-bottom: 2px; }
+.fer-cal-dia { min-height: 66px; border-radius: 9px; padding: 5px; background: var(--surface2); border: 1px solid transparent; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.fer-cal-dia.vazio { background: none; }
+.fer-cal-dia.fds { opacity: .8; }
+.fer-cal-dia b { font-size: 11.5px; color: var(--muted); font-weight: 650; }
+.fer-cal-dia.hoje { border-color: #0D9488; } .fer-cal-dia.hoje b { color: #0D9488; }
+.fer-cal-dia.choque { border-color: var(--red); background: color-mix(in srgb, var(--red) 8%, var(--surface2)); }
+.fer-cal-dia i { display: block; font-style: normal; font-size: 10.5px; font-weight: 650; color: #0A0F1C; padding: 1px 5px; border-radius: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fer-cal-dia i.mais { background: var(--line); color: var(--ink); }
