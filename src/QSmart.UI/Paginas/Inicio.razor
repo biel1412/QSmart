@@ -3,14 +3,45 @@
 
 <div class="inicio">
     <section class="boas-vindas">
-        <div class="bv-texto">
-            <div class="bv-saudacao"><Icone Nome="faisca" Tamanho="16" /> @Saudacao()</div>
-            <h1>Bem-vindo ao <span class="grad">QSmart</span></h1>
-            <p>A plataforma de qualidade da <b>Insi</b>: decisões, inspeções, pareceres e operação em um só lugar. As planilhas são lidas aqui mesmo, no seu computador.</p>
+        <div class="bv-texto" @onmouseenter="() => _pausa = true" @onmouseleave="() => _pausa = false">
+            <div class="bv-slides" aria-live="polite">
+                <div class="bv-slide @(_slide == 0 ? "on" : "")">
+                    <div class="bv-saudacao"><Icone Nome="faisca" Tamanho="16" /> @Saudacao()</div>
+                    <h1>Bem-vindo ao <span class="grad">QSmart</span></h1>
+                    <p>A plataforma de qualidade da <b>Insi</b>: decisões, inspeções, pareceres e operação em um só lugar. As planilhas são lidas aqui mesmo, no seu computador.</p>
+                </div>
+                <div class="bv-slide @(_slide == 1 ? "on" : "")">
+                    <div class="bv-saudacao"><Icone Nome="escudo" Tamanho="16" /> Sobre a plataforma</div>
+                    <h1>@Ferramentas() ferramentas, <span class="grad">@Areas() áreas</span></h1>
+                    <div class="bv-fatos">
+                        <span><Icone Nome="escudo" Tamanho="15" /> Nenhum arquivo sai do seu computador</span>
+                        <span><Icone Nome="faisca" Tamanho="15" /> Funciona direto no navegador, sem instalar</span>
+                        <span><Icone Nome="download" Tamanho="15" /> Relatórios em Excel e PDF</span>
+                    </div>
+                </div>
+                <div class="bv-slide @(_slide == 2 ? "on" : "")">
+                    @{ var c = Curiosidades[_cur % Curiosidades.Length]; var ab = Abas.Por(c.chave); }
+                    <div class="bv-saudacao"><Icone Nome="faisca" Tamanho="16" /> Você sabia?</div>
+                    <h1 class="bv-curio"><span class="bv-curio-ic"><Icone Nome="@(ab?.Icone ?? "faisca")" Tamanho="22" /></span> <span class="grad">@(ab?.Nome ?? c.chave)</span></h1>
+                    <p>@c.texto @if (ab != null && E.AbaAtiva(ab.Chave)) { <a class="bv-link" href="@ab.Rota">Abrir <Icone Nome="seta" Tamanho="14" /></a> }</p>
+                </div>
+                <div class="bv-slide bv-frase @(_slide == 3 ? "on" : "")">
+                    <h1><span class="grad">Digital.</span> Simple. <span class="grad">Human.</span></h1>
+                    <p>QSmart · Insi</p>
+                </div>
+            </div>
             <div class="bv-busca">
                 <Icone Nome="busca" Tamanho="18" />
-                <input class="campo" placeholder="O que você quer fazer? Ex.: pareceres, ociosidade, unir compilados…" @bind="_busca" @bind:event="oninput" @onkeydown="Tecla" id="busca-inicio" />
+                <input class="campo" placeholder="O que você quer fazer? Ex.: pareceres, ociosidade, unir compilados…" @bind="_busca" @bind:event="oninput" @onkeydown="Tecla" id="busca-inicio"
+                       @onfocus="() => _foco = true" @onblur="() => _foco = false" />
                 @if (_busca != "") { <button class="btn-icone" @onclick="@(() => _busca = "")" title="Limpar"><Icone Nome="x" Tamanho="16" /></button> }
+            </div>
+            <div class="bv-pontos">
+                @for (int i = 0; i < Slides; i++)
+                {
+                    var k = i;
+                    <button class="@(_slide == k ? "on" : "")" @onclick="() => IrPara(k)" title="@($"Tela {k + 1}")" aria-label="@($"Tela {k + 1}")"><i style="@(_slide == k && !Parado ? $"animation-duration:{Intervalo}ms" : "")"></i></button>
+                }
             </div>
         </div>
         <div class="bv-arte" aria-hidden="true">
@@ -80,6 +111,54 @@
 @code {
     protected override string Chave => "resumo";
     string _busca = "";
+
+    // ---- outdoor da faixa de boas-vindas ----
+    const int Slides = 4, Intervalo = 3000;
+    int _slide, _cur = Random.Shared.Next(100);
+    bool _pausa, _foco;
+    bool Parado => _pausa || _foco || _busca != "";
+    System.Threading.Timer? _timer;
+
+    static readonly (string chave, string texto)[] Curiosidades =
+    {
+        ("estrategia", "Já calcula o TMA do dia, resume os serviços e monta a mensagem da estratégia pronta para o Teams."),
+        ("corredor", "Une vários compilados num só, tira as linhas repetidas e ainda junta PDFs na ordem que você escolher."),
+        ("pareceres", "Confere as justificativas com os pareceres padrão e aponta o que está diferente."),
+        ("ferias", "Gera o modelo de planilha para a equipe e mostra choques de datas e quem quer vender dias."),
+        ("pontos", "Calcula a média diária de ações por usuário e permite justificar quem ficou abaixo da meta."),
+        ("monitor", "Mostra o tempo ocioso de cada colaborador, dia a dia, a partir das finalizações."),
+        ("historico", "Guarda os meses gravados e mostra a evolução mês a mês, com mensagem pronta para o Teams."),
+        ("resumo", "Mostra aprovações, reprovações e os motivos mais frequentes, com relatório em PDF."),
+    };
+
+    int Ferramentas() => Abas.Todas.Count(a => !a.Externo && a.Grupo != "Ferramentas");
+    int Areas() => Abas.Todas.Where(a => !a.Externo && a.Grupo != "Ferramentas").Select(a => a.Grupo).Distinct().Count();
+
+    protected override void Entrar()
+    {
+        _timer = new System.Threading.Timer(_ => Avancar(), null, Intervalo, Intervalo);
+    }
+
+    void Avancar()
+    {
+        if (Parado) return;
+        _slide = (_slide + 1) % Slides;
+        if (_slide == 2) _cur++;
+        InvokeAsync(StateHasChanged);
+    }
+
+    void IrPara(int k)
+    {
+        _slide = k;
+        if (k == 2) _cur++;
+        _timer?.Change(Intervalo, Intervalo);
+    }
+
+    public override void Dispose()
+    {
+        _timer?.Dispose();
+        base.Dispose();
+    }
 
     static string Saudacao()
     {

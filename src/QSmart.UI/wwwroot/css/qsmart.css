@@ -728,3 +728,24 @@ button.fer-alerta:hover { filter: brightness(.97); }
 .ma-p { padding: 7px 8px; } .ma-p b { font-size: 11px; -webkit-line-clamp: 2; } .ma-p .ma-num { font-size: 14px; }
 .lateral .item-ext { margin-left: auto; color: var(--side-muted); display: inline-flex; }
 .recolhido .lateral .item-ext { display: none; }
+
+/* Boas-vindas como outdoor: telas que se alternam */
+.bv-slides { position: relative; display: grid; min-height: 132px; }
+.bv-slide { grid-area: 1 / 1; opacity: 0; transform: translateY(10px); transition: opacity .55s ease, transform .55s ease; pointer-events: none; visibility: hidden; }
+.bv-slide.on { opacity: 1; transform: none; pointer-events: auto; visibility: visible; }
+.bv-fatos { display: flex; flex-wrap: wrap; gap: 8px 10px; margin-top: 4px; }
+.bv-fatos span { display: inline-flex; align-items: center; gap: 7px; padding: 6px 12px; border-radius: 20px; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.14); font-size: 13px; color: #E6FFFA; }
+.bv-curio { display: flex; align-items: center; gap: 12px; }
+.bv-curio-ic { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 12px; background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.18); color: #A7F3D0; }
+.bv-link { display: inline-flex; align-items: center; gap: 4px; margin-left: 6px; color: #A7F3D0; font-weight: 650; text-decoration: none; }
+.bv-link:hover { text-decoration: underline; }
+.bv-frase { align-content: center; }
+.bv-frase h1 { font-size: 46px; letter-spacing: -1.2px; margin: 18px 0 4px; }
+.bv-frase p { letter-spacing: .3em; text-transform: uppercase; font-size: 12px; color: rgba(255,255,255,.6); }
+.bv-pontos { display: flex; gap: 6px; margin-top: 14px; }
+.bv-pontos button { width: 26px; height: 6px; padding: 0; border: 0; border-radius: 4px; background: rgba(255,255,255,.2); cursor: pointer; overflow: hidden; }
+.bv-pontos button.on { width: 44px; background: rgba(255,255,255,.25); }
+.bv-pontos button i { display: block; height: 100%; width: 0; border-radius: 4px; background: linear-gradient(90deg, #6EE7B7, #C4B5FD); }
+.bv-pontos button.on i { width: 100%; animation: bv-tempo linear forwards; }
+@keyframes bv-tempo { from { width: 0; } to { width: 100%; } }
+@media (prefers-reduced-motion: reduce) { .bv-slide { transition: none; transform: none; } }
