@@ -102,7 +102,7 @@ public static class FeriasAuto
         return b;
     }
 
-    static List<(string nome, string caminho)> LerAbas(ZipArchive zip)
+    internal static List<(string nome, string caminho)> LerAbas(ZipArchive zip)
     {
         var rels = new Dictionary<string, string>();
         var re = zip.GetEntry("xl/_rels/workbook.xml.rels");
@@ -127,7 +127,7 @@ public static class FeriasAuto
         return l;
     }
 
-    static List<string> LerShared(ZipArchiveEntry? e)
+    internal static List<string> LerShared(ZipArchiveEntry? e)
     {
         var l = new List<string>();
         if (e == null) return l;
@@ -154,7 +154,7 @@ public static class FeriasAuto
     }
 
     /// <summary>Células da aba: (linha, coluna 0-based) → (texto, número).</summary>
-    static Dictionary<(int, int), (string? txt, double? num)> LerCelulas(ZipArchiveEntry e, List<string> shared)
+    internal static Dictionary<(int, int), (string? txt, double? num)> LerCelulas(ZipArchiveEntry e, List<string> shared)
     {
         var d = new Dictionary<(int, int), (string?, double?)>();
         using var r = XmlReader.Create(e.Open());
@@ -198,7 +198,7 @@ public static class FeriasAuto
         return s;
     }
 
-    static DateOnly? Data((string? txt, double? num) v)
+    internal static DateOnly? Data((string? txt, double? num) v)
     {
         if (v.num is double n && n > 20000 && n < 80000) return Base1900.AddDays((int)Math.Floor(n));
         if (!string.IsNullOrWhiteSpace(v.txt) && DateOnly.TryParseExact(v.txt.Trim(), new[] { "dd/MM/yyyy", "d/M/yyyy", "yyyy-MM-dd" }, CultureInfo.InvariantCulture, DateTimeStyles.None, out var d)) return d;
@@ -208,7 +208,7 @@ public static class FeriasAuto
     static int? Inteiro((string? txt, double? num) v)
         => v.num is double n ? (int)Math.Round(n) : int.TryParse(v.txt?.Trim(), out var i) ? i : null;
 
-    static string Txt((string? txt, double? num) v) => (v.txt ?? (v.num?.ToString(CultureInfo.InvariantCulture) ?? "")).Trim();
+    internal static string Txt((string? txt, double? num) v) => (v.txt ?? (v.num?.ToString(CultureInfo.InvariantCulture) ?? "")).Trim();
 
     static bool LerAba(BaseAuto b, string aba, Dictionary<(int, int), (string? txt, double? num)> cel)
     {

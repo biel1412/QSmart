@@ -1,0 +1,499 @@
+@page "/one-a-one"
+@inherits PaginaBase
+@using QSmart.Core.Coordenacao
+
+@{ var b = E.OneBase; Montar(); }
+<Pagina Titulo="One a One" Grupo="@A.Grupo"
+        Sub="Cada colaborador é um cartão que anda sozinho na esteira conforme o tempo passa: Em dia → Chegando → Atrasado. Fez o 1:1? Registre e o cartão volta para o começo."
+        Kpis="@(b != null && _ativos > 0 ? KpisOO : null)">
+    <Acoes>
+        <button class="btn btn-hero" @onclick="BaixarModelo" title="Planilha em branco com o passo a passo de como preencher"><Icone Nome="download" Tamanho="17" /> Modelo em branco</button>
+        <button class="btn btn-hero" disabled="@(b == null)" @onclick="Exportar" title="A carteira em planilha, no mesmo formato, com o histórico"><Icone Nome="download" Tamanho="17" /> Exportar planilha</button>
+        <BotaoArquivo Texto="@(b != null ? "Atualizar com planilha" : "Anexar planilha")" Variante="pri" Icone="upload" Aceita=".xlsx,.xlsm" AoEscolher="Anexar"
+                      Desativado="E.Carregando" Dica="A planilha de One a One da coordenação" />
+    </Acoes>
+    <ChildContent>
+        @if (b == null)
+        {
+            <div class="fa-intro">
+                <div class="fa-passo"><span>1</span><div><b>Baixe o modelo em branco</b><p class="muted">Uma linha por colaborador: liderança, nome, tipo (Novo ou Antigo) e a data do último 1:1. Vem com uma aba “Como preencher”, passo a passo.</p>
+                    <button class="btn btn-sec" @onclick="BaixarModelo"><Icone Nome="download" Tamanho="16" /> Baixar modelo em branco</button></div></div>
+                <div class="fa-passo"><span>2</span><div><b>Anexe a planilha preenchida</b><p class="muted">O QSmart monta uma esteira para cada liderança, do jeito que estiver na planilha: 2, 3 ou 10 lideranças, com quantas pessoas houver.</p>
+                    <BotaoArquivo Texto="Anexar planilha" Variante="pri" Icone="upload" Aceita=".xlsx,.xlsm" AoEscolher="Anexar" Desativado="E.Carregando" /></div></div>
+                <div class="fa-passo"><span>3</span><div><b>Registre cada 1:1 no QSmart</b><p class="muted">Clique no cartão, anote o que foi conversado e a ação combinada. O próximo 1:1 é calculado sozinho (Novo: 30 dias, Antigo: 90).</p>
+                    <button class="btn btn-sec" @onclick="ComecarVazio">Começar sem planilha</button></div></div>
+            </div>
+            <p class="fa-privado"><Icone Nome="escudo" Tamanho="16" /> Nada vai para servidor. Os dados ficam neste navegador, criptografados, e — se você criar uma senha — também na sua pasta de dados e nos backups, para abrir em outro computador.</p>
+        }
+        else
+        {
+            @if (_mud != null) { @PainelMudancas }
+
+            <div class="barra-ferr">
+                <span class="rotulo">Liderança</span>
+                <select class="campo" style="min-width:150px" value="@_lider" @onchange="e => _lider = e.Value?.ToString() ?? Todas">
+                    <option value="@Todas">Todas (@_lids.Count)</option>
+                    @foreach (var l in _lids) { <option value="@l">@l</option> }
+                </select>
+                <input class="campo" style="width:200px" placeholder="Buscar pessoa…" @bind="_busca" @bind:event="oninput" />
+                <button class="btn btn-sec" @onclick="NovaPessoa"><Icone Nome="mais" Tamanho="15" /> Pessoa</button>
+                <button class="btn btn-sec" @onclick="NovaLideranca"><Icone Nome="mais" Tamanho="15" /> Liderança</button>
+                <span class="mola"></span>
+                @if (E.TemSenhaPasta)
+                {
+                    <span class="fa-cadeado" title="Criptografado neste navegador e, com senha, @E.Dados.OndeGrava (entra nos backups)"><Icone Nome="escudo" Tamanho="14" /> protegido com senha@(E.Dados.PastaDados != null ? $" · pasta {E.Dados.PastaDados}" : "")</span>
+                }
+                else
+                {
+                    <span class="fa-cadeado so" title="Criptografado, mas só neste navegador"><Icone Nome="escudo" Tamanho="14" /> só neste navegador</span>
+                    <button class="btn btn-sec" @onclick="ProtegerSenha" title="Salva também na pasta de dados e nos backups, protegido com senha">Proteger com senha</button>
+                }
+                <button class="btn btn-sec" @onclick="Limpar" title="Apaga a carteira deste navegador e da pasta"><Icone Nome="lixo" Tamanho="16" /></button>
+            </div>
+            @if (!E.TemSenhaPasta)
+            {
+                <p class="hero-aviso"><Icone Nome="alerta" Tamanho="15" /> Hoje a carteira está só neste navegador. Se os dados do navegador forem limpos, ela se perde. Clique em “Proteger com senha” para guardar também na pasta de dados e nos backups.</p>
+            }
+
+            <div class="oo-grade">
+                <div>
+                    <div class="oo-legenda"><div></div><div><i class="g"></i>EM DIA</div><div title="Vence em até @OneAOne.Chegando dias"><i class="a"></i>CHEGANDO</div><div><i class="r"></i>ATRASADO (DIAS)</div></div>
+                    @if (_lids.Count == 0) { <p class="muted">Nenhuma liderança ainda. Use “+ Liderança” ou anexe a planilha.</p> }
+                    @foreach (var l in _lids.Where(l => _lider == Todas || l == _lider))
+                    {
+                        var ps = b.Ativos.Where(p => p.Lideranca == l).ToList();
+                        int em = ps.Count(p => OneAOne.Faixa(p, _hoje) == FaixaOO.EmDia), ch = ps.Count(p => OneAOne.Faixa(p, _hoje) == FaixaOO.Chegando), at = ps.Count - em - ch;
+                        int pct = ps.Count == 0 ? 0 : (int)Math.Round(em * 100.0 / ps.Count);
+                        var cor = CorLider(l);
+                        <section class="oo-lane @(_soltar == l ? "alvo" : "")" style="--l:@cor" @ondragover="() => Sobre(l)" @ondragover:preventDefault="true" @ondrop="() => Soltar(l)" @ondrop:preventDefault="true">
+                            <header>
+                                <span class="oo-lav">@(l.Length > 0 ? l[..1].ToUpperInvariant() : "?")</span>
+                                <div><b title="Clique para renomear" @onclick="() => Renomear(l)">@l</b><small>@Ferias.Plural(ps.Count, "colaborador", "colaboradores")</small></div>
+                                <div class="oo-ring" style="--p:@pct"><span>@pct%</span></div>
+                                <small class="oo-emd">em dia</small>
+                                <div class="oo-mini"><span class="g" title="Em dia">@em</span><span class="a" title="Chegando">@ch</span><span class="r" title="Atrasado">@at</span></div>
+                                @if (ps.Count == 0) { <button class="btn btn-sec btn-peq" @onclick="() => RemoverLideranca(l)">Remover</button> }
+                            </header>
+                            <div class="oo-belt">
+                                @foreach (var fx in new[] { FaixaOO.EmDia, FaixaOO.Chegando, FaixaOO.Atrasado })
+                                {
+                                    var lista = ps.Where(p => OneAOne.Faixa(p, _hoje) == fx).OrderBy(p => OneAOne.Faltam(p, _hoje) ?? int.MinValue).ToList();
+                                    if (fx == FaixaOO.EmDia) lista.Reverse();
+                                    <div class="oo-z @Cls(fx)">
+                                        @foreach (var p in lista) { @Cartao(p) }
+                                    </div>
+                                }
+                            </div>
+                        </section>
+                    }
+                </div>
+
+                <aside class="oo-lado">
+                    <Painel Titulo="🔥 Próximos da fila" Sangrar="true">
+                        <ul class="oo-fila">
+                            @foreach (var p in b.Ativos.Where(Visivel).Where(p => OneAOne.Faixa(p, _hoje) != FaixaOO.EmDia).OrderBy(p => OneAOne.Faltam(p, _hoje) ?? int.MinValue).Take(8))
+                            {
+                                var f = OneAOne.Faltam(p, _hoje);
+                                <li @onclick="() => Abrir(p)">
+                                    <span class="oo-av" style="background:@CorLider(p.Lideranca)">@Iniciais(p.Nome)</span>
+                                    <div><b>@Curto(p.Nome)</b><small>@p.Lideranca · @(p.Ultimo is DateOnly u ? $"último {u:dd/MM}" : "sem 1:1")</small></div>
+                                    <em class="@(f is null or < 0 ? "r" : "a")">@(f == null ? "—" : f < 0 ? $"{-f} d" : $"em {f} d")</em>
+                                </li>
+                            }
+                        </ul>
+                    </Painel>
+                    @if (_acoes.Count > 0)
+                    {
+                        <Painel Titulo="Ações combinadas em aberto" Nota="@_acoes.Count.ToString()" Sangrar="true">
+                            <ul class="oo-fila">
+                                @foreach (var (p, r) in _acoes.Take(8))
+                                {
+                                    bool venc = r.AcaoPrazo is DateOnly pz && pz < _hoje;
+                                    <li @onclick="() => Abrir(p)">
+                                        <span class="oo-av" style="background:@CorLider(p.Lideranca)">@Iniciais(p.Nome)</span>
+                                        <div><b>@r.Acao</b><small>@Curto(p.Nome) · combinado em @r.Data.ToString("dd/MM")</small></div>
+                                        @if (r.AcaoPrazo is DateOnly pz2) { <em class="@(venc ? "r" : "")">@pz2.ToString("dd/MM")</em> }
+                                    </li>
+                                }
+                            </ul>
+                        </Painel>
+                    }
+                    <Painel Titulo="Evolução mês a mês" Nota="% em dia">
+                        @{ var meses = b.Fotos.OrderBy(k => k.Key).TakeLast(6).ToList(); }
+                        @if (meses.Count < 2) { <p class="muted pequeno">O QSmart guarda uma foto por mês (quantas pessoas e quantas em dia). A comparação aparece a partir do 2º mês.</p> }
+                        <div class="oo-meses">
+                            @foreach (var (k, v) in meses)
+                            {
+                                int t = v.Values.Sum(x => x.Total), e = v.Values.Sum(x => x.EmDia); int pc = t == 0 ? 0 : (int)Math.Round(e * 100.0 / t);
+                                <div title="@($"{e} de {t} em dia")"><span style="height:@(Math.Max(4, pc))%"></span><b>@pc%</b><small>@MesCurto(k)</small></div>
+                            }
+                        </div>
+                    </Painel>
+                    @if (_arquivados > 0)
+                    {
+                        <Painel Titulo="Arquivados" Nota="@_arquivados.ToString()" Sangrar="true">
+                            <ul class="oo-fila">
+                                @foreach (var p in b.Pessoas.Where(p => p.Arquivado).OrderByDescending(p => p.ArquivadoEm).Take(_verArq ? 999 : 4))
+                                {
+                                    <li @onclick="() => Abrir(p)"><span class="oo-av" style="background:#94A3B8">@Iniciais(p.Nome)</span>
+                                        <div><b>@Curto(p.Nome)</b><small>@p.Lideranca · saiu @(p.ArquivadoEm?.ToString("dd/MM/yyyy"))</small></div></li>
+                                }
+                            </ul>
+                            @if (_arquivados > 4) { <button class="btn btn-sec btn-peq" style="margin:8px 16px" @onclick="() => _verArq = !_verArq">@(_verArq ? "Ver menos" : "Ver todos")</button> }
+                        </Painel>
+                    }
+                    <Painel Titulo="Como a esteira anda">
+                        <p class="muted pequeno">Novo: 1:1 a cada @OneAOne.CicloNovo dias. Antigo: a cada @OneAOne.CicloAntigo. O Novo vira Antigo sozinho depois de @OneAOne.NovoViraAntigo dias.
+                            Quem muda de liderança ganha um 1:1 em até @OneAOne.AposMudanca dias. Arraste um cartão para outra esteira para mudar a pessoa de liderança.</p>
+                    </Painel>
+                </aside>
+            </div>
+        }
+
+        @if (_ficha != null) { @Ficha }
+    </ChildContent>
+</Pagina>
+
+@code {
+    protected override string Chave => "oneaone";
+    const string Todas = "\u0001todas";
+    static readonly string[] Paleta = { "#0891B2", "#7C3AED", "#059669", "#DB2777", "#D97706", "#2563EB", "#0D9488", "#9333EA", "#DC2626", "#65A30D" };
+    readonly DateOnly _hoje = DateOnly.FromDateTime(DateTime.Today);
+    string _lider = Todas, _busca = "";
+    string? _soltar;
+    PessoaOO? _arrastando, _ficha;
+    List<string> _lids = new();
+    List<(PessoaOO p, RegistroOO r)> _acoes = new();
+    int _ativos, _arquivados;
+    bool _verArq;
+    // mudanças da planilha nova
+    MudancasOO? _mud;
+    HashSet<string> _confirmados = new();
+    bool _arquivarSaidas = true;
+    // formulário da ficha
+    string _fData = "", _fObs = "", _fAcao = "", _fPrazo = "";
+
+    protected override async Task OnInitializedAsync() => await E.CarregarOne();
+
+    void Montar()
+    {
+        var b = E.OneBase;
+        if (b == null) return;
+        _lids = b.TodasLiderancas();
+        if (_lider != Todas && !_lids.Contains(_lider)) _lider = Todas;
+        _ativos = b.Ativos.Count();
+        _arquivados = b.Pessoas.Count(p => p.Arquivado);
+        _acoes = OneAOne.AcoesAbertas(b).Where(x => Visivel(x.p)).OrderBy(x => x.r.AcaoPrazo ?? DateOnly.MaxValue).ToList();
+    }
+
+    bool Visivel(PessoaOO p) => _lider == Todas || p.Lideranca == _lider;
+    static string CorLider(string l) { if (l == "") return "#64748B"; int h = 0; foreach (var ch in Ferias.Norm(l)) h = unchecked(h * 31 + ch); return Paleta[(int)((uint)h % Paleta.Length)]; }
+    static string Cls(FaixaOO f) => f switch { FaixaOO.EmDia => "g", FaixaOO.Chegando => "a", _ => "r" };
+    static string Iniciais(string nome) { var p = nome.Replace("(jovem)", "").Split(' ', StringSplitOptions.RemoveEmptyEntries).Where(x => char.IsUpper(x[0])).ToArray(); return p.Length == 0 ? "?" : p.Length == 1 ? p[0][..Math.Min(2, p[0].Length)].ToUpperInvariant() : $"{p[0][0]}{p[^1][0]}".ToUpperInvariant(); }
+    static string Curto(string n) { var p = n.Replace("(jovem)", "").Split(' ', StringSplitOptions.RemoveEmptyEntries); return p.Length > 1 ? $"{p[0]} {p[^1][0]}." : n; }
+    static string MesCurto(string k) { var m = int.Parse(k[5..]); return Texto.MesesPt[m - 1][..3].ToLowerInvariant() + "/" + k[2..4]; }
+    static string Iso(DateOnly? d) => d?.ToString("yyyy-MM-dd") ?? "";
+    static DateOnly? DeIso(string s) => DateOnly.TryParseExact(s, "yyyy-MM-dd", out var d) ? d : null;
+
+    RenderFragment Cartao(PessoaOO p) => @<text>
+        @{ var f = OneAOne.Faltam(p, _hoje); var fx = OneAOne.Faixa(p, _hoje);
+           bool apagado = _busca.Trim() != "" && !Ferias.Norm(p.Nome).Contains(Ferias.Norm(_busca));
+           bool mudou = p.MudouEm is DateOnly m && (p.Ultimo == null || p.Ultimo < m);
+           bool acaoVenc = p.Registros.Any(r => r.Acao != "" && !r.AcaoFeita && r.AcaoPrazo is DateOnly pz && pz < _hoje); }
+        <div class="oo-c @(apagado ? "apagado" : "")" draggable="true" @ondragstart="() => Pegar(p)" @ondragend="Largar"
+             @onclick="() => Abrir(p)" title="@($"{p.Nome} · {p.Lideranca} · {(p.Ultimo is DateOnly u ? $"último 1:1 em {u:dd/MM/yyyy}" : "sem 1:1 registrado")}")">
+            <span class="oo-av-c">@Iniciais(p.Nome)</span>
+            <div>
+                <span class="n">@Curto(p.Nome)@if (OneAOne.EhNovo(p, _hoje)) { <i class="oo-tag nv">novo</i> }@if (mudou) { <i class="oo-tag mv" title="Mudou de liderança">mudou</i> }</span>
+                <b class="t @Cls(fx)">@(f == null ? "sem 1:1" : f < 0 ? $"{-f} d" : f == 0 ? "hoje" : $"em {f} d")</b>
+            </div>
+            @if (acaoVenc) { <span class="oo-dot" title="Ação combinada vencida"></span> }
+        </div>
+    </text>;
+
+    RenderFragment KpisOO => @<text>
+        @{ var b = E.OneBase!; var vis = b.Ativos.Where(Visivel).ToList(); int t = vis.Count;
+           int em = vis.Count(p => OneAOne.Faixa(p, _hoje) == FaixaOO.EmDia), ch = vis.Count(p => OneAOne.Faixa(p, _hoje) == FaixaOO.Chegando), at = t - em - ch;
+           int nunca = vis.Count(p => p.Ultimo == null && OneAOne.Faixa(p, _hoje) == FaixaOO.Atrasado); double ritmo = vis.Sum(p => 7.0 / OneAOne.Ciclo(p, _hoje)); }
+        <Kpi Titulo="Em dia" Cor="green" Valor="@($"{(t == 0 ? 0 : Math.Round(em * 100.0 / t)):0}%")" Detalhe="@($"{em} de {t} colaboradores")" Proporcao="@(t == 0 ? 0 : (double)em / t)" />
+        <Kpi Titulo="Atrasados" Cor="red" Valor="@Fmt(at)" Detalhe="@(nunca > 0 ? $"{nunca} sem nenhum 1:1 registrado" : "passaram do prazo de 30 / 90 dias")" />
+        <Kpi Titulo="Chegando" Cor="amber" Valor="@Fmt(ch)" Detalhe="@($"vencem nos próximos {OneAOne.Chegando} dias")" />
+        <Kpi Titulo="Ritmo necessário" Cor="blue" Valor="@($"{Math.Ceiling(ritmo):0}/semana")" Detalhe="1:1 por semana para manter todos em dia" />
+        <Kpi Titulo="Ações em aberto" Cor="purple" Valor="@Fmt(_acoes.Count)" Detalhe="@($"{_acoes.Count(x => x.r.AcaoPrazo is DateOnly pz && pz < _hoje)} com prazo vencido")" />
+    </text>;
+
+    RenderFragment PainelMudancas => @<text>
+        @{ var m = _mud!; }
+        <Painel Titulo="O que mudou com a planilha nova" Nota="@m.Lida.Arquivo" Classe="oo-mud">
+            <p class="muted pequeno">Confira antes de aplicar. Nada é apagado: quem saiu vai para “Arquivados” com o histórico guardado.</p>
+            <div class="oo-mud-grade">
+                <div class="oo-mud-bloco g"><b>🟢 Entraram (@m.Entraram.Count)</b>
+                    @if (m.Entraram.Count == 0) { <small class="muted">ninguém</small> }
+                    @foreach (var p in m.Entraram) { <span>@p.Nome <small>@p.Lideranca · @p.Tipo</small></span> }
+                </div>
+                <div class="oo-mud-bloco b"><b>🔄 Mudaram de liderança (@m.MudaramLideranca.Count)</b>
+                    @if (m.MudaramLideranca.Count == 0) { <small class="muted">ninguém</small> }
+                    @foreach (var (a, de, para) in m.MudaramLideranca) { <span>@a.Nome <small>@de → <b>@para</b></small></span> }
+                </div>
+                <div class="oo-mud-bloco c"><b>⚪ Saíram (@m.Sairam.Count)</b>
+                    @if (m.Sairam.Count == 0) { <small class="muted">ninguém</small> }
+                    @foreach (var p in m.Sairam) { <span>@p.Nome <small>@p.Lideranca</small></span> }
+                    @if (m.Sairam.Count > 0) { <label class="oo-chk"><input type="checkbox" @bind="_arquivarSaidas" /> arquivar quem saiu</label> }
+                </div>
+                <div class="oo-mud-bloco a"><b>❓ Nome parecido (@m.Parecidos.Count)</b>
+                    @if (m.Parecidos.Count == 0) { <small class="muted">nenhum</small> }
+                    @foreach (var (a, n) in m.Parecidos)
+                    {
+                        <label class="oo-chk"><input type="checkbox" checked="@_confirmados.Contains(a.Id)" @onchange="e => { if (e.Value is true) _confirmados.Add(a.Id); else _confirmados.Remove(a.Id); }" />
+                            <span>“@n.Nome” é <b>@a.Nome</b>?</span></label>
+                    }
+                </div>
+            </div>
+            @if (m.NovosRegistros > 0) { <p class="pequeno">📅 @Ferias.Plural(m.NovosRegistros, "1:1 novo", "1:1 novos") vindos da planilha.</p> }
+            <div class="fa-card-pe">
+                <button class="btn btn-sec" @onclick="() => _mud = null">Cancelar</button>
+                <button class="btn btn-pri" @onclick="AplicarMudancas"><Icone Nome="check" Tamanho="15" /> Aplicar mudanças</button>
+            </div>
+        </Painel>
+    </text>;
+
+    RenderFragment Ficha => @<text>
+        @{ var p = _ficha!; var f = OneAOne.Faltam(p, _hoje); var fx = OneAOne.Faixa(p, _hoje); var prox = OneAOne.Proximo(p, _hoje); var vira = OneAOne.ViraAntigoEm(p); }
+        <div class="oo-fundo" @onclick="Fechar"></div>
+        <div class="oo-ficha" style="--l:@CorLider(p.Lideranca)">
+            <div class="oo-ficha-cab">
+                <span class="oo-av grande" style="background:@CorLider(p.Lideranca)">@Iniciais(p.Nome)</span>
+                <div>
+                    <b>@p.Nome</b>
+                    <small>@(p.Arquivado ? $"Arquivado em {p.ArquivadoEm:dd/MM/yyyy}" : $"Próximo 1:1: {(prox is DateOnly d ? d.ToString("dd/MM/yyyy") : "agendar")}")</small>
+                </div>
+                <span class="oo-st @Cls(fx)">@(p.Arquivado ? "arquivado" : f == null ? "sem 1:1" : f < 0 ? $"{-f} d atrasado" : f <= OneAOne.Chegando ? $"em {f} d" : "em dia")</span>
+                <button class="oo-x" @onclick="Fechar" title="Fechar"><Icone Nome="x" Tamanho="18" /></button>
+            </div>
+            <div class="oo-ficha-corpo">
+                <div class="oo-campos">
+                    <label>Liderança
+                        <select class="campo" value="@p.Lideranca" @onchange="e => MudarLideranca(p, e.Value?.ToString() ?? p.Lideranca)">
+                            @foreach (var l in _lids) { <option value="@l">@l</option> }
+                        </select></label>
+                    <label>Tipo
+                        <select class="campo" value="@(Ferias.Norm(p.Tipo).StartsWith("novo") ? "Novo" : "Antigo")" @onchange="e => { p.Tipo = e.Value?.ToString() ?? p.Tipo; Salvar(); }">
+                            <option value="Novo">Novo (30 dias)</option><option value="Antigo">Antigo (90 dias)</option>
+                        </select></label>
+                </div>
+                @if (vira is DateOnly va && OneAOne.EhNovo(p, _hoje)) { <p class="muted pequeno">Vira Antigo em @va.ToString("dd/MM/yyyy").</p> }
+
+                @if (!p.Arquivado)
+                {
+                    <div class="oo-form">
+                        <b>Registrar 1:1 feito</b>
+                        <div class="oo-campos">
+                            <label>Data<input class="campo" type="date" value="@_fData" @onchange="@(e => _fData = e.Value?.ToString() ?? "")" /></label>
+                            <label>Prazo da ação<input class="campo" type="date" value="@_fPrazo" @onchange="@(e => _fPrazo = e.Value?.ToString() ?? "")" /></label>
+                        </div>
+                        <label>O que foi conversado<textarea class="campo area" rows="3" @bind="_fObs" placeholder="Pontos da conversa, como a pessoa está, feedbacks…"></textarea></label>
+                        <label>Ação combinada (opcional)<input class="campo" @bind="_fAcao" placeholder="Ex.: fazer o treinamento X até a data" /></label>
+                        <button class="btn btn-pri" @onclick="() => RegistrarFicha(p)"><Icone Nome="check" Tamanho="15" /> 1:1 feito</button>
+                    </div>
+                }
+
+                @{ var abertas = p.Registros.Where(r => r.Acao != "" && !r.AcaoFeita).OrderBy(r => r.AcaoPrazo ?? DateOnly.MaxValue).ToList(); }
+                @if (abertas.Count > 0)
+                {
+                    <div class="oo-sec"><b>Ações em aberto</b>
+                        @foreach (var r in abertas)
+                        {
+                            <label class="oo-chk"><input type="checkbox" @onchange="() => { r.AcaoFeita = true; Salvar(); }" />
+                                <span>@r.Acao <small class="@(r.AcaoPrazo is DateOnly pz && pz < _hoje ? "r" : "muted")">@(r.AcaoPrazo is DateOnly pz2 ? $"até {pz2:dd/MM}" : "") · combinada em @r.Data.ToString("dd/MM")</small></span></label>
+                        }
+                    </div>
+                }
+
+                <div class="oo-sec"><b>Histórico de 1:1 (@p.Registros.Count)</b>
+                    @if (p.Registros.Count == 0) { <small class="muted">Nenhum 1:1 registrado.</small> }
+                    <ul class="oo-hist">
+                        @foreach (var r in p.Registros.OrderByDescending(r => r.Data))
+                        {
+                            <li><span class="oo-hd">@r.Data.ToString("dd/MM/yyyy")</span>
+                                <div>@(r.Obs == "" ? "—" : r.Obs)@if (r.Acao != "") { <small>Ação: @r.Acao@(r.AcaoFeita ? " ✓" : "")</small> }</div>
+                                <button class="oo-x peq" title="Apagar este registro" @onclick="() => ApagarRegistro(p, r)"><Icone Nome="lixo" Tamanho="14" /></button></li>
+                        }
+                    </ul>
+                </div>
+                @if (p.Vinculos.Count > 1)
+                {
+                    <div class="oo-sec"><b>Passagem pelos times</b>
+                        @foreach (var v in p.Vinculos) { <small class="muted" style="display:block">@v.Lideranca @(v.Desde is DateOnly de ? $"desde {de:MM/yyyy}" : "") @(v.Ate is DateOnly ate ? $"até {ate:MM/yyyy}" : "")</small> }
+                    </div>
+                }
+                <div class="fa-card-pe">
+                    <button class="btn btn-sec" @onclick="() => RenomearPessoa(p)">Corrigir nome</button>
+                    <button class="btn btn-sec" @onclick="() => Arquivar(p)">@(p.Arquivado ? "Reativar" : "Arquivar (saiu da carteira)")</button>
+                </div>
+            </div>
+        </div>
+    </text>;
+
+    // ===================== ações =====================
+
+    void Salvar()
+    {
+        if (E.OneBase is { } b) OneAOne.Fotografar(b, _hoje);
+        _ = E.SalvarOne();
+        E.Notificar();
+    }
+
+    void Abrir(PessoaOO p) { _ficha = p; _fData = Iso(_hoje); _fObs = ""; _fAcao = ""; _fPrazo = ""; }
+    void Fechar() => _ficha = null;
+
+    async Task RegistrarFicha(PessoaOO p)
+    {
+        var d = DeIso(_fData);
+        if (d == null) { await J.Aviso("1:1", "Informe a data do 1:1."); return; }
+        if (d > _hoje) { await J.Aviso("1:1", "A data do 1:1 não pode ser no futuro."); return; }
+        OneAOne.Registrar(p, new RegistroOO { Data = d.Value, Obs = _fObs.Trim(), Acao = _fAcao.Trim(), AcaoPrazo = _fAcao.Trim() == "" ? null : DeIso(_fPrazo) });
+        _fObs = ""; _fAcao = ""; _fPrazo = "";
+        Salvar();
+        _ficha = null;
+    }
+
+    async Task ApagarRegistro(PessoaOO p, RegistroOO r)
+    {
+        if (!await J.Pergunta("Apagar registro", $"Apagar o 1:1 de {r.Data:dd/MM/yyyy} de {p.Nome}?")) return;
+        p.Registros.Remove(r); Salvar();
+    }
+
+    void MudarLideranca(PessoaOO p, string l) { OneAOne.TrocarLideranca(p, l, _hoje); Salvar(); }
+
+    void Pegar(PessoaOO p) => _arrastando = p;
+    void Largar() { _arrastando = null; _soltar = null; }
+    void Sobre(string l) { if (_arrastando != null) _soltar = l; }
+
+    void Soltar(string l)
+    {
+        var p = _arrastando; _arrastando = null; _soltar = null;
+        if (p == null || p.Lideranca == l) return;
+        OneAOne.TrocarLideranca(p, l, _hoje);
+        Salvar();
+    }
+
+    async Task Arquivar(PessoaOO p)
+    {
+        if (!p.Arquivado && !await J.Pergunta("Arquivar", $"{p.Nome} saiu da carteira? O histórico fica guardado em “Arquivados” e dá para reativar depois.")) return;
+        p.Arquivado = !p.Arquivado; p.ArquivadoEm = p.Arquivado ? _hoje : null;
+        Salvar(); _ficha = null;
+    }
+
+    async Task RenomearPessoa(PessoaOO p)
+    {
+        var n = await J.Entrada("Corrigir nome", "Nome completo:", p.Nome);
+        if (string.IsNullOrWhiteSpace(n)) return;
+        p.Nome = string.Join(' ', n.Split(' ', StringSplitOptions.RemoveEmptyEntries)); Salvar();
+    }
+
+    async Task NovaPessoa()
+    {
+        var b = E.OneBase!;
+        var n = await J.Entrada("Nova pessoa", "Nome completo:", "");
+        if (string.IsNullOrWhiteSpace(n)) return;
+        n = string.Join(' ', n.Split(' ', StringSplitOptions.RemoveEmptyEntries));
+        if (b.Pessoas.FirstOrDefault(x => x.Chave == OneAOne.ChaveNome(n)) is { } ja)
+        {
+            await J.Aviso("Nova pessoa", ja.Arquivado ? $"{ja.Nome} já estava na carteira (arquivada). Abri a ficha para você reativar." : $"{ja.Nome} já está na carteira.");
+            Abrir(ja); return;
+        }
+        string? l = _lider != Todas ? _lider : _lids.Count == 1 ? _lids[0] : null;
+        if (l == null)
+        {
+            if (_lids.Count == 0) { l = await J.Entrada("Liderança", "Nome da liderança desta pessoa:", ""); }
+            else l = await J.Um("Liderança", _lids.Select(x => (x, x)), "", "De qual liderança?", "");
+            if (string.IsNullOrWhiteSpace(l)) return;
+        }
+        var p = new PessoaOO { Nome = n, Lideranca = l.Trim(), Tipo = "Novo", Entrada = _hoje };
+        p.Vinculos.Add(new VinculoOO { Lideranca = p.Lideranca, Desde = _hoje });
+        b.Pessoas.Add(p);
+        if (!b.Liderancas.Contains(p.Lideranca)) b.Liderancas.Add(p.Lideranca);
+        Salvar(); Abrir(p);
+    }
+
+    async Task NovaLideranca()
+    {
+        var n = await J.Entrada("Nova liderança", "Nome da liderança:", "");
+        if (string.IsNullOrWhiteSpace(n)) return;
+        n = n.Trim();
+        if (!E.OneBase!.Liderancas.Contains(n, StringComparer.OrdinalIgnoreCase)) E.OneBase.Liderancas.Add(n);
+        Salvar();
+    }
+
+    async Task Renomear(string l)
+    {
+        var n = await J.Entrada("Renomear liderança", $"Novo nome para “{l}” (todas as pessoas dela passam junto):", l);
+        if (string.IsNullOrWhiteSpace(n) || n.Trim() == l) return;
+        n = n.Trim();
+        var b = E.OneBase!;
+        foreach (var p in b.Pessoas.Where(p => p.Lideranca == l))
+        {
+            p.Lideranca = n;
+            foreach (var v in p.Vinculos.Where(v => v.Lideranca == l)) v.Lideranca = n;
+        }
+        b.Liderancas.RemoveAll(x => x == l);
+        if (!b.Liderancas.Contains(n)) b.Liderancas.Add(n);
+        if (_lider == l) _lider = n;
+        Salvar();
+    }
+
+    void RemoverLideranca(string l) { E.OneBase!.Liderancas.RemoveAll(x => x == l); Salvar(); }
+
+    void ComecarVazio() { E.OneBase = new BaseOO(); Salvar(); }
+
+    async Task Anexar(List<Arquivo> arqs)
+    {
+        var arq = arqs[0];
+        BaseOO lida;
+        try { lida = OneAOne.Ler(arq.Dados, arq.Nome); }
+        catch (Exception ex) { await J.Erro("One a One", $"Não consegui ler “{arq.Nome}”.\n\n{ex.Message}"); return; }
+        var b = E.OneBase;
+        if (b == null || !b.Pessoas.Any())
+        {
+            b ??= new BaseOO();
+            OneAOne.Aplicar(b, OneAOne.Comparar(b, lida), new List<string>(), true, _hoje);
+            E.OneBase = b;
+            Salvar();
+            await J.Info("One a One", $"{Ferias.Plural(b.Pessoas.Count, "colaborador", "colaboradores")} em {Ferias.Plural(b.TodasLiderancas().Count, "liderança", "lideranças")}. Tudo fica salvo neste navegador, criptografado.");
+            return;
+        }
+        var m = OneAOne.Comparar(b, lida);
+        if (m.Vazia) { await J.Info("One a One", "A planilha não trouxe nenhuma mudança: as mesmas pessoas, nas mesmas lideranças, sem 1:1 novos."); return; }
+        _mud = m;
+        _confirmados = m.Parecidos.Select(x => x.atual.Id).ToHashSet();
+        _arquivarSaidas = true;
+    }
+
+    void AplicarMudancas()
+    {
+        if (_mud == null || E.OneBase == null) return;
+        OneAOne.Aplicar(E.OneBase, _mud, _confirmados, _arquivarSaidas, _hoje);
+        _mud = null;
+        Salvar();
+    }
+
+    async Task ProtegerSenha()
+    {
+        if (!await E.PedirNovaSenha()) return;
+        if (E.Dados.PastaDados != null)
+            await J.Info("Protegido", $"Pronto. A carteira agora também é salva na pasta “{E.Dados.PastaDados}”, protegida com senha, e entra nos backups. Em outro computador, aponte o QSmart para a mesma pasta e digite a senha.");
+        else
+            await J.Info("Protegido", "Pronto. A carteira agora também entra nos backups, protegida com senha. Para abrir em outro computador (ou não perder se o navegador for limpo), escolha uma pasta de dados em Configurações, de preferência dentro do OneDrive: o QSmart passa a gravar lá.");
+    }
+
+    async Task Limpar()
+    {
+        if (!await J.Pergunta("Limpar", "Apagar a carteira de One a One deste navegador e da pasta de dados? Exporte a planilha antes se quiser guardar.")) return;
+        E.OneBase = null; _ficha = null; _mud = null;
+        await E.SalvarOne();
+        E.Notificar();
+    }
+
+    async Task BaixarModelo() => await E.Salvar("Modelo_one_a_one.xlsx", OneAOne.Modelo(), Navegador.MimeXlsx, "Modelo baixado");
+    async Task Exportar() => await E.Salvar($"One_a_one_{_hoje:yyyy-MM-dd}.xlsx", OneAOne.Exportar(E.OneBase!), Navegador.MimeXlsx, "Planilha exportada");
+}

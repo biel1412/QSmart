@@ -35,6 +35,8 @@ public static class Abas
             "Gera o modelo de planilha para a equipe pedir férias e compara os pedidos: choques, datas próximas, quem vende e quem sai em breve.", "ferias"),
         new("pontos", "Pontos de ação mensal", "Pontos de ação", "pontos", "Coordenação",
             "Média diária de ações por usuário no mês e painel só com quem fica abaixo de 150.", "pontos"),
+        new("oneaone", "One a One", "One a One", "conversa", "Coordenação",
+            "Esteira dos 1:1 da coordenação com cada colaborador: quem está em dia, chegando ou atrasado, por liderança, com o registro de cada conversa.", "one-a-one"),
         new("depurador", "Depurador de leitura", "Depurador", "depurador", "Ferramentas",
             "Mostra, linha a linha, o que o sistema lê de uma planilha e o que fica de fora.", "depurador"),
         new("insitalent", "InsiTalent", "InsiTalent", "talento", "Ferramentas",
@@ -44,7 +46,7 @@ public static class Abas
     };
 
     /// <summary>Ordem da lista de abas nas Configurações (igual ao original).</summary>
-    public static readonly string[] OrdemConfig = { "resumo", "usuarios", "evolucao", "inspecao", "volume", "monitor", "corredor", "estrategia", "historico", "pareceres", "ferias", "pontos", "depurador", "insitalent", "mesa" };
+    public static readonly string[] OrdemConfig = { "resumo", "usuarios", "evolucao", "inspecao", "volume", "monitor", "corredor", "estrategia", "historico", "pareceres", "ferias", "pontos", "oneaone", "depurador", "insitalent", "mesa" };
 
     public static readonly string[] Grupos = { "Decisões", "Inspeção", "Conformidade", "Operação", "Coordenação", "Ferramentas" };
 

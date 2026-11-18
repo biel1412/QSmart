@@ -83,8 +83,9 @@ public sealed class InfoBackup
 /// Ficam na pasta de dados escolhida pelo usuário (como no original) ou, sem pasta escolhida, no próprio navegador.</summary>
 public sealed class Dados
 {
-    public const string ChHistorico = "historico_qualidade.json", ChPrefs = "preferencias.json", ChPareceres = "pareceres_padrao.json", ChJustificativas = "pontos_justificativas.json";
-    public static readonly string[] Arquivos = { ChHistorico, ChPrefs, ChPareceres, ChJustificativas };
+    public const string ChHistorico = "historico_qualidade.json", ChPrefs = "preferencias.json", ChPareceres = "pareceres_padrao.json", ChJustificativas = "pontos_justificativas.json",
+        ChOneAOne = "one_a_one.qsc", ChFeriasAuto = "ferias_auto.qsc";
+    public static readonly string[] Arquivos = { ChHistorico, ChPrefs, ChPareceres, ChJustificativas, ChOneAOne, ChFeriasAuto };
     const string ChIndiceBackup = "backups/indice";
     readonly Navegador _nav;
     public Dados(Navegador nav) { _nav = nav; }
@@ -206,6 +207,10 @@ public sealed class Dados
     {
         if (PastaDados != null) await _nav.PastaApagar("dados", arquivo); else await _nav.Apagar(arquivo);
     }
+    /// <summary>Arquivos criptografados (one a one, férias): leitura e gravação diretas.</summary>
+    public async Task<string?> LerArquivo(string arquivo) { try { return await Ler(arquivo); } catch { return null; } }
+    public Task<bool> GravarArquivo(string arquivo, string texto) => Gravar(arquivo, texto);
+    public async Task ApagarArquivo(string arquivo) { try { await Apagar(arquivo); } catch { } }
     public string OndeGrava => PastaDados != null ? $"na pasta “{PastaDados}”" : "neste navegador";
 
     public async Task<Preferencias> CarregarPreferencias()

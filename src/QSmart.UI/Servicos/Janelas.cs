@@ -44,8 +44,8 @@ public sealed class Janelas
     public async Task<bool> Pergunta(string titulo, string texto)
         => await Abrir<bool?>(typeof(Dialogos.DlgMensagem), new() { ["Tipo"] = "pergunta", ["Titulo"] = titulo, ["Texto"] = texto }) == true;
 
-    public Task<string?> Entrada(string titulo, string rotulo, string valor, bool multilinha = false)
-        => Abrir<string>(typeof(Dialogos.DlgEntrada), new() { ["Titulo"] = titulo, ["Rotulo"] = rotulo, ["Valor"] = valor, ["Multilinha"] = multilinha });
+    public Task<string?> Entrada(string titulo, string rotulo, string valor, bool multilinha = false, bool senha = false)
+        => Abrir<string>(typeof(Dialogos.DlgEntrada), new() { ["Titulo"] = titulo, ["Rotulo"] = rotulo, ["Valor"] = valor, ["Multilinha"] = multilinha, ["Senha"] = senha });
 
     /// <summary>Lista pesquisável com caixas de marcação. opcoes = [(valor, rótulo)].</summary>
     public Task<HashSet<string>?> Multi(string titulo, IEnumerable<(string valor, string rotulo)> opcoes, IEnumerable<string> atuais, string dica = "")

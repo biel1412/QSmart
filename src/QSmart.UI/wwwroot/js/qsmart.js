@@ -257,6 +257,24 @@
       } catch { return null; }
     },
     async del(nome) { try { await tx('readwrite', s => s.delete('cofre:' + nome)); } catch { } },
+    // Arquivo para a pasta de dados / backups: AES-GCM com chave derivada da senha (PBKDF2, 210 mil voltas).
+    async derivar(senha, sal) {
+      const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(senha), 'PBKDF2', false, ['deriveKey']);
+      return crypto.subtle.deriveKey({ name: 'PBKDF2', salt: sal, iterations: 210000, hash: 'SHA-256' }, base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+    },
+    async cifrarSenha(bytes, senha) {
+      const sal = crypto.getRandomValues(new Uint8Array(16)), iv = crypto.getRandomValues(new Uint8Array(12));
+      const k = await cofre.derivar(senha, sal);
+      const c = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, k, bytes));
+      const r = new Uint8Array(28 + c.length); r.set(sal, 0); r.set(iv, 16); r.set(c, 28);
+      return r;
+    },
+    async decifrarSenha(bytes, senha) {
+      try {
+        const k = await cofre.derivar(senha, bytes.slice(0, 16));
+        return new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: bytes.slice(16, 28) }, k, bytes.slice(28)));
+      } catch { return null; }
+    },
   };
   window.qsmart = { kv, cofre, pasta, baixar, abrir, copiar, abrirUrl, pdfPaginas, pdfJuntar, pdfLinhas, tema, aoOcultar, focar, rolarLinha, pronto };
 })();

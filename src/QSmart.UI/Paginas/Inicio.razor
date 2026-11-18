@@ -152,6 +152,7 @@
         ("pareceres", "Confere as justificativas com os pareceres padrão e aponta o que está diferente."),
         ("ferias", "Gera o modelo de planilha para a equipe e mostra choques de datas e quem quer vender dias."),
         ("pontos", "Calcula a média diária de ações por usuário e permite justificar quem ficou abaixo da meta."),
+        ("oneaone", "Mostra numa esteira quem está em dia, chegando ou atrasado no 1:1 com a coordenação, por liderança."),
         ("monitor", "Mostra o tempo ocioso de cada colaborador, dia a dia, a partir das finalizações."),
         ("historico", "Guarda os meses gravados e mostra a evolução mês a mês, com mensagem pronta para o Teams."),
         ("resumo", "Mostra aprovações, reprovações e os motivos mais frequentes, com relatório em PDF."),
@@ -249,6 +250,7 @@
         "depurador" when E.DepRes != null => $"{E.DepRes.Arquivo} em análise",
         "pontos" when E.PtsRes != null => $"{E.PtsArquivos} carregado",
         "ferias" when E.FeriasResumo != null => E.FeriasResumo,
+        "oneaone" when E.OneBase != null => $"{E.OneBase.Ativos.Count()} colaboradores na carteira",
         _ => null,
     };
 }

@@ -120,6 +120,104 @@ public sealed class Estado
     public Dictionary<string, Dictionary<string, string>> PtsJust = new();
     public DadosFerias Ferias = new();
 
+    // ---- Dados pessoais protegidos: cofre do navegador + arquivo com senha na pasta de dados / backups ----
+    const string CofreSenha = "senha_pasta";
+    string? _senha; bool _senhaLida;
+    public bool TemSenhaPasta => _senha != null;
+    public async Task<string?> SenhaPasta()
+    {
+        if (!_senhaLida)
+        {
+            _senhaLida = true;
+            var b = await Nav.CofreLer(CofreSenha);
+            if (b != null && b.Length > 0) _senha = System.Text.Encoding.UTF8.GetString(b);
+        }
+        return _senha;
+    }
+    public async Task DefinirSenhaPasta(string senha)
+    {
+        _senha = senha; _senhaLida = true;
+        await Nav.CofreGravar(CofreSenha, System.Text.Encoding.UTF8.GetBytes(senha));
+    }
+
+    /// <summary>Grava no cofre do navegador e, se houver senha, também na pasta de dados (entra nos backups).</summary>
+    public async Task<bool> GuardarSeguro(string cofre, string arquivo, byte[] dados)
+    {
+        await Nav.CofreGravar(cofre, dados);
+        var s = await SenhaPasta();
+        if (s == null) return false;
+        try
+        {
+            var c = await Nav.CifrarSenha(dados, s);
+            return await Dados.GravarArquivo(arquivo, "QSC1:" + Convert.ToBase64String(c));
+        }
+        catch { return false; }
+    }
+
+    /// <summary>Lê do cofre do navegador; se não houver, procura o arquivo protegido na pasta de dados e pede a senha.</summary>
+    public async Task<byte[]?> LerSeguro(string cofre, string arquivo, string oque)
+    {
+        var b = await Nav.CofreLer(cofre);
+        if (b != null && b.Length > 0) return b;
+        var t = await Dados.LerArquivo(arquivo);
+        if (t == null || !t.StartsWith("QSC1:")) return null;
+        byte[] c;
+        try { c = Convert.FromBase64String(t[5..]); } catch { return null; }
+        var s = await SenhaPasta();
+        if (s != null && await Nav.DecifrarSenha(c, s) is { } d0) { await Nav.CofreGravar(cofre, d0); return d0; }
+        for (int i = 0; i < 3; i++)
+        {
+            var sx = await Janelas.Entrada("Dados protegidos", $"Encontrei {oque} salvo(s) {Dados.OndeGrava}, protegido(s) com senha. Digite a senha para abrir neste navegador:", "", senha: true);
+            if (string.IsNullOrEmpty(sx)) return null;
+            if (await Nav.DecifrarSenha(c, sx) is { } d)
+            {
+                await DefinirSenhaPasta(sx);
+                await Nav.CofreGravar(cofre, d);
+                return d;
+            }
+            await Janelas.Erro("Senha", "Senha incorreta.");
+        }
+        return null;
+    }
+
+    public async Task ApagarSeguro(string cofre, string arquivo)
+    {
+        await Nav.CofreApagar(cofre);
+        await Dados.ApagarArquivo(arquivo);
+    }
+
+    /// <summary>Pede (duas vezes) a senha que protege os arquivos na pasta de dados.</summary>
+    public async Task<bool> PedirNovaSenha()
+    {
+        var a = await Janelas.Entrada("Proteger com senha", "Crie uma senha para proteger o One a One e o controle de férias na pasta de dados e nos backups (mínimo 6 caracteres). Guarde-a: sem ela os arquivos não abrem em outro computador.", "", senha: true);
+        if (string.IsNullOrEmpty(a)) return false;
+        if (a.Length < 6) { await Janelas.Aviso("Senha", "Use pelo menos 6 caracteres."); return false; }
+        var b = await Janelas.Entrada("Proteger com senha", "Digite a senha de novo:", "", senha: true);
+        if (b != a) { await Janelas.Aviso("Senha", "As senhas não são iguais."); return false; }
+        await DefinirSenhaPasta(a);
+        if (FeriasAuto != null) await SalvarFeriasAuto();
+        if (OneBase != null) await SalvarOne();
+        return true;
+    }
+
+    // ---- One a One ----
+    public QSmart.Core.Coordenacao.BaseOO? OneBase;
+    bool _oneLido;
+    const string CofreOne = "one_a_one";
+    public async Task CarregarOne()
+    {
+        if (_oneLido) return;
+        _oneLido = true;
+        var b = await LerSeguro(CofreOne, Dados.ChOneAOne, "o One a One");
+        if (b != null && QSmart.Core.Coordenacao.OneAOne.DeBytes(b) is { } o) { OneBase = o; Notificar(); }
+    }
+    public async Task SalvarOne()
+    {
+        if (OneBase == null) { await ApagarSeguro(CofreOne, Dados.ChOneAOne); return; }
+        OneBase.AtualizadoEm = QSmart.Core.Texto.Agora();
+        await GuardarSeguro(CofreOne, Dados.ChOneAOne, QSmart.Core.Coordenacao.OneAOne.ParaBytes(OneBase));
+    }
+
     // ---- Controle automatizado de férias: planilha completa, guardada só neste navegador e criptografada ----
     public string FeriasModo = "manual";
     public QSmart.Core.Coordenacao.BaseAuto? FeriasAuto;
@@ -133,7 +231,7 @@ public sealed class Estado
         _feriasAutoLido = true;
         try
         {
-            var bytes = await Nav.CofreLer(CofreFeriasAuto);
+            var bytes = await LerSeguro(CofreFeriasAuto, Dados.ChFeriasAuto, "o controle de férias");
             if (bytes == null || bytes.Length == 0) return;
             using var doc = System.Text.Json.JsonDocument.Parse(bytes);
             var r = doc.RootElement;
@@ -151,7 +249,7 @@ public sealed class Estado
     public async Task SalvarFeriasAuto()
     {
         var b = FeriasAuto;
-        if (b == null) { await Nav.CofreApagar(CofreFeriasAuto); return; }
+        if (b == null) { await ApagarSeguro(CofreFeriasAuto, Dados.ChFeriasAuto); return; }
         var obj = new Dictionary<string, object>
         {
             ["arquivo"] = b.Arquivo,
@@ -160,7 +258,7 @@ public sealed class Estado
             ["mudancas"] = b.Periodos.Where(p => p.Alterado).ToDictionary(p => p.Id.ToString(), p => p.Inicio.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture)),
             ["mantidos"] = b.Mantidos.ToList(),
         };
-        await Nav.CofreGravar(CofreFeriasAuto, System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(obj));
+        await GuardarSeguro(CofreFeriasAuto, Dados.ChFeriasAuto, System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(obj));
     }
     public bool CoordCarregada;
 

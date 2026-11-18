@@ -6,7 +6,7 @@
         }
         else
         {
-            <input class="campo" @bind="Valor" @bind:event="oninput" id="dlg-campo" @onkeydown="Tecla" />
+            <input class="campo" type="@(Senha ? "password" : "text")" autocomplete="@(Senha ? "new-password" : "off")" @bind="Valor" @bind:event="oninput" id="dlg-campo" @onkeydown="Tecla" />
         }
     </ChildContent>
     <Rodape>
@@ -20,6 +20,7 @@
     [Parameter] public string Rotulo { get; set; } = "";
     [Parameter] public string Valor { get; set; } = "";
     [Parameter] public bool Multilinha { get; set; }
+    [Parameter] public bool Senha { get; set; }
     [Parameter] public Action<object?> Fechar { get; set; } = _ => { };
     [Inject] Navegador Nav { get; set; } = null!;
     protected override async Task OnAfterRenderAsync(bool primeira) { if (primeira) await Nav.Focar("dlg-campo"); }
