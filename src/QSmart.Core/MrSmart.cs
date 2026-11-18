@@ -38,6 +38,22 @@ public static class MrSmart
             "Na aba Corredor você une vários compilados num só (ordenando e tirando linhas repetidas) e junta PDFs na ordem que escolher.", "corredor"),
         new("Como organizo as férias da equipe?", new[] { "ferias", "folga", "vender", "choque", "datas" },
             "Na aba Férias, clique em “Baixar modelo” e envie para a equipe preencher (usuário, time, data de início, total de dias e se deseja vender). Depois anexe a planilha preenchida: aparecem choques, datas próximas, quem quer vender e quem sai em breve.", "ferias"),
+        new("O que é o controle automatizado de férias?", new[] { "automatizado", "automatico", "controle de ferias", "planilha de controle", "segunda aba" },
+            "É a segunda aba dentro de Férias. Você anexa a planilha completa de controle (o mesmo formato da planilha do time, com admissão, aquisitivo, concessivo, início, dias, venda e agendamento). O QSmart acha as datas em choque, sugere outras datas para cada uma e, se você aceitar, já troca a data na planilha. O controle de férias de sempre continua igual na primeira aba.", "ferias"),
+        new("Como funcionam as sugestões de datas?", new[] { "sugest", "sugere", "sugerida", "nova data", "outra data", "datas proximas", "evitar choque" },
+            "Para cada período em choque o QSmart procura a data mais perto da original que tire ou diminua o choque com o mesmo time. A data sugerida começa em dia permitido (não na sexta, sábado, domingo, feriado ou 2 dias antes de feriado), não passa do fim do período concessivo e não bate com outro período da mesma pessoa. Também mostra uma data próxima antes e uma depois, para você escolher.", "ferias"),
+        new("Como aceito ou recuso uma sugestão?", new[] { "aceitar", "aceito", "aceita", "manter", "pular", "desfazer", "recusar" },
+            "Na revisão aparece uma data em choque por vez (1 de N). Clique em “Mudar para esta data” na opção que quiser, “Manter a data atual” para tirar da revisão ou “Pular por agora”. As aceitas ficam em “Alterações aceitas”, onde dá para desfazer. Há também “Aceitar todas as melhores”.", "ferias"),
+        new("O que significa o impacto e os dias de choque?", new[] { "impacto", "dias de choque", "diminuiu", "reducao", "porcentagem" },
+            "Dias de choque é a soma dos dias em que duas pessoas do mesmo time ficam fora juntas (cada par conta uma vez). Em cada sugestão você vê o choque da pessoa antes → depois, o choque do time antes → depois e quanto o impacto diminui em %. No topo, a barra mostra o choque atual comparado ao da planilha anexada.", "ferias"),
+        new("Como baixo o modelo em branco ou a planilha ajustada?", new[] { "modelo em branco", "planilha ajustada", "baixar ajustada", "baixar modelo", "download" },
+            "Na aba Controle automatizado de férias: “Modelo em branco” baixa a planilha de controle vazia no mesmo formato, já com fórmulas, validações e cores. “Baixar planilha ajustada” devolve a sua planilha com as datas aceitas trocadas e uma nota na coluna de observações; o resto da planilha fica igual.", "ferias"),
+        new("A planilha de férias fica pública ou vai para algum servidor?", new[] { "privacidade", "publico", "publica", "seguranca", "criptografia", "servidor", "lgpd" },
+            "Não. A planilha é lida no seu navegador e não é enviada para nenhum servidor. Ela fica guardada só neste navegador, criptografada (AES-256) com uma chave que não sai dele. Para apagar, use “Limpar”. Outra pessoa só vê se você mandar o arquivo.", "ferias"),
+        new("Por que uma data em choque não entrou na revisão?", new[] { "nao entrou", "nao aparece", "sem sugestao", "ja tirou", "ja comecou" },
+            "Só entram na revisão os períodos que ainda podem mudar: que começam depois de hoje e não estão como “Já tirou”. Se nenhuma data diminuir o choque dentro das regras, o QSmart avisa que não achou sugestão e você pode manter a data.", "ferias"),
+        new("Quais prazos e regras da CLT o controle confere?", new[] { "prazo", "concessivo", "aquisitivo", "vencido", "vencendo", "clt", "fracionamento" },
+            "O controle mostra quem tem o período concessivo vencido, quem vence em até 180 dias sem férias marcadas e quem está sem data de admissão. Também lembra as regras: cada período com pelo menos 5 dias, um deles com 14 ou mais, no máximo 3 períodos e não começar nos 2 dias antes de folga ou feriado.", "ferias"),
         new("Como justifico quem ficou abaixo da meta?", new[] { "pontos", "meta", "150", "abaixo", "justific", "lider", "ponto focal" },
             "Na aba Pontos de ação mensal, anexe o compilado do mês. Na tabela de detalhe, escolha a justificativa (Líder técnico, Ponto focal, Prioridades ou Feedback e acompanhamento). Quem é justificado sai de Crítico/Atenção.", "pontos"),
         new("A planilha não abre ou dá erro", new[] { "erro", "nao abre", "problema", "falha", "nao le", "travou", "depurador" },
@@ -54,7 +70,7 @@ public static class MrSmart
             "São outros sistemas da Insi. Em Ferramentas há atalhos para eles: ao clicar, abrem em uma nova aba do navegador."),
     };
 
-    public static readonly string[] Sugestoes = { "Como abro o compilado?", "O que é o TMA?", "Como faço backup?", "Como organizo as férias da equipe?" };
+    public static readonly string[] Sugestoes = { "Como abro o compilado?", "O que é o TMA?", "Como faço backup?", "Como organizo as férias da equipe?", "O que é o controle automatizado de férias?" };
 
     /// <summary>Melhor resposta para a pergunta (ou null quando nada combina).</summary>
     public static RespostaMr? Responder(string pergunta)

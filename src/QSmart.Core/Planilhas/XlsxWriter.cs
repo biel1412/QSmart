@@ -4,6 +4,9 @@ using System.Text;
 
 namespace QSmart.Core.Planilhas;
 
+/// <summary>Célula com fórmula (o Excel calcula ao abrir).</summary>
+public sealed record Formula(string Expressao);
+
 /// <summary>Gravador de .xlsx simples (negrito, preenchimento, congelar painéis, larguras), sem dependências.</summary>
 public sealed class XlsxWriter
 {
@@ -243,6 +246,9 @@ public sealed class XlsxWriter
                         var estD = Estilo(est != 0 && _estilos[est].negrito, est != 0 ? _estilos[est].cor : null, true);
                         sb.Append($"<c r=\"{refc}\" s=\"{estD}\"><v>{serial.ToString("R", CultureInfo.InvariantCulture)}</v></c>");
                         break;
+                    case Formula fo:
+                        sb.Append($"<c r=\"{refc}\"{sAttr}><f>{Esc(fo.Expressao.TrimStart('='))}</f></c>");
+                        break;
                     case DateOnly dO:
                         var estO = Estilo(est != 0 && _estilos[est].negrito, est != 0 ? _estilos[est].cor : null, soData: true);
                         sb.Append($"<c r=\"{refc}\" s=\"{estO}\"><v>{dO.DayNumber - new DateOnly(1899, 12, 30).DayNumber}</v></c>");
@@ -307,7 +313,7 @@ public sealed class XlsxWriter
                 sbWb.Append($"<sheet name=\"{Esc(_abas[i].Nome)}\" sheetId=\"{i + 1}\" r:id=\"rId{i + 1}\"/>");
                 sbRels.Append($"<Relationship Id=\"rId{i + 1}\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet{i + 1}.xml\"/>");
             }
-            sbWb.Append("</sheets></workbook>");
+            sbWb.Append("</sheets><calcPr calcId=\"191029\" fullCalcOnLoad=\"1\"/></workbook>");
             int n = _abas.Count;
             sbRels.Append($"<Relationship Id=\"rId{n + 1}\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles\" Target=\"styles.xml\"/>");
             sbRels.Append($"<Relationship Id=\"rId{n + 2}\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings\" Target=\"sharedStrings.xml\"/></Relationships>");

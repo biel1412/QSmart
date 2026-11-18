@@ -11,6 +11,10 @@ public sealed class Navegador
     public ValueTask<string?> Ler(string chave) => _js.InvokeAsync<string?>("qsmart.kv.get", chave);
     public ValueTask<bool> Gravar(string chave, string valor) => _js.InvokeAsync<bool>("qsmart.kv.set", chave, valor);
     public ValueTask Apagar(string chave) => _js.InvokeVoidAsync("qsmart.kv.del", chave);
+    /// <summary>Cofre criptografado (AES-GCM) só neste navegador.</summary>
+    public ValueTask<bool> CofreGravar(string nome, byte[] dados) => _js.InvokeAsync<bool>("qsmart.cofre.set", nome, dados);
+    public ValueTask<byte[]?> CofreLer(string nome) => _js.InvokeAsync<byte[]?>("qsmart.cofre.get", nome);
+    public ValueTask CofreApagar(string nome) => _js.InvokeVoidAsync("qsmart.cofre.del", nome);
     public ValueTask<string[]> Chaves() => _js.InvokeAsync<string[]>("qsmart.kv.keys");
 
     // pasta escolhida pelo usuário (papel: "dados" ou "backup")

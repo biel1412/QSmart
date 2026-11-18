@@ -119,6 +119,49 @@ public sealed class Estado
     /// <summary>Justificativas do Pontos de ação, por mês e usuário.</summary>
     public Dictionary<string, Dictionary<string, string>> PtsJust = new();
     public DadosFerias Ferias = new();
+
+    // ---- Controle automatizado de férias: planilha completa, guardada só neste navegador e criptografada ----
+    public string FeriasModo = "manual";
+    public QSmart.Core.Coordenacao.BaseAuto? FeriasAuto;
+    public string FeriasAutoEm = "";
+    bool _feriasAutoLido;
+    const string CofreFeriasAuto = "ferias_auto";
+
+    public async Task CarregarFeriasAuto()
+    {
+        if (_feriasAutoLido) return;
+        _feriasAutoLido = true;
+        try
+        {
+            var bytes = await Nav.CofreLer(CofreFeriasAuto);
+            if (bytes == null || bytes.Length == 0) return;
+            using var doc = System.Text.Json.JsonDocument.Parse(bytes);
+            var r = doc.RootElement;
+            var b = QSmart.Core.Coordenacao.FeriasAuto.Ler(Convert.FromBase64String(r.GetProperty("original").GetString()!), r.GetProperty("arquivo").GetString() ?? "");
+            foreach (var m in r.GetProperty("mudancas").EnumerateObject())
+                if (b.Periodos.FirstOrDefault(p => p.Id.ToString() == m.Name) is { } p && DateOnly.TryParse(m.Value.GetString(), System.Globalization.CultureInfo.InvariantCulture, out var d)) p.Inicio = d;
+            foreach (var id in r.GetProperty("mantidos").EnumerateArray()) b.Mantidos.Add(id.GetInt32());
+            FeriasAuto = b;
+            FeriasAutoEm = r.TryGetProperty("em", out var em) ? em.GetString() ?? "" : "";
+            Notificar();
+        }
+        catch { }
+    }
+
+    public async Task SalvarFeriasAuto()
+    {
+        var b = FeriasAuto;
+        if (b == null) { await Nav.CofreApagar(CofreFeriasAuto); return; }
+        var obj = new Dictionary<string, object>
+        {
+            ["arquivo"] = b.Arquivo,
+            ["em"] = FeriasAutoEm,
+            ["original"] = Convert.ToBase64String(b.Original),
+            ["mudancas"] = b.Periodos.Where(p => p.Alterado).ToDictionary(p => p.Id.ToString(), p => p.Inicio.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture)),
+            ["mantidos"] = b.Mantidos.ToList(),
+        };
+        await Nav.CofreGravar(CofreFeriasAuto, System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(obj));
+    }
     public bool CoordCarregada;
 
     public string? FeriasResumo

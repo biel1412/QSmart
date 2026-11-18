@@ -228,5 +228,35 @@
     if (l) { l.classList.add('sumir'); setTimeout(() => l.remove(), 500); }
   }
 
-  window.qsmart = { kv, pasta, baixar, abrir, copiar, abrirUrl, pdfPaginas, pdfJuntar, pdfLinhas, tema, aoOcultar, focar, rolarLinha, pronto };
+  // Cofre: dados pessoais guardados só neste navegador, criptografados com AES-GCM.
+  // A chave é gerada aqui, não pode ser exportada e fica no IndexedDB; nada vai para servidor.
+  const cofre = {
+    async chave() {
+      let k = null;
+      try { k = await tx('readonly', s => s.get('\u0001cofre-chave')); } catch { }
+      if (k) return k;
+      k = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+      await tx('readwrite', s => s.put(k, '\u0001cofre-chave'));
+      return k;
+    },
+    async set(nome, bytes) {
+      try {
+        const k = await cofre.chave();
+        const iv = crypto.getRandomValues(new Uint8Array(12));
+        const c = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, k, bytes);
+        await tx('readwrite', s => s.put({ iv, c: new Uint8Array(c) }, 'cofre:' + nome));
+        return true;
+      } catch { return false; }
+    },
+    async get(nome) {
+      try {
+        const v = await tx('readonly', s => s.get('cofre:' + nome));
+        if (!v) return null;
+        const k = await cofre.chave();
+        return new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: v.iv }, k, v.c));
+      } catch { return null; }
+    },
+    async del(nome) { try { await tx('readwrite', s => s.delete('cofre:' + nome)); } catch { } },
+  };
+  window.qsmart = { kv, cofre, pasta, baixar, abrir, copiar, abrirUrl, pdfPaginas, pdfJuntar, pdfLinhas, tema, aoOcultar, focar, rolarLinha, pronto };
 })();

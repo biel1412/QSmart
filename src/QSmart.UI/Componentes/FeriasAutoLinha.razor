@@ -1,0 +1,58 @@
+@* Linha do tempo da revisão: a pessoa agora, as opções sugeridas e os colegas do mesmo time no período *@
+@using QSmart.Core
+@using QSmart.Core.Coordenacao
+@{
+    var ini = new[] { P.Inicio }.Concat(Ops.Select(o => o.NovoInicio)).Min().AddDays(-7);
+    var fim = new[] { P.Fim }.Concat(Ops.Select(o => o.NovoFim)).Max().AddDays(7);
+    int tot = fim.DayNumber - ini.DayNumber + 1;
+    var col = B.Periodos.Where(o => o.Aba == P.Aba && o.Func.Chave != P.Func.Chave && o.Fim >= ini && o.Inicio <= fim)
+        .ToList();
+    // primeiro quem bate com a data de agora, depois quem fica perto das opções
+    int Peso(PeriodoAuto o) => (o.Fim >= P.Inicio && o.Inicio <= P.Fim ? 0 : 2) - (Ops.Any(s => o.Fim >= s.NovoInicio.AddDays(-7) && o.Inicio <= s.NovoFim.AddDays(7)) ? 1 : 0);
+    var mostrar = col.OrderBy(Peso).ThenBy(o => o.Inicio).Take(10).OrderBy(o => o.Inicio).ToList();
+}
+<div class="fa-tl">
+    <div class="fa-tl-eixo">
+        @for (var m = new DateOnly(ini.Year, ini.Month, 1); m <= fim; m = m.AddMonths(1))
+        {
+            if (m < ini) continue;
+            <span style="left:@X(m, ini, tot)">@(Texto.MesesPt[m.Month - 1][..3].ToLowerInvariant() + (m.Month == 1 ? $"/{m.Year % 100:00}" : ""))</span>
+        }
+    </div>
+    <div class="fa-tl-l agora"><em>Agora</em><div class="fa-tl-r">
+        <i style="left:@X(P.Inicio, ini, tot);width:@W(P.Inicio, P.Fim, ini, fim, tot)" title="@($"{Texto.Dmy(P.Inicio)} a {Texto.Dmy(P.Fim)}")"></i>
+        @foreach (var o in col)
+        {
+            var de = o.Inicio > P.Inicio ? o.Inicio : P.Inicio; var ate = o.Fim < P.Fim ? o.Fim : P.Fim;
+            if (ate >= de) { <b style="left:@X(de, ini, tot);width:@W(de, ate, ini, fim, tot)"></b> }
+        }
+    </div></div>
+    @for (int k = 0; k < Ops.Count; k++)
+    {
+        var o = Ops[k];
+        <div class="fa-tl-l op @(k == 0 ? "melhor" : "")"><em>@(k == 0 ? "Sugestão" : o.Deslocamento < 0 ? "Antes" : "Depois")</em><div class="fa-tl-r">
+            <i style="left:@X(o.NovoInicio, ini, tot);width:@W(o.NovoInicio, o.NovoFim, ini, fim, tot)" title="@($"{Texto.Dmy(o.NovoInicio)} a {Texto.Dmy(o.NovoFim)}")"></i>
+        </div></div>
+    }
+    @foreach (var o in mostrar)
+    {
+        <div class="fa-tl-l colega"><em title="@o.Nome">@Curto(o.Nome)</em><div class="fa-tl-r">
+            <i style="left:@X(o.Inicio < ini ? ini : o.Inicio, ini, tot);width:@W(o.Inicio, o.Fim, ini, fim, tot)" title="@($"{o.Nome}: {Texto.Dmy(o.Inicio)} a {Texto.Dmy(o.Fim)}")"></i>
+        </div></div>
+    }
+    @if (col.Count > mostrar.Count) { <span class="muted pequeno">e mais @(col.Count - mostrar.Count) do time no período</span> }
+</div>
+
+@code {
+    [Parameter] public PeriodoAuto P { get; set; } = null!;
+    [Parameter] public List<SugestaoAuto> Ops { get; set; } = new();
+    [Parameter] public BaseAuto B { get; set; } = null!;
+    static string F(double v) => v.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture) + "%";
+    static string X(DateOnly d, DateOnly ini, int tot) => F(Math.Clamp(d.DayNumber - ini.DayNumber, 0, tot) * 100.0 / tot);
+    static string W(DateOnly a, DateOnly b, DateOnly ini, DateOnly fim, int tot)
+    {
+        var x = a < ini ? ini : a; var y = b > fim ? fim : b;
+        return F(Math.Max(0.5, (y.DayNumber - x.DayNumber + 1) * 100.0 / tot));
+    }
+    static string Curto(string n) { var p = n.Split(' ', StringSplitOptions.RemoveEmptyEntries); return p.Length > 1 ? $"{p[0]} {p[^1][0]}." : n; }
+}

@@ -74,6 +74,7 @@ public static class Ferias
 
     public static string Norm(string? s) => Core.Texto.NormalizarBusca(s ?? "");
     public static string Plural(int n, string palavra) => $"{n} {palavra}{(n == 1 ? "" : "s")}";
+    public static string Plural(int n, string singular, string plural) => $"{n} {(n == 1 ? singular : plural)}";
 
     public static DateOnly ProximoDiaUtil(DateOnly d)
     {
