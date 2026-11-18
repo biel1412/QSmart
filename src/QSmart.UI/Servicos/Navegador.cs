@@ -38,6 +38,7 @@ public sealed class Navegador
     public ValueTask AbrirUrl(string url) => _js.InvokeVoidAsync("qsmart.abrirUrl", url);
     public ValueTask Tema(string nome) => _js.InvokeVoidAsync("qsmart.tema", nome);
     public ValueTask Focar(string id) => _js.InvokeVoidAsync("qsmart.focar", id);
+    public ValueTask Rolar(string id) => _js.InvokeVoidAsync("qsmart.rolar", id);
     public ValueTask RolarLinha(string id, int linha) => _js.InvokeVoidAsync("qsmart.rolarLinha", id, linha);
     public ValueTask Pronto() => _js.InvokeVoidAsync("qsmart.pronto");
     public ValueTask AoOcultar<T>(DotNetObjectReference<T> r) where T : class => _js.InvokeVoidAsync("qsmart.aoOcultar", r);

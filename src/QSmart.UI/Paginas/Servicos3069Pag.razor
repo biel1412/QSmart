@@ -1,0 +1,210 @@
+@page "/servicos-3069"
+@inherits PaginaBase
+@using QSmart.Core.Relacionamento
+
+<Pagina Titulo="Serviços 3069" Grupo="@A.Grupo"
+        Sub="Analisador de resposta: cole a pergunta da 3069 e a nossa resposta antes de enviar pelo Teams. Responder à 3069 é como responder ao Presidente da República: cada detalhe conta.">
+    <Acoes>
+        <button class="btn btn-hero" @onclick="Exemplo" title="Carrega uma pergunta e uma resposta de exemplo"><Icone Nome="faisca" Tamanho="17" /> Exemplo</button>
+        <button class="btn btn-hero" @onclick="Limpar" disabled="@(_pergunta == "" && _resposta == "")"><Icone Nome="lixo" Tamanho="17" /> Limpar</button>
+        <button class="btn btn-pri" @onclick="Copiar" disabled="@(_resposta.Trim() == "")" title="Copia a resposta para colar no Teams"><Icone Nome="copiar" Tamanho="17" /> Copiar resposta</button>
+    </Acoes>
+    <ChildContent>
+        <div class="rr-entrada">
+            <label class="rr-caixa">
+                <span class="rr-rot"><span class="rr-num">1</span> Pergunta da 3069 <small>cole a mensagem que chegou pelo Teams</small></span>
+                <textarea class="campo area" rows="11" placeholder="Ex.: Bom dia! Qual o prazo para liberar o limite do associado? É possível aumentar para R$ 50 mil?"
+                          value="@_pergunta" @oninput="MudouPergunta"></textarea>
+            </label>
+            <label class="rr-caixa resp">
+                <span class="rr-rot"><span class="rr-num">2</span> Nossa resposta <small>o que vai ser enviado pelo Teams</small></span>
+                <textarea class="campo area" rows="11" placeholder="Escreva ou cole a resposta aqui. A análise aparece enquanto você escreve."
+                          value="@_resposta" @oninput="MudouResposta"></textarea>
+                @if (_a != null && _resposta.Trim() != "")
+                {
+                    <span class="rr-conta">@_a.Palavras palavras · @_a.Frases @(_a.Frases == 1 ? "frase" : "frases") · média de @_a.MediaPalavrasFrase.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture).Replace('.', ',') palavras por frase · leitura de ~@_a.SegundosLeitura s</span>
+                }
+            </label>
+        </div>
+        <p class="fa-privado"><Icone Nome="escudo" Tamanho="16" /> A análise é feita aqui, no seu navegador. A pergunta e a resposta não são enviadas para nenhum lugar e não ficam salvas.</p>
+
+        @if (_a == null || _resposta.Trim() == "")
+        {
+            <div class="rr-vazio">
+                <div><b>O que o QSmart confere na resposta</b>
+                    <ul>
+                        <li><b>Responde a pergunta?</b> Separa cada pergunta da mensagem e vê se a resposta atende: sim ou não, prazo, valor, responsável, como fazer, motivo.</li>
+                        <li><b>Objetividade:</b> se a resposta vai direto ao ponto, frases longas, enchimento e repetição.</li>
+                        <li><b>Discordância:</b> se discorda da cooperativa de forma seca ou se a própria resposta se contradiz.</li>
+                        <li><b>Pode ser contestado:</b> termos vagos, promessas sem data, palavras absolutas, regra sem número, culpa.</li>
+                        <li><b>Tom e escrita:</b> formalidade, saudação, fechamento, informalidade, acentos e erros comuns.</li>
+                    </ul>
+                </div>
+            </div>
+        }
+        else
+        {
+            var a = _a;
+            <div class="rr-hero @a.VereditoClasse">
+                <div class="rr-nota" style="--p:@a.Nota"><span><b>@a.Nota</b><small>de 100</small></span></div>
+                <div class="rr-ver">
+                    <span class="rotulo">Resultado</span>
+                    <b>@a.Veredito</b>
+                    <small>@Resumo(a)</small>
+                </div>
+                <div class="rr-chips">
+                    @foreach (var c in Categorias)
+                    {
+                        int pr = c == Cat.Responde ? a.Perguntas.Count(p => p.Status == StatusPergunta.NaoAtendida) : a.Da(c).Count(x => x.Grav == Gravidade.Problema);
+                        int at = c == Cat.Responde ? a.Perguntas.Count(p => p.Status == StatusPergunta.Parcial) : a.Da(c).Count(x => x.Grav != Gravidade.Problema);
+                        <a class="rr-chip @(pr > 0 ? "r" : at > 0 ? "a" : "g")" href="@($"servicos-3069#rr-{c}")" @onclick:preventDefault="true" @onclick="() => Ir(c)">
+                            <Icone Nome="@(pr > 0 ? "alerta" : at > 0 ? "info" : "check")" Tamanho="14" /> @Cat.Nome(c)
+                            @if (pr + at > 0) { <em>@(pr + at)</em> }
+                        </a>
+                    }
+                </div>
+            </div>
+
+            <div class="rr-grade">
+                <Painel Titulo="A resposta responde a pergunta?" Nota="@($"{a.Perguntas.Count(p => p.Status == StatusPergunta.Atendida)} de {a.Perguntas.Count}")" Classe="@($"rr-sec rr-{Cat.Responde}")">
+                    @if (_pergunta.Trim() == "")
+                    {
+                        <p class="muted pequeno">Cole a pergunta da 3069 para o QSmart conferir se a resposta atende o que foi perguntado.</p>
+                    }
+                    @foreach (var p in a.Perguntas)
+                    {
+                        <div class="rr-perg @(p.Status switch { StatusPergunta.Atendida => "g", StatusPergunta.Parcial => "a", _ => "r" })">
+                            <span class="rr-perg-ic"><Icone Nome="@(p.Status == StatusPergunta.Atendida ? "check" : p.Status == StatusPergunta.Parcial ? "info" : "x")" Tamanho="15" /></span>
+                            <div>
+                                <b>“@p.Texto”</b>
+                                <small><span class="rr-tipo">@p.Tipo</span> @(p.Status switch { StatusPergunta.Atendida => "Respondida.", StatusPergunta.Parcial => "Respondida em parte: ", _ => "Não respondida: " })@(p.Status == StatusPergunta.Atendida ? "" : p.Motivo + ".")</small>
+                                @if (p.TermosFaltando.Count > 0) { <small class="muted">A resposta não fala de: @string.Join(", ", p.TermosFaltando).</small> }
+                            </div>
+                        </div>
+                    }
+                </Painel>
+
+                <Painel Titulo="Resposta marcada" Nota="passe o mouse nos destaques">
+                    <div class="rr-texto">@Marcado(a)</div>
+                    <div class="rr-legenda">
+                        @foreach (var c in Categorias.Skip(1)) { <span class="rr-m @c">@Cat.Nome(c)</span> }
+                    </div>
+                </Painel>
+            </div>
+
+            <div class="rr-cards">
+                @foreach (var c in Categorias.Skip(1))
+                {
+                    var lista = a.Da(c).OrderByDescending(x => x.Grav).ToList();
+                    <div class="rr-card @c" id="@($"rr-{c}")">
+                        <div class="rr-card-cab">
+                            <b>@Cat.Nome(c)</b>
+                            @if (lista.Count == 0) { <span class="rr-ok"><Icone Nome="check" Tamanho="14" /> nada encontrado</span> }
+                            else { <span class="rr-qtd">@lista.Count</span> }
+                        </div>
+                        <p class="muted pequeno">@Explica(c)</p>
+                        @foreach (var x in lista)
+                        {
+                            <div class="rr-achado @Grav(x.Grav)">
+                                <div class="rr-a-tit"><i></i><b>@x.Titulo</b></div>
+                                @if (!string.IsNullOrEmpty(x.Trecho) && !x.Titulo.Contains(x.Trecho)) { <q>@x.Trecho</q> }
+                                <span>@x.Explicacao</span>
+                                @if (x.Sugestao != null) { <span class="rr-sug"><Icone Nome="direita" Tamanho="13" /> @x.Sugestao</span> }
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+
+            <Painel Titulo="Antes de enviar" Nota="confira você mesmo">
+                <div class="rr-check">
+                    @foreach (var (k, t) in Checklist)
+                    {
+                        <label class="oo-chk"><input type="checkbox" checked="@_checados.Contains(k)" @onchange="() => { if (!_checados.Add(k)) _checados.Remove(k); }" /> <span>@t</span></label>
+                    }
+                </div>
+                @if (_checados.Count == Checklist.Length && a.VereditoClasse == "ok") { <p class="rr-pronto"><Icone Nome="check" Tamanho="16" /> Tudo conferido. Pode copiar e enviar.</p> }
+            </Painel>
+        }
+    </ChildContent>
+</Pagina>
+
+@code {
+    protected override string Chave => "servicos3069";
+    string _pergunta = "", _resposta = "";
+    Analise? _a;
+    readonly HashSet<string> _checados = new();
+    static readonly string[] Categorias = { Cat.Responde, Cat.Objetividade, Cat.Discordancia, Cat.Contestavel, Cat.Tom, Cat.Escrita };
+    static readonly (string, string)[] Checklist =
+    {
+        ("nomes", "Nomes, cargos e o nome da cooperativa estão escritos certo."),
+        ("numeros", "Números, valores, datas, protocolos e propostas conferidos com o sistema."),
+        ("anexos", "Se a resposta cita anexo ou link, ele está junto da mensagem."),
+        ("prazo", "Se há prazo ou compromisso, a área responsável já confirmou."),
+        ("conversa", "É a conversa certa do Teams e a resposta está no fio da pergunta."),
+        ("releitura", "Li a resposta inteira como se fosse a 3069 lendo."),
+    };
+
+    void MudouPergunta(ChangeEventArgs e) { _pergunta = e.Value?.ToString() ?? ""; Analisar(); }
+    void MudouResposta(ChangeEventArgs e) { _resposta = e.Value?.ToString() ?? ""; Analisar(); }
+    void Analisar() { _a = AnaliseResposta.Analisar(_pergunta, _resposta); _checados.Clear(); }
+
+    static string Grav(Gravidade g) => g switch { Gravidade.Problema => "r", Gravidade.Atencao => "a", _ => "l" };
+
+    static string Explica(string c) => c switch
+    {
+        Cat.Objetividade => "A resposta principal precisa estar nas primeiras linhas, em frases curtas e sem rodeios.",
+        Cat.Discordancia => "Discordar da 3069 só com cuidado e com o fato; a resposta também não pode se contradizer.",
+        Cat.Contestavel => "O que a cooperativa pode questionar porque não ficou bem explicado.",
+        Cat.Tom => "Formal, cordial e institucional: como uma comunicação oficial.",
+        _ => "Erros de português, acentos e pontuação.",
+    };
+
+    static string Resumo(Analise a)
+    {
+        int nao = a.Perguntas.Count(p => p.Status == StatusPergunta.NaoAtendida), parc = a.Perguntas.Count(p => p.Status == StatusPergunta.Parcial);
+        int pr = a.Achados.Count(x => x.Grav == Gravidade.Problema), at = a.Achados.Count(x => x.Grav == Gravidade.Atencao);
+        var l = new List<string>();
+        if (a.Perguntas.Count > 0) l.Add(nao + parc == 0 ? $"responde {(a.Perguntas.Count == 1 ? "a pergunta" : $"as {a.Perguntas.Count} perguntas")}" : $"{(nao > 0 ? $"{nao} pergunta(s) sem resposta" : "")}{(nao > 0 && parc > 0 ? " e " : "")}{(parc > 0 ? $"{parc} respondida(s) em parte" : "")}");
+        if (pr > 0) l.Add($"{pr} problema(s) para corrigir");
+        if (at > 0) l.Add($"{at} ponto(s) de atenção");
+        if (l.Count == 0 || (pr == 0 && at == 0 && nao + parc == 0)) return "Nenhum problema encontrado. Faça a conferência final abaixo antes de enviar.";
+        return char.ToUpper(string.Join(" · ", l)[0]) + string.Join(" · ", l)[1..] + ".";
+    }
+
+    RenderFragment Marcado(Analise a) => b =>
+    {
+        int seq = 0, pos = 0;
+        var marcas = a.Achados.Where(x => x.Ini >= 0 && x.Fim > x.Ini && x.Fim <= _resposta.Length)
+            .OrderBy(x => x.Ini).ThenByDescending(x => x.Grav).ToList();
+        foreach (var m in marcas)
+        {
+            if (m.Ini < pos) continue;
+            if (m.Ini > pos) b.AddContent(seq++, _resposta[pos..m.Ini]);
+            b.OpenElement(seq++, "mark");
+            b.AddAttribute(seq++, "class", $"rr-m {m.Categoria} {Grav(m.Grav)}");
+            b.AddAttribute(seq++, "title", $"{m.Titulo}. {m.Explicacao}{(m.Sugestao != null ? " → " + m.Sugestao : "")}");
+            b.AddContent(seq++, _resposta[m.Ini..m.Fim]);
+            b.CloseElement();
+            pos = m.Fim;
+        }
+        if (pos < _resposta.Length) b.AddContent(seq++, _resposta[pos..]);
+    };
+
+    async Task Ir(string c) => await E.Nav.Rolar($"rr-{c}");
+
+    async Task Copiar()
+    {
+        if (await E.Nav.Copiar(_resposta)) await J.Info("Copiado", "Resposta copiada. É só colar no Teams.");
+        else await J.Aviso("Copiar", "Não consegui copiar automaticamente. Selecione o texto e use Ctrl+C.");
+    }
+
+    void Limpar() { _pergunta = ""; _resposta = ""; _a = null; _checados.Clear(); }
+
+    void Exemplo()
+    {
+        _pergunta = "Bom dia! Qual o prazo para liberação do limite do associado João Pereira? E é possível aumentar o valor para R$ 50 mil?";
+        _resposta = "oi pessoal, tudo bem? Então, a gente vai verificar isso em breve com a equipe, mas acho que não é possível aumentar, como já informado anteriormente. Vocês devem enviar a documentação pra gente!! Conforme normativo, o prazo é de 5 dias. Qualquer coisa me chama";
+        Analisar();
+    }
+}

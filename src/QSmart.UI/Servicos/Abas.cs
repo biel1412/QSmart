@@ -37,6 +37,8 @@ public static class Abas
             "Média diária de ações por usuário no mês e painel só com quem fica abaixo de 150.", "pontos"),
         new("oneaone", "One a One", "One a One", "conversa", "Coordenação",
             "Esteira dos 1:1 da coordenação com cada colaborador: quem está em dia, chegando ou atrasado, por liderança, com o registro de cada conversa.", "one-a-one"),
+        new("servicos3069", "Serviços 3069 (analisador de resposta)", "Serviços 3069", "selo", "Relacionamento e cooperativas",
+            "Analisa a nossa resposta para a 3069 antes de ir pelo Teams: se responde a pergunta, objetividade, discordância, pontos que podem ser contestados e tom.", "servicos-3069"),
         new("depurador", "Depurador de leitura", "Depurador", "depurador", "Ferramentas",
             "Mostra, linha a linha, o que o sistema lê de uma planilha e o que fica de fora.", "depurador"),
         new("insitalent", "InsiTalent", "InsiTalent", "talento", "Ferramentas",
@@ -46,14 +48,14 @@ public static class Abas
     };
 
     /// <summary>Ordem da lista de abas nas Configurações (igual ao original).</summary>
-    public static readonly string[] OrdemConfig = { "resumo", "usuarios", "evolucao", "inspecao", "volume", "monitor", "corredor", "estrategia", "historico", "pareceres", "ferias", "pontos", "oneaone", "depurador", "insitalent", "mesa" };
+    public static readonly string[] OrdemConfig = { "resumo", "usuarios", "evolucao", "inspecao", "volume", "monitor", "corredor", "estrategia", "historico", "pareceres", "ferias", "pontos", "oneaone", "servicos3069", "depurador", "insitalent", "mesa" };
 
-    public static readonly string[] Grupos = { "Decisões", "Inspeção", "Conformidade", "Operação", "Coordenação", "Ferramentas" };
+    public static readonly string[] Grupos = { "Decisões", "Inspeção", "Conformidade", "Operação", "Coordenação", "Relacionamento e cooperativas", "Ferramentas" };
 
     /// <summary>Cor de cada grupo (classe g-N no CSS).</summary>
     public static int Cor(string grupo) => grupo switch
     {
-        "Decisões" => 0, "Inspeção" => 1, "Conformidade" => 2, "Operação" => 3, "Ferramentas" => 4, "Coordenação" => 5, _ => 4,
+        "Decisões" => 0, "Inspeção" => 1, "Conformidade" => 2, "Operação" => 3, "Ferramentas" => 4, "Coordenação" => 5, "Relacionamento e cooperativas" => 6, _ => 4,
     };
 
     public static Aba? Por(string chave) => Todas.FirstOrDefault(a => a.Chave == chave);
