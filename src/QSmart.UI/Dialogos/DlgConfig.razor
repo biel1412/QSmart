@@ -120,9 +120,9 @@
                         <span class="dev-prov transp">Portal</span>
                         <div>
                             <b>Portal da Transparência (Radar Smart360)</b>
-                            <small class="muted">@(E.ChaveTransp != null ? "Configurada neste navegador: sanções, PEP, servidores, benefícios e contratos entram no Radar." : "Sem chave: o Radar mostra essas checagens como atalho para o site.")</small>
+                            <small class="muted">@(E.ChaveTransp != null ? "Chave própria neste navegador (opcional)." : "Usa a chave guardada no intermediário: não precisa configurar nada nesta máquina.")</small>
                         </div>
-                        <span class="dev-st @(E.ChaveTransp != null ? "ok" : "")">@(E.ChaveTransp != null ? "ativa" : "sem chave")</span>
+                        <span class="dev-st ok">ativo</span>
                     </div>
                     <div class="dev-campos um">
                         <label>Chave do Portal da Transparência<input class="campo" type="password" autocomplete="new-password" placeholder="@(E.ChaveTransp != null ? "•••••••• (salva) — cole outra para trocar" : "chave recebida por e-mail")" @bind="_novaTransp" /></label>
@@ -133,7 +133,7 @@
                     </div>
                     @if (_msgTransp != "") { <p class="@(_transpOk ? "dev-ok" : "dev-erro")"><Icone Nome="@(_transpOk ? "check" : "alerta")" Tamanho="14" /> @_msgTransp</p> }
                     <div class="dev-campos um" style="margin-top:10px">
-                        <label>Intermediário do Portal (endereço do proxy)<input class="campo" placeholder="https://qsmart-portal.SEU-USUARIO.workers.dev" @bind="_proxy" /></label>
+                        <label>Intermediário do Portal (endereço do proxy)<input class="campo" placeholder="@($"padrão: {Estado.ProxyPadrao}")" @bind="_proxy" /></label>
                     </div>
                     <div class="linha-botoes">
                         <button class="btn btn-sec" @onclick="SalvarProxy" disabled="@_testandoT"><Icone Nome="check" Tamanho="15" /> Salvar intermediário e testar</button>
@@ -162,7 +162,7 @@
         if (!_devErro) { _abrirDev = false; _ = CarregarIA(); }
     }
 
-    async Task CarregarIA() { await E.IAConfigurada(); await E.TranspConfigurada(); _modelo = E.ModeloIA; _proxy = E.ProxyTransp ?? ""; StateHasChanged(); }
+    async Task CarregarIA() { await E.IAConfigurada(); await E.TranspConfigurada(); _modelo = E.ModeloIA; _proxy = E.ProxyTransp == Estado.ProxyPadrao ? "" : E.ProxyTransp ?? ""; StateHasChanged(); }
 
     bool _testandoT, _transpOk;
     string _novaTransp = "", _msgTransp = "";
@@ -205,7 +205,7 @@
         {
             await E.SalvarProxyTransp(_proxy);
             if (E.ProxyTransp == null) { _transpOk = true; _msgTransp = "Intermediário removido."; return; }
-            var r = await E.Nav.GetH(E.UrlPortal(QSmart.Core.Relacionamento.Radar.UrlPortalTeste), E.CabecalhoPortal());
+            var r = await E.GetPortal(QSmart.Core.Relacionamento.Radar.UrlPortalTeste);
             _transpOk = r.Status == 200;
             _msgTransp = r.Status switch
             {

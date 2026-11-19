@@ -536,9 +536,9 @@
             cgu.Detalhe = con.Detalhe = "chave do Portal não configurada nesta máquina";
             Pronto(seq); return;
         }
-        var tPj = E.Nav.GetH(E.UrlPortal(Radar.UrlPortalPJ(e.Cnpj)), CabPortal()).AsTask();
-        var tLen = E.Nav.GetH(E.UrlPortal(Radar.UrlLeniencia(e.Cnpj)), CabPortal()).AsTask();
-        var tCon = E.Nav.GetH(E.UrlPortal(Radar.UrlContratos(e.Cnpj)), CabPortal()).AsTask();
+        var tPj = E.GetPortal(Radar.UrlPortalPJ(e.Cnpj));
+        var tLen = E.GetPortal(Radar.UrlLeniencia(e.Cnpj));
+        var tCon = E.GetPortal(Radar.UrlContratos(e.Cnpj));
         await Task.WhenAll(tPj, tLen, tCon);
         if (seq != _seq) return;
         var (rPj, rLen, rCon) = (tPj.Result, tLen.Result, tCon.Result);
@@ -741,8 +741,8 @@
             foreach (var c in new[] { ceis, ceaf, pep, ben }) { c.Status = StatusCheck.SemChave; c.Detalhe = "chave do Portal não configurada nesta máquina"; c.Url = Radar.UrlPortal; }
             return;
         }
-        var tPf = E.Nav.GetH(E.UrlPortal(Radar.UrlPortalPF(cpf)), CabPortal()).AsTask();
-        var tPep = E.Nav.GetH(E.UrlPortal(Radar.UrlPeps(cpf)), CabPortal()).AsTask();
+        var tPf = E.GetPortal(Radar.UrlPortalPF(cpf));
+        var tPep = E.GetPortal(Radar.UrlPeps(cpf));
         await Task.WhenAll(tPf, tPep);
         if (seq != _seq) return;
         var rPf = tPf.Result; var rPep = tPep.Result;
@@ -757,7 +757,7 @@
             ceis.Url = ceaf.Url = Radar.UrlPortal + "/sancoes/consulta"; ben.Url = Radar.UrlPortal + "/beneficios";
             if (p.Servidor || p.ServidorInativo)
             {
-                var rs = await E.Nav.GetH(E.UrlPortal(Radar.UrlServidor(cpf)), CabPortal());
+                var rs = await E.GetPortal(Radar.UrlServidor(cpf));
                 if (seq != _seq) return;
                 if (rs.Status == 200) _vinculos = Radar.LerServidor(rs.Texto);
             }

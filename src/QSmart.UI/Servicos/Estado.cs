@@ -300,18 +300,28 @@ public sealed class Estado
     }
     /// <summary>Intermediário (proxy) para o Portal: o Portal não aceita consulta direta do navegador.</summary>
     public const string CofreProxyTransp = "transp_proxy";
-    public string? ProxyTransp { get; private set; }
+    /// <summary>Intermediário padrão (Cloudflare Worker com a chave guardada nele): funciona em qualquer máquina sem configurar.</summary>
+    public const string ProxyPadrao = "https://qsmart-portal.gabrielmarinmilitz.workers.dev";
+    public string? ProxyTransp { get; private set; } = ProxyPadrao;
     /// <summary>Há como consultar o Portal: chave neste navegador ou intermediário (que pode guardar a chave).</summary>
     public bool PortalPronto => !string.IsNullOrEmpty(ChaveTransp) || !string.IsNullOrEmpty(ProxyTransp);
     public async Task SalvarProxyTransp(string? url)
     {
-        if (string.IsNullOrWhiteSpace(url)) { await Nav.CofreApagar(CofreProxyTransp); ProxyTransp = null; return; }
+        if (string.IsNullOrWhiteSpace(url)) { await Nav.CofreApagar(CofreProxyTransp); ProxyTransp = ProxyPadrao; return; }
         url = url.Trim().TrimEnd('/', '.', ' ');
         await Nav.CofreGravar(CofreProxyTransp, System.Text.Encoding.UTF8.GetBytes(url));
         ProxyTransp = url;
     }
     /// <summary>Endereço da consulta ao Portal, passando pelo intermediário se houver.</summary>
     public string UrlPortal(string url) => ProxyTransp is { Length: > 0 } px ? url.Replace(QSmart.Core.Relacionamento.Radar.PortalBase, px + "/api-de-dados/") : url;
+    /// <summary>Consulta o Portal. Se a chave deste navegador for recusada, tenta de novo sem ela (o intermediário usa a chave dele).</summary>
+    public async Task<Navegador.RespostaHttp> GetPortal(string url)
+    {
+        var r = await Nav.GetH(UrlPortal(url), CabecalhoPortal());
+        if (r.Status == 401 && !string.IsNullOrEmpty(ChaveTransp) && ProxyTransp != null)
+            r = await Nav.GetH(UrlPortal(url), new Dictionary<string, string> { ["Accept"] = "application/json" });
+        return r;
+    }
     public Dictionary<string, string> CabecalhoPortal()
     {
         var d = new Dictionary<string, string> { ["Accept"] = "application/json" };
