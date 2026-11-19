@@ -11,7 +11,7 @@
             <div class="bv-slides" aria-live="polite">
                 <div class="bv-slide @(_slide == 0 ? "on" : "")">
                     <h1>Bem-vindo ao <span class="grad">QSmart</span></h1>
-                    <p>A plataforma de qualidade da <b>Insi</b>: decisões, inspeções, pareceres e operação em um só lugar. As planilhas são lidas aqui mesmo, no seu computador.</p>
+                    <p>A plataforma de qualidade da <b>Insi</b>: decisões, inspeções, pareceres, operação, coordenação e relacionamento com as cooperativas em um só lugar. As planilhas são lidas aqui mesmo, no seu computador.</p>
                 </div>
                 <div class="bv-slide @(_slide == 1 ? "on" : "")">
                     <h1>@Ferramentas() ferramentas, <span class="grad">@Areas() áreas</span></h1>
@@ -19,6 +19,7 @@
                         <span><Icone Nome="escudo" Tamanho="15" /> Nenhum arquivo sai do seu computador</span>
                         <span><Icone Nome="faisca" Tamanho="15" /> Funciona direto no navegador, sem instalar</span>
                         <span><Icone Nome="download" Tamanho="15" /> Relatórios em Excel e PDF</span>
+                        <span><Icone Nome="faisca" Tamanho="15" /> Mr. Smart com IA para analisar e escrever</span>
                     </div>
                 </div>
                 <div class="bv-slide @(_slide == 2 ? "on" : "")">
@@ -43,10 +44,11 @@
                 <div class="bv-slide @(_slide == 5 ? "on" : "")">
                     <h1>O que há de <span class="grad">novo</span></h1>
                     <div class="bv-fatos">
-                        <span><Icone Nome="estrategia" Tamanho="15" /> Estratégia do dia com mensagem para o Teams</span>
-                        <span><Icone Nome="ferias" Tamanho="15" /> Férias por planilha de coleta</span>
-                        <span><Icone Nome="pontos" Tamanho="15" /> Justificativas nos Pontos de ação</span>
-                        <span><Icone Nome="resumo" Tamanho="15" /> Resumo com mapa de áreas</span>
+                        <span><Icone Nome="radar" Tamanho="15" /> Radar Smart360: ficha 360 de CNPJ e CPF</span>
+                        <span><Icone Nome="selo" Tamanho="15" /> Serviços 3069 analisado pelo Mr. Smart</span>
+                        <span><Icone Nome="estrategia" Tamanho="15" /> Mr. Smart escreve a estratégia do dia</span>
+                        <span><Icone Nome="conversa" Tamanho="15" /> One a One da coordenação</span>
+                        <span><Icone Nome="ferias" Tamanho="15" /> Controle automatizado de férias</span>
                     </div>
                 </div>
                 <div class="bv-slide bv-frase @(_slide == 6 ? "on" : "")">
@@ -145,12 +147,13 @@
 
     static readonly (string chave, string texto)[] Curiosidades =
     {
-        ("estrategia", "Já calcula o SLA do dia, resume os serviços e monta a mensagem da estratégia pronta para o Teams."),
+        ("estrategia", "Calcula o SLA do dia, resume os serviços e monta a mensagem para o Teams; o Mr. Smart ainda escreve a estratégia para você."),
+        ("radar360", "Monta a ficha 360 de um CNPJ em segundos: Receita, sócios, linha do tempo, Junta Comercial, sanções e contratos públicos, com placar e parecer do Mr. Smart."),
         ("corredor", "Une vários compilados num só, tira as linhas repetidas e ainda junta PDFs na ordem que você escolher."),
         ("pareceres", "Confere as justificativas com os pareceres padrão e aponta o que está diferente."),
-        ("ferias", "Gera o modelo de planilha para a equipe e mostra choques de datas e quem quer vender dias."),
+        ("ferias", "Mostra choques de datas e quem quer vender dias, e no controle automatizado sugere novas datas e já ajusta a planilha."),
         ("pontos", "Calcula a média diária de ações por usuário e permite justificar quem ficou abaixo da meta."),
-        ("servicos3069", "Confere a nossa resposta para a 3069 antes de ir pelo Teams: se responde, se é objetiva e o que pode ser contestado."),
+        ("servicos3069", "O Mr. Smart confere a nossa resposta para a 3069 antes de ir pelo Teams: se responde, se é objetiva e o que pode ser contestado, com nota e sugestões."),
         ("oneaone", "Mostra numa esteira quem está em dia, chegando ou atrasado no 1:1 com a coordenação, por liderança."),
         ("monitor", "Mostra o tempo ocioso de cada colaborador, dia a dia, a partir das finalizações."),
         ("historico", "Guarda os meses gravados e mostra a evolução mês a mês, com mensagem pronta para o Teams."),
@@ -166,6 +169,9 @@
         ("Faça backup", "Em Configurações você salva um backup dos seus dados para não perder nada ao trocar de computador."),
         ("Relatórios prontos", "Resumo e Evolução geram PDF com um clique; várias abas também exportam para Excel."),
         ("Passe o mouse", "Nos gráficos e mapas, passe o mouse sobre um item para ver o nome completo, a quantidade e o percentual."),
+        ("Próximos feriados", "Passe o mouse na data, ao lado da saudação, para ver os próximos feriados nacionais."),
+        ("Monitore um CNPJ", "No Radar Smart360, clique na estrela de um CNPJ e use “Verificar monitorados” para ver o que mudou desde a última consulta."),
+        ("Pergunte ao Mr. Smart", "O botão da coruja, no canto da tela, responde dúvidas sobre qualquer ferramenta do QSmart."),
     };
 
     int Carregadas() => (E.Resultado != null ? 1 : 0) + (E.Evolucao != null ? 1 : 0) + (E.Historico.Count > 0 ? 1 : 0) + (E.ParPadroes.Count > 0 ? 1 : 0);

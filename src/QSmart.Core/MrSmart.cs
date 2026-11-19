@@ -9,15 +9,17 @@ public static class MrSmart
     public static readonly RespostaMr[] Base =
     {
         new("O que é o QSmart?", new[] { "qsmart", "plataforma", "sistema", "serve", "o que e" },
-            "O QSmart é a plataforma de qualidade da Insi. Ele junta decisões, inspeções, pareceres, operação e coordenação num só lugar, e lê as planilhas direto no seu navegador."),
+            "O QSmart é a plataforma de qualidade da Insi. Ele junta decisões, inspeções, pareceres, operação, coordenação e relacionamento com as cooperativas num só lugar, lê as planilhas direto no seu navegador e tem o Mr. Smart com IA para analisar respostas, escrever a estratégia do dia e dar parecer no Radar Smart360."),
         new("Meus arquivos vão para algum servidor?", new[] { "seguro", "segur", "servidor", "privacidade", "enviado", "nuvem", "dados", "sigilo" },
-            "Não. As planilhas são lidas no seu próprio navegador e não são enviadas para nenhum servidor. O que fica salvo (histórico, férias, justificativas) fica guardado neste navegador."),
+            "As planilhas não. Elas são lidas no seu próprio navegador e não são enviadas para nenhum servidor; o que fica salvo (histórico, férias, 1:1, justificativas) fica neste navegador. Só saem do computador: as consultas do Radar Smart360 (o CNPJ ou CPF vai para fontes públicas, como Receita e Portal da Transparência) e os textos que você pede para o Mr. Smart analisar ou escrever (vão para a IA do Groq, com CPF, CNPJ, e-mail e telefone mascarados)."),
         new("Como abro o compilado?", new[] { "abrir", "compilado", "anexar", "carregar", "planilha", "arquivo", "upload" },
             "Em cada aba há um botão no canto superior direito, como “Abrir planilha” ou “Anexar compilado”. Clique nele e escolha o arquivo .xlsx. Em algumas abas dá para anexar vários compilados de uma vez."),
         new("O que é o SLA do dia?", new[] { "sla", "tma", "tempo medio", "atendimento" },
             "O SLA do dia (tempo médio dos fluxos) usa só os fluxos com início e fim no mesmo dia. Para cada um, conto o tempo de fim − início e tiro a média, cortando os segundos quebrados (sem arredondar). Ele aparece na Estratégia do dia.", "estrategia"),
         new("Como funciona a Estratégia do dia?", new[] { "estrategia", "teams", "mensagem", "bom dia", "centralizada", "autorizar", "paginas" },
-            "Anexe o compilado do dia: aparecem o resumo dos serviços, o SLA e o volume. Embaixo, preencha as páginas da Centralizada e da Autorizar (os fluxos são calculados como páginas × 15), escolha um modelo de estratégia e clique em Copiar ou Abrir no Teams.", "estrategia"),
+            "Anexe o compilado do dia: aparecem o resumo dos serviços, o SLA e o volume. Embaixo, preencha as páginas da Centralizada e da Autorizar (os fluxos são calculados como páginas × 15), escolha um modelo de estratégia (ou peça para o Mr. Smart escrever) e clique em Copiar ou Abrir no Teams.", "estrategia"),
+        new("O Mr. Smart escreve a estratégia do dia?", new[] { "mr smart estrategia", "escrever estrategia", "gerar estrategia", "ia estrategia", "pedir que mr smart" },
+            "Sim. Na Estratégia do dia, embaixo da caixa do texto, clique em “Pedir que Mr. Smart faça a estratégia do dia”. Ele lê as páginas da Centralizada e da Autorizar, o volume, o SLA e, com o compilado anexado, os serviços que mais entraram e as devoluções, e escreve 3 a 5 frases dizendo onde pôr a força do time, o que priorizar e um ponto de atenção. Se já houver texto, ele pergunta antes e aproveita as suas ideias. Depois é só ajustar. Precisa da chave do Groq nesta máquina.", "estrategia"),
         new("Como calcula os fluxos da Centralizada e Autorizar?", new[] { "15", "fluxos", "multiplica", "quinze" },
             "Ao digitar o número de páginas, o QSmart multiplica por 15 e preenche os fluxos sozinho. Se precisar, você pode ajustar o número à mão.", "estrategia"),
         new("Como vejo aprovações e reprovações?", new[] { "aprova", "reprova", "resumo", "motivo", "devolutiva", "segmento", "decis" },
@@ -43,13 +45,17 @@ public static class MrSmart
         new("O Radar Smart360 salva o que eu consulto?", new[] { "radar salva", "historico radar", "cpf salvo", "lgpd radar", "privacidade radar", "monitorar" },
             "CNPJ: guarda a lista de recentes e um retrato do cadastro a cada consulta, só neste navegador e criptografado, para mostrar o que mudou e para os monitorados. Nomes de sócios não são guardados (só uma impressão digital para saber se alguém entrou ou saiu). CPF: nada é salvo, o número aparece mascarado e é preciso dizer a finalidade antes de consultar.", "radar360"),
         new("Como funciona a consulta de CPF no Radar?", new[] { "cpf radar", "pep", "beneficio social", "bolsa familia", "servidor", "inabilitado", "empresas ligadas" },
-            "Escolha CPF, digite o número, escolha a finalidade e, se quiser, o nome (ajuda nas buscas). O Radar valida o CPF e confere sanções da CGU (CEIS, CNEP, expulsões), PEP, vínculo de servidor federal, benefícios sociais e o quadro de inabilitados do Banco Central, além de procurar a pessoa no quadro de sócios dos CNPJs que você já consultou. Parte disso precisa da chave do Portal da Transparência, configurada pelo suporte.", "radar360"),
+            "Escolha CPF, digite o número, escolha a finalidade e, se quiser, o nome (ajuda nas buscas). O Radar valida o CPF e confere sanções da CGU (CEIS, CNEP, expulsões), PEP, vínculo de servidor federal, benefícios sociais e o quadro de inabilitados do Banco Central, além de procurar a pessoa no quadro de sócios dos CNPJs que você já consultou. Nada disso precisa de configuração: o QSmart já consulta o Portal da Transparência por um intermediário com a chave guardada.", "radar360"),
+        new("Como monitoro um CNPJ no Radar?", new[] { "monitorar cnpj", "monitorado", "estrela", "verificar monitorados", "avisar mudanca" },
+            "Clique na estrela do CNPJ nos Recentes (ou em “Monitorar” na ficha). Depois, “Verificar monitorados” consulta de novo cada um e mostra o que mudou desde a última vez: situação, capital, endereço, atividades, entrada ou saída de sócios. As mudanças também entram na linha do tempo.", "radar360"),
+        new("Por que o parecer do Radar não aparece?", new[] { "parecer radar", "parecer do mr smart", "parecer 360", "sem parecer" },
+            "O parecer do Mr. Smart usa a IA do Groq, que precisa da sua chave nesta máquina (Configurações › Modo desenvolvedor › Central de chaves de IA). Sem ela, o resto do Radar funciona normalmente; só o parecer fica de fora.", "radar360"),
         new("O que é a Junta Comercial no Radar?", new[] { "junta", "junta comercial", "certidao junta", "jucemg", "historico junta", "drei" },
             "O cartão Juntas Comerciais destaca a Junta do estado da empresa, com o site dela e a página oficial no DREI, e tem as 27 Juntas do Brasil. Peça a certidão simplificada ou de inteiro teor no site da Junta e use “Anexar certidão da Junta (PDF)”: o Radar lê as datas e põe os arquivamentos na linha do tempo (só nesta consulta).", "radar360"),
         new("O que é a aba Serviços 3069?", new[] { "3069", "servicos 3069", "analisador", "analisar resposta", "relacionamento", "cooperativas" },
-            "Fica na seção Relacionamento e cooperativas. Você cola a pergunta da 3069 e a nossa resposta e clica em “Analisar com IA”. A IA (Groq) avalia a resposta diante da pergunta: se responde, objetividade, discordância, o que pode ser contestado, tom e escrita. Dá uma nota de 0 a 100, marca os trechos no texto com sugestões, diz como a 3069 deve reagir e sugere uma resposta reescrita.", "servicos3069"),
-        new("Por que a aba Serviços 3069 pede para contatar o suporte?", new[] { "groq", "chave", "api key", "contate o suporte", "bloqueada", "liberar", "modo desenvolvedor" },
-            "A análise usa IA (Groq) e precisa de uma chave configurada na sua máquina. Enquanto não houver, a aba mostra “Contate o suporte”. O suporte configura em Configurações › Modo desenvolvedor › Central de chaves de IA. A chave fica só neste navegador, criptografada.", "servicos3069"),
+            "Fica na seção Relacionamento e cooperativas. Você cola a pergunta da 3069 e a nossa resposta e clica em “Analisar com Mr. Smart”. A IA (Groq) avalia a resposta diante da pergunta: se responde, objetividade, discordância, o que pode ser contestado, tom e escrita. Dá uma nota de 0 a 100, marca os trechos no texto com sugestões, diz como a 3069 deve reagir e sugere uma resposta reescrita.", "servicos3069"),
+        new("O que precisa da chave do Groq?", new[] { "groq", "chave", "api key", "contate o suporte", "bloqueada", "liberar", "modo desenvolvedor", "habilitar recursos" },
+            "Tudo que usa a IA do Mr. Smart: a análise do Serviços 3069, o parecer do Radar Smart360 e o botão que escreve a Estratégia do dia. Cada pessoa usa a sua chave: crie em console.groq.com/keys e cole em Configurações › Modo desenvolvedor › Central de chaves de IA. A chave fica só neste navegador, criptografada. Sem ela aparece “Contate o suporte”.", "servicos3069"),
         new("Como aplico as sugestões da IA?", new[] { "aplicar", "ignorar", "destaque", "numero no texto", "corrigir resposta", "resposta sugerida" },
             "Cada trecho com problema fica sublinhado e numerado; o mesmo número aparece no cartão ao lado, com o que sai (riscado) e o que entra (em verde). “Aplicar” troca na hora e “Ignorar” esconde. A “Resposta sugerida pela IA” pode ser copiada ou usada no lugar da sua. O que estiver entre colchetes, como [data] ou [motivo], precisa ser completado por você. Depois de mudar o texto, clique em “Analisar de novo”.", "servicos3069"),
         new("Os textos da 3069 ficam salvos ou vão para algum lugar?", new[] { "privacidade", "fica salva", "enviada", "sigilo", "treinar", "dados pessoais", "mascarar" },
@@ -100,11 +106,13 @@ public static class MrSmart
             "Em Configurações dá para desligar as abas que você não usa. Elas somem do menu e da tela inicial."),
         new("O sistema não atualizou", new[] { "atualiz", "versao", "nova", "nao mudou", "cache", "ctrl" },
             "Recarregue a página com Ctrl+F5 para baixar a versão mais nova do QSmart."),
+        new("De onde vêm a data, a hora e os feriados do Início?", new[] { "feriado", "feriados", "relogio", "hora", "data", "amanha e feriado" },
+            "Ao lado da saudação aparecem o dia, a data e a hora do seu computador. Os feriados nacionais vêm da BrasilAPI (e de uma lista própria quando sem internet). Quando há feriado nos próximos 7 dias, aparece o aviso; passe o mouse na data para ver os próximos 3 feriados."),
         new("O que é o InsiTalent e a Mesa de Inspeção?", new[] { "insitalent", "talent", "mesa", "pulso" },
             "São outros sistemas da Insi. Em Ferramentas há atalhos para eles: ao clicar, abrem em uma nova aba do navegador."),
     };
 
-    public static readonly string[] Sugestoes = { "Como abro o compilado?", "O que é o SLA do dia?", "Como faço backup?", "Como organizo as férias da equipe?", "O que é o controle automatizado de férias?" };
+    public static readonly string[] Sugestoes = { "O que é o Radar Smart360?", "O Mr. Smart escreve a estratégia do dia?", "O que é o SLA do dia?", "O que é o One a One?", "O que precisa da chave do Groq?" };
 
     /// <summary>Melhor resposta para a pergunta (ou null quando nada combina).</summary>
     public static RespostaMr? Responder(string pergunta)
