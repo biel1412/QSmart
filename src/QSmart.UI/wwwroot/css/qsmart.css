@@ -1488,5 +1488,7 @@ a.rx-st:hover { text-decoration: underline; }
 }
 .dev-campos.um { grid-template-columns: 1fr; }
 .dev-prov.transp { background: #1351B4; }
-.est-bloco-tit .est-ia { margin-left: auto; padding: 7px 14px; font-size: 12.5px; border-radius: 10px; gap: 7px; }
-.est-bloco-tit .est-ia .ia-spin { width: 13px; height: 13px; }
+.est-bloco-tit .est-ia { margin-left: auto; padding: 4px 10px; font-size: 11.5px; font-weight: 700; border-radius: 8px; gap: 5px; line-height: 1.2; box-shadow: none; }
+.est-bloco-tit .est-ia:hover:not(:disabled) { transform: none; }
+.est-bloco-tit .est-ia svg { width: 12px; height: 12px; }
+.est-bloco-tit .est-ia .ia-spin { width: 11px; height: 11px; }
