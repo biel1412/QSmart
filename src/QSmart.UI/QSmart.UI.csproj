@@ -7,6 +7,9 @@
     <NoWarn>CS1591;CS8618;BL0007</NoWarn>
   </PropertyGroup>
   <!-- Build local (sem NuGet): usa o framework ASP.NET Core instalado. No GitHub Actions: pacote para o navegador. -->
+  <PropertyGroup Condition="'$(QSmartLocal)' == 'true'">
+    <DefineConstants>$(DefineConstants);QSMART_LOCAL</DefineConstants>
+  </PropertyGroup>
   <ItemGroup Condition="'$(QSmartLocal)' == 'true'">
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>

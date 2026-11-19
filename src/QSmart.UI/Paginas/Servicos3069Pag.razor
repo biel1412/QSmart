@@ -1,69 +1,104 @@
 @page "/servicos-3069"
 @inherits PaginaBase
 @using QSmart.Core.Relacionamento
+@implements IDisposable
 
 <Pagina Titulo="Serviços 3069" Grupo="@A.Grupo">
     <Acoes>
         <button class="btn btn-hero" @onclick="Exemplo" title="Carrega uma pergunta e uma resposta de exemplo"><Icone Nome="faisca" Tamanho="17" /> Exemplo</button>
         <button class="btn btn-hero" @onclick="Limpar" disabled="@(_pergunta == "" && _resposta == "")"><Icone Nome="lixo" Tamanho="17" /> Limpar</button>
-        <button class="btn btn-hero" @onclick="AplicarTodas" disabled="@(_a == null || !_a.Achados.Any(x => x.Troca != null && !x.Troca.Contains('[')))" title="Aplica de uma vez todas as correções que o QSmart sabe fazer sozinho"><Icone Nome="check" Tamanho="17" /> Aplicar correções</button>
+        <button class="btn btn-hero" @onclick="() => _config = !_config" title="Chave e modelo do Groq"><Icone Nome="config" Tamanho="17" /> Configurar IA</button>
         <button class="btn btn-pri" @onclick="Copiar" disabled="@(_resposta.Trim() == "")" title="Copia a resposta para colar no Teams"><Icone Nome="copiar" Tamanho="17" /> Copiar resposta</button>
     </Acoes>
     <ChildContent>
+        @if (_carregado && (_chave == null || _config))
+        {
+            <div class="ia-config">
+                <div class="ia-config-cab">
+                    <span class="ia-logo"><Icone Nome="faisca" Tamanho="20" /></span>
+                    <div><b>@(_chave == null ? "Conecte a IA (Groq) para analisar as respostas" : "Configurar a IA")</b>
+                        <small class="muted">A chave fica guardada só neste navegador, criptografada. Cada pessoa usa a sua.</small></div>
+                    @if (_chave != null) { <button class="oo-x" @onclick="() => _config = false" title="Fechar"><Icone Nome="x" Tamanho="18" /></button> }
+                </div>
+                <div class="ia-passos">
+                    <div><span>1</span><p>Entre em <b>console.groq.com/keys</b> com uma conta (Google ou e-mail). O plano gratuito não pede cartão.</p></div>
+                    <div><span>2</span><p>Clique em <b>Create API Key</b>, dê um nome (ex.: QSmart) e copie a chave (começa com <b>gsk_</b>).</p></div>
+                    <div><span>3</span><p>Recomendado: em <b>Settings › Data Controls</b>, ligue <b>Zero Data Retention</b>, para o Groq não guardar nem os registros temporários.</p></div>
+                </div>
+                <div class="ia-campos">
+                    <label>Chave do Groq<input class="campo" type="password" autocomplete="off" placeholder="@(_chave != null ? "•••••••• (chave salva) — cole outra para trocar" : "gsk_…")" @bind="_novaChave" /></label>
+                    <label>Modelo<input class="campo" @bind="_modelo" placeholder="@AnaliseIA.ModeloPadrao" /></label>
+                    <div class="ia-campos-acts">
+                        <button class="btn btn-pri" @onclick="SalvarChave" disabled="@_testando"><Icone Nome="check" Tamanho="15" /> @(_testando ? "Testando…" : "Salvar e testar")</button>
+                        @if (_chave != null) { <button class="btn btn-sec" @onclick="RemoverChave">Remover chave</button> }
+                    </div>
+                </div>
+            </div>
+        }
+
         <div class="rr-entrada">
             <label class="rr-caixa">
                 <span class="rr-rot"><span class="rr-num">1</span> Pergunta da 3069 <small>cole a mensagem que chegou pelo Teams</small></span>
-                <textarea class="campo area" rows="11" placeholder="Ex.: Bom dia! Qual o prazo para liberar o limite do associado? É possível aumentar para R$ 50 mil?"
+                <textarea class="campo area" rows="10" placeholder="Ex.: Bom dia! Qual o prazo para liberar o limite do associado? É possível aumentar para R$ 50 mil?"
                           value="@_pergunta" @oninput="MudouPergunta"></textarea>
             </label>
             <label class="rr-caixa resp">
                 <span class="rr-rot"><span class="rr-num">2</span> Nossa resposta <small>o que vai ser enviado pelo Teams</small></span>
-                <textarea class="campo area" rows="11" placeholder="Escreva ou cole a resposta aqui. A análise aparece enquanto você escreve."
+                <textarea class="campo area" rows="10" placeholder="Escreva ou cole a resposta aqui e clique em Analisar com IA."
                           value="@_resposta" @oninput="MudouResposta"></textarea>
-                @if (_a != null && _resposta.Trim() != "")
-                {
-                    <span class="rr-conta">@_a.Palavras palavras · @_a.Frases @(_a.Frases == 1 ? "frase" : "frases") · média de @_a.MediaPalavrasFrase.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture).Replace('.', ',') palavras por frase · leitura de ~@_a.SegundosLeitura s</span>
-                }
             </label>
         </div>
-        <p class="fa-privado"><Icone Nome="escudo" Tamanho="16" /> A análise é feita aqui, no seu navegador. A pergunta e a resposta não são enviadas para nenhum lugar e não ficam salvas.</p>
 
-        @if (_a == null || _resposta.Trim() == "")
+        <div class="ia-barra">
+            <button class="ia-btn @(_analisando ? "rodando" : "")" @onclick="Analisar" disabled="@(_analisando || _chave == null || _pergunta.Trim() == "" || _resposta.Trim() == "")">
+                @if (_analisando) { <span class="ia-spin"></span> <span>Analisando… @_segundos s</span> }
+                else { <Icone Nome="faisca" Tamanho="18" /> <span>@(_res != null ? "Analisar de novo" : "Analisar com IA")</span> }
+            </button>
+            <div class="ia-info">
+                @if (_chave == null) { <span class="muted">Configure a chave do Groq acima para analisar.</span> }
+                else if (_pergunta.Trim() == "" || _resposta.Trim() == "") { <span class="muted">Cole a pergunta e a resposta para analisar.</span> }
+                else if (_desatualizada) { <span class="ia-aviso"><Icone Nome="alerta" Tamanho="14" /> A resposta mudou depois da análise. Clique em “Analisar de novo”.</span> }
+                else if (_res != null) { <span class="muted">Analisado por @_res.Modelo às @_quando.ToString("HH:mm").</span> }
+                <span class="ia-priv"><Icone Nome="escudo" Tamanho="13" /> O texto é enviado ao Groq para análise (CPF, CNPJ, e-mail e telefone vão mascarados). O Groq não usa os textos para treinar modelos.</span>
+            </div>
+        </div>
+
+        @if (_erro != null)
         {
-            <div class="rr-vazio">
-                <div><b>O que o QSmart confere na resposta</b>
-                    <ul>
-                        <li><b>Responde a pergunta?</b> Separa cada pergunta da mensagem e vê se a resposta atende: sim ou não, prazo, valor, responsável, como fazer, motivo.</li>
-                        <li><b>Objetividade:</b> se a resposta vai direto ao ponto, frases longas, enchimento e repetição.</li>
-                        <li><b>Discordância:</b> se discorda da cooperativa de forma seca ou se a própria resposta se contradiz.</li>
-                        <li><b>Pode ser contestado:</b> termos vagos, promessas sem data, palavras absolutas, regra sem número, culpa.</li>
-                        <li><b>Tom e escrita:</b> formalidade, saudação, fechamento, informalidade, acentos e erros comuns.</li>
-                    </ul>
-                </div>
+            <div class="ia-erro"><Icone Nome="alerta" Tamanho="18" /><div><b>Não foi possível analisar</b><span>@_erro</span></div></div>
+        }
+
+        @if (_analisando && _res == null)
+        {
+            <div class="ia-carregando">
+                <div class="ia-pulso"></div>
+                <div><b>A IA está lendo a pergunta e a resposta…</b><small class="muted">Confere se responde, objetividade, discordância, pontos contestáveis, tom e escrita. Leva alguns segundos.</small></div>
             </div>
         }
-        else
+
+        @if (_res != null)
         {
-            var a = _a;
+            var a = _res.Analise;
             var vis = a.Achados.Where(x => !_ignorados.Contains(x.Chave)).ToList();
             var filtrados = vis.Where(x => _filtro == null || x.Categoria == _filtro).ToList();
-            var locais = filtrados.Where(x => x.Ini >= 0 && x.Fim > x.Ini).OrderBy(x => x.Ini).ThenByDescending(x => x.Grav).ToList();
-            var gerais = filtrados.Where(x => !(x.Ini >= 0 && x.Fim > x.Ini)).OrderByDescending(x => x.Grav).ToList();
+            bool marcar = !_desatualizada;
+            var locais = marcar ? filtrados.Where(x => x.Ini >= 0 && x.Fim > x.Ini).OrderBy(x => x.Ini).ThenByDescending(x => x.Grav).ToList() : new();
+            var gerais = filtrados.Except(locais).OrderByDescending(x => x.Grav).ToList();
             var num = new Dictionary<string, int>();
             foreach (var x in locais) num.TryAdd(x.Chave, num.Count + 1);
-            <div class="rr-hero @a.VereditoClasse">
+
+            <div class="rr-hero @a.VereditoClasse @(_desatualizada ? "velho" : "")">
                 <div class="rr-nota" style="--p:@a.Nota"><span><b>@a.Nota</b><small>de 100</small></span></div>
                 <div class="rr-ver">
-                    <span class="rotulo">Resultado</span>
+                    <span class="rotulo">Resultado da IA</span>
                     <b>@a.Veredito</b>
-                    <small>@Resumo(a)</small>
-                    <small class="rr-leg">Leitura @a.LegibilidadeTexto · @a.Palavras palavras · ~@a.SegundosLeitura s</small>
+                    <small>@_res.Resumo</small>
                 </div>
                 <div class="rr-crit">
                     @foreach (var c in Categorias)
                     {
                         var n = a.NotaPorCategoria.TryGetValue(c, out var v) ? v : 100;
-                        int q = c == Cat.Responde ? a.Perguntas.Count(p => p.Status != StatusPergunta.Atendida) + vis.Count(x => x.Categoria == c) : vis.Count(x => x.Categoria == c);
+                        int q = vis.Count(x => x.Categoria == c) + (c == Cat.Responde ? a.Perguntas.Count(p => p.Status != StatusPergunta.Atendida) : 0);
                         <button class="rr-cr @c @(_filtro == c ? "on" : "") @(_filtro != null && _filtro != c ? "apaga" : "")" title="Mostrar só @Cat.Nome(c)" @onclick="() => _filtro = _filtro == c ? null : c">
                             <span class="rr-cr-anel" style="--p:@n;--k:@CorNota(n)"><b>@n</b></span>
                             <span class="rr-cr-nome">@Cat.Nome(c)</span>
@@ -84,8 +119,7 @@
                             <span class="rr-pq-ic"><Icone Nome="@(st == "g" ? "check" : st == "a" ? "info" : "x")" Tamanho="14" /></span>
                             <div>
                                 <b>“@p.Texto”</b>
-                                <small><span class="rr-tipo">@p.Tipo</span>@(p.Status switch { StatusPergunta.Atendida => "Respondida.", StatusPergunta.Parcial => "Em parte: " + p.Motivo + ".", _ => "Não respondida: " + p.Motivo + "." })</small>
-                                @if (p.TermosFaltando.Count > 0) { <small class="muted">Não fala de: @string.Join(", ", p.TermosFaltando).</small> }
+                                <small><span class="rr-tipo">@p.Tipo</span>@(p.Status switch { StatusPergunta.Atendida => "Respondida. ", StatusPergunta.Parcial => "Respondida em parte. ", _ => "Não respondida. " })@p.Motivo@(p.Motivo == "" ? "" : ".")</small>
                             </div>
                         </div>
                     }
@@ -94,7 +128,7 @@
 
             <div class="rr-rev">
                 <div class="rr-doc">
-                    <div class="rr-doc-cab"><b>Resposta revisada</b><small class="muted">clique num destaque para ver o apontamento</small></div>
+                    <div class="rr-doc-cab"><b>Resposta revisada</b><small class="muted">@(marcar ? "clique num destaque para ver o apontamento" : "analise de novo para ver os destaques")</small></div>
                     <div class="rr-doc-txt">@Documento(locais, num)</div>
                     <div class="rr-legenda">
                         @foreach (var c in Categorias) { <span class="rr-lg @c"><i></i>@Cat.Nome(c)</span> }
@@ -106,17 +140,44 @@
                     {
                         <div class="rr-limpo"><Icone Nome="check" Tamanho="22" /><b>Nenhum apontamento@(_filtro != null ? " neste critério" : "")</b><small class="muted">Faça a conferência final abaixo antes de enviar.</small></div>
                     }
-                    @if (gerais.Count > 0)
-                    {
-                        <span class="rr-mar-tit">Sobre a resposta toda</span>
-                        @foreach (var x in gerais) { @Cartao(x, null) }
-                    }
                     @if (locais.Count > 0)
                     {
                         <span class="rr-mar-tit">No texto</span>
-                        @foreach (var x in locais) { @Cartao(x, num[x.Chave]) }
+                        @foreach (var x in locais) { @Cartao(x, num[x.Chave], marcar) }
+                    }
+                    @if (gerais.Count > 0)
+                    {
+                        <span class="rr-mar-tit">Sobre a resposta toda</span>
+                        @foreach (var x in gerais) { @Cartao(x, null, false) }
                     }
                     @if (_ignorados.Count > 0) { <button class="rr-ign" @onclick="() => _ignorados.Clear()">@_ignorados.Count ignorado(s) · mostrar de novo</button> }
+                </div>
+            </div>
+
+            <div class="ia-dupla">
+                @if (_res.RespostaSugerida != "")
+                {
+                    <div class="ia-sug">
+                        <div class="ia-sug-cab"><span class="ia-logo peq"><Icone Nome="faisca" Tamanho="15" /></span><b>Resposta sugerida pela IA</b>
+                            <span class="mola"></span>
+                            <button class="btn btn-sec btn-peq" @onclick="CopiarSugerida"><Icone Nome="copiar" Tamanho="13" /> Copiar</button>
+                            <button class="btn btn-pri btn-peq" @onclick="UsarSugerida"><Icone Nome="check" Tamanho="13" /> Usar esta resposta</button>
+                        </div>
+                        <div class="ia-sug-txt">@Colchetes(_res.RespostaSugerida)</div>
+                        @if (_res.RespostaSugerida.Contains('[')) { <small class="ia-aviso"><Icone Nome="alerta" Tamanho="13" /> Complete o que está entre colchetes com a informação real antes de enviar.</small> }
+                    </div>
+                }
+                <div class="ia-reacao">
+                    @if (_res.Reacao != "")
+                    {
+                        <div class="ia-bloco"><span class="ia-bloco-tit">💬 Como a 3069 deve reagir</span><p>@_res.Reacao</p></div>
+                    }
+                    @if (_res.PontosFortes.Count > 0)
+                    {
+                        <div class="ia-bloco forte"><span class="ia-bloco-tit">✓ Pontos fortes da resposta</span>
+                            <ul>@foreach (var p in _res.PontosFortes) { <li>@p</li> }</ul>
+                        </div>
+                    }
                 </div>
             </div>
 
@@ -127,17 +188,30 @@
                         <label class="oo-chk"><input type="checkbox" checked="@_checados.Contains(k)" @onchange="() => { if (!_checados.Add(k)) _checados.Remove(k); }" /> <span>@t</span></label>
                     }
                 </div>
-                @if (_checados.Count == Checklist.Length && a.VereditoClasse == "ok") { <p class="rr-pronto"><Icone Nome="check" Tamanho="16" /> Tudo conferido. Pode copiar e enviar.</p> }
+                @if (_checados.Count == Checklist.Length && a.VereditoClasse == "ok" && !_desatualizada) { <p class="rr-pronto"><Icone Nome="check" Tamanho="16" /> Tudo conferido. Pode copiar e enviar.</p> }
             </Painel>
+        }
+        else if (!_analisando && _erro == null)
+        {
+            <div class="rr-vazio">
+                <div><b>O que a IA confere na resposta, sempre diante da pergunta</b>
+                    <ul>
+                        <li><b>Responde a pergunta?</b> Separa cada pergunta (inclusive pedidos e cobranças) e diz se foi respondida, em parte ou não.</li>
+                        <li><b>Objetividade:</b> se a resposta principal vem logo no começo, sem rodeios.</li>
+                        <li><b>Discordância:</b> se discorda da cooperativa de forma seca ou se contradiz (valores, datas e números diferentes da pergunta).</li>
+                        <li><b>Pode ser contestado:</b> o que a 3069 pode questionar porque não ficou bem explicado.</li>
+                        <li><b>Tom e escrita:</b> formalidade, acolhimento, alternativa para um “não” e português correto.</li>
+                        <li><b>Além disso:</b> como a 3069 deve reagir, os pontos fortes e uma resposta reescrita pronta para o Teams.</li>
+                    </ul>
+                </div>
+            </div>
         }
     </ChildContent>
 </Pagina>
 
 @code {
     protected override string Chave => "servicos3069";
-    string _pergunta = "", _resposta = "";
-    Analise? _a;
-    readonly HashSet<string> _checados = new();
+    const string CofreChave = "groq_chave", CofreModelo = "groq_modelo";
     static readonly string[] Categorias = { Cat.Responde, Cat.Objetividade, Cat.Discordancia, Cat.Contestavel, Cat.Tom, Cat.Escrita };
     static readonly (string, string)[] Checklist =
     {
@@ -149,51 +223,138 @@
         ("releitura", "Li a resposta inteira como se fosse a 3069 lendo."),
     };
 
-    void MudouPergunta(ChangeEventArgs e) { _pergunta = e.Value?.ToString() ?? ""; Analisar(); }
-    void MudouResposta(ChangeEventArgs e) { _resposta = e.Value?.ToString() ?? ""; Analisar(); }
-    void Analisar() { _a = AnaliseResposta.Analisar(_pergunta, _resposta); _checados.Clear(); }
-    readonly HashSet<string> _ignorados = new();
-    string? _filtro, _foco;
+    string _pergunta = "", _resposta = "";
+    string? _chave, _erro, _filtro, _foco;
+    string _novaChave = "", _modelo = AnaliseIA.ModeloPadrao;
+    bool _carregado, _config, _testando, _analisando, _desatualizada;
+    int _segundos;
+    DateTime _quando;
+    ResultadoIA? _res;
+    readonly HashSet<string> _checados = new(), _ignorados = new();
+    System.Threading.Timer? _relogio;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var c = await E.Nav.CofreLer(CofreChave);
+            if (c is { Length: > 0 }) _chave = System.Text.Encoding.UTF8.GetString(c);
+            var m = await E.Nav.CofreLer(CofreModelo);
+            if (m is { Length: > 0 }) _modelo = System.Text.Encoding.UTF8.GetString(m);
+        }
+        catch { }
+        _carregado = true;
+    }
+
+    public void Dispose() => _relogio?.Dispose();
+
+    void MudouPergunta(ChangeEventArgs e) { _pergunta = e.Value?.ToString() ?? ""; if (_res != null) _desatualizada = true; }
+    void MudouResposta(ChangeEventArgs e) { _resposta = e.Value?.ToString() ?? ""; if (_res != null) _desatualizada = true; }
 
     static string CorNota(int n) => n >= 85 ? "#10B981" : n >= 60 ? "#F59E0B" : "#EF4444";
+    static string Grav(Gravidade g) => g switch { Gravidade.Problema => "r", Gravidade.Atencao => "a", _ => "l" };
     static string IdCartao(string chave) => "rr-c-" + (uint)chave.GetHashCode();
+
+    // ===================== chave =====================
+
+    async Task SalvarChave()
+    {
+        var chave = _novaChave.Trim();
+        if (chave == "") chave = _chave ?? "";
+        if (chave == "") { await J.Aviso("Chave do Groq", "Cole a chave do Groq (começa com gsk_)."); return; }
+        var modelo = string.IsNullOrWhiteSpace(_modelo) ? AnaliseIA.ModeloPadrao : _modelo.Trim();
+        _testando = true; StateHasChanged();
+        try
+        {
+            var r = await E.Nav.IA(AnaliseIA.Url, chave, AnaliseIA.PedidoTeste(modelo));
+            if (r.Status != 200) { await J.Erro("Chave do Groq", AnaliseIA.Erro(r.Status, r.Texto)); return; }
+            await E.Nav.CofreGravar(CofreChave, System.Text.Encoding.UTF8.GetBytes(chave));
+            await E.Nav.CofreGravar(CofreModelo, System.Text.Encoding.UTF8.GetBytes(modelo));
+            _chave = chave; _modelo = modelo; _novaChave = ""; _config = false;
+            await J.Info("IA conectada", $"Chave testada e salva neste navegador. Modelo: {modelo}.");
+        }
+        finally { _testando = false; }
+    }
+
+    async Task RemoverChave()
+    {
+        if (!await J.Pergunta("Remover chave", "Apagar a chave do Groq deste navegador?")) return;
+        await E.Nav.CofreApagar(CofreChave);
+        _chave = null; _config = false;
+    }
+
+    // ===================== análise =====================
+
+    async Task Analisar()
+    {
+        if (_chave == null) { _config = true; return; }
+        _erro = null; _analisando = true; _segundos = 0;
+        _relogio?.Dispose();
+        _relogio = new System.Threading.Timer(_ => { _segundos++; InvokeAsync(StateHasChanged); }, null, 1000, 1000);
+        StateHasChanged();
+        try
+        {
+            var resposta = _resposta;
+            var agora = DateTime.Now;
+            var mapa = new Dictionary<string, string>();
+            var corpo = AnaliseIA.Pedido(_pergunta, resposta, agora, mapa, _modelo);
+            var r = await E.Nav.IA(AnaliseIA.Url, _chave, corpo);
+            if (AnaliseIA.ErroDeFormato(r.Status, r.Texto))
+                r = await E.Nav.IA(AnaliseIA.Url, _chave, AnaliseIA.Pedido(_pergunta, resposta, agora, mapa, _modelo, comEsquema: false));
+            if (r.Status != 200) { _erro = AnaliseIA.Erro(r.Status, r.Texto); return; }
+            ResultadoIA res;
+            try { res = AnaliseIA.Ler(r.Texto, resposta, mapa, _modelo); }
+            catch
+            {
+                // uma segunda tentativa no modo JSON simples
+                var r2 = await E.Nav.IA(AnaliseIA.Url, _chave, AnaliseIA.Pedido(_pergunta, resposta, agora, mapa, _modelo, comEsquema: false));
+                if (r2.Status != 200) { _erro = AnaliseIA.Erro(r2.Status, r2.Texto); return; }
+                res = AnaliseIA.Ler(r2.Texto, resposta, mapa, _modelo);
+            }
+            _res = res; _quando = agora; _desatualizada = resposta != _resposta;
+            _ignorados.Clear(); _checados.Clear(); _filtro = null; _foco = null;
+        }
+        catch (Exception ex) { _erro = ex.Message; }
+        finally
+        {
+            _analisando = false;
+            _relogio?.Dispose(); _relogio = null;
+        }
+    }
 
     async Task Focar(Achado x) { _foco = x.Chave; StateHasChanged(); await Task.Delay(30); await E.Nav.Rolar(IdCartao(x.Chave)); }
 
+    /// <summary>Aplica a troca e reencontra a posição dos outros apontamentos, sem chamar a IA de novo.</summary>
     void AplicarAchado(Achado x)
     {
-        _resposta = AnaliseResposta.Aplicar(_resposta, x);
-        _foco = null;
-        Analisar();
-    }
-
-    async Task AplicarTodas()
-    {
-        int n = 0;
-        for (int i = 0; i < 60; i++)
+        if (_res == null || x.Troca == null || x.Ini < 0 || x.Fim > _resposta.Length) return;
+        var depois = AnaliseResposta.Aplicar(_resposta, x);
+        var a = _res.Analise;
+        a.Achados.Remove(x);
+        var novos = new List<Achado>();
+        var usados = new List<(int, int)>();
+        foreach (var y in a.Achados)
         {
-            var x = _a?.Achados.FirstOrDefault(x => x.Troca != null && x.Ini >= 0 && !x.Troca.Contains('[') && !_ignorados.Contains(x.Chave));
-            if (x == null) break;
-            _resposta = AnaliseResposta.Aplicar(_resposta, x); n++;
-            Analisar();
+            if (y.Ini < 0 || string.IsNullOrEmpty(y.Trecho)) { novos.Add(y); continue; }
+            var (i, f) = AnaliseIA.Localizar(depois, y.Trecho, usados);
+            if (i >= 0) usados.Add((i, f));
+            novos.Add(y with { Ini = i, Fim = i >= 0 ? f : -1 });
         }
-        await J.Info("Correções aplicadas", n == 0 ? "Não há correções automáticas para aplicar." : $"{n} correção(ões) aplicada(s). Os apontamentos que dependem de você (datas, motivos, valores) continuam na lista.");
+        a.Achados.Clear(); a.Achados.AddRange(novos);
+        _resposta = depois;
+        _foco = null;
     }
 
-    RenderFragment Cartao(Achado x, int? n) => @<text>
+    RenderFragment Cartao(Achado x, int? n, bool aplicavel) => @<text>
         <div class="rr-c @x.Categoria @Grav(x.Grav) @(_foco == x.Chave ? "foco" : "")" id="@IdCartao(x.Chave)">
             <div class="rr-c-cab">
                 @if (n != null) { <span class="rr-c-num">@n</span> } else { <span class="rr-c-num geral"><Icone Nome="info" Tamanho="12" /></span> }
                 <b>@x.Titulo</b>
                 <span class="rr-c-cat">@Cat.Nome(x.Categoria)</span>
             </div>
-            @if (x.Troca != null && x.Fim > x.Ini)
+            @if (aplicavel && x.Troca != null && x.Fim > x.Ini && x.Fim <= _resposta.Length)
             {
-                <div class="rr-dp"><del>@_resposta[x.Ini..x.Fim]</del> <Icone Nome="direita" Tamanho="13" /> @if (x.Troca.Trim() == "") { <ins class="rem">(retirar)</ins> } else { <ins>@x.Troca.Trim()</ins> }</div>
-            }
-            else if (x.Troca != null)
-            {
-                <div class="rr-dp"><Icone Nome="mais" Tamanho="13" /> <ins>@x.Troca.Trim()</ins></div>
+                <div class="rr-dp"><del>@_resposta[x.Ini..x.Fim]</del> <Icone Nome="direita" Tamanho="13" /> @if (x.Troca.Trim() == "") { <ins class="rem">(retirar)</ins> } else { <ins>@Colchetes(x.Troca.Trim())</ins> }</div>
             }
             else if (!string.IsNullOrEmpty(x.Trecho))
             {
@@ -202,11 +363,24 @@
             <p>@x.Explicacao</p>
             @if (x.Sugestao != null) { <p class="rr-c-sug"><Icone Nome="faisca" Tamanho="13" /> @x.Sugestao</p> }
             <div class="rr-c-acts">
-                @if (x.Troca != null) { <button class="btn btn-pri btn-peq" @onclick="() => AplicarAchado(x)"><Icone Nome="check" Tamanho="13" /> Aplicar</button> }
+                @if (aplicavel && x.Troca != null) { <button class="btn btn-pri btn-peq" @onclick="() => AplicarAchado(x)"><Icone Nome="check" Tamanho="13" /> Aplicar</button> }
                 <button class="btn btn-sec btn-peq" @onclick="() => _ignorados.Add(x.Chave)">Ignorar</button>
             </div>
         </div>
     </text>;
+
+    /// <summary>Destaca o que está entre colchetes (informação para completar).</summary>
+    static RenderFragment Colchetes(string s) => b =>
+    {
+        int seq = 0, pos = 0;
+        foreach (System.Text.RegularExpressions.Match m in System.Text.RegularExpressions.Regex.Matches(s, @"\[[^\]\n]{1,60}\]"))
+        {
+            if (m.Index > pos) b.AddContent(seq++, s[pos..m.Index]);
+            b.OpenElement(seq++, "span"); b.AddAttribute(seq++, "class", "ia-falta"); b.AddContent(seq++, m.Value); b.CloseElement();
+            pos = m.Index + m.Length;
+        }
+        if (pos < s.Length) b.AddContent(seq++, s[pos..]);
+    };
 
     RenderFragment Documento(List<Achado> locais, Dictionary<string, int> num) => b =>
     {
@@ -217,7 +391,6 @@
         {
             var m = locais[i];
             if (m.Ini < pos || m.Fim > texto.Length) { i++; continue; }
-            // todos os apontamentos que começam dentro deste destaque
             var grupo = locais.Skip(i).TakeWhile(x => x.Ini < m.Fim).ToList();
             if (m.Ini > pos) b.AddContent(seq++, texto[pos..m.Ini]);
             b.OpenElement(seq++, "mark");
@@ -234,49 +407,41 @@
                 b.AddContent(seq++, num[g.Chave]);
                 b.CloseElement();
             }
-            pos = Math.Max(pos, grupo.Max(g => Math.Min(g.Fim, texto.Length)));
-            pos = Math.Max(pos, m.Fim);
+            pos = Math.Max(m.Fim, grupo.Max(g => Math.Min(g.Fim, texto.Length)));
             i += grupo.Count;
         }
         if (pos < texto.Length) b.AddContent(seq++, texto[pos..]);
     };
 
-    static string Grav(Gravidade g) => g switch { Gravidade.Problema => "r", Gravidade.Atencao => "a", _ => "l" };
-
-    static string Explica(string c) => c switch
-    {
-        Cat.Objetividade => "A resposta principal precisa estar nas primeiras linhas, em frases curtas e sem rodeios.",
-        Cat.Discordancia => "Discordar da 3069 só com cuidado e com o fato; a resposta também não pode se contradizer.",
-        Cat.Contestavel => "O que a cooperativa pode questionar porque não ficou bem explicado.",
-        Cat.Tom => "Formal, cordial e institucional: como uma comunicação oficial.",
-        _ => "Erros de português, acentos e pontuação.",
-    };
-
-    static string Resumo(Analise a)
-    {
-        int nao = a.Perguntas.Count(p => p.Status == StatusPergunta.NaoAtendida), parc = a.Perguntas.Count(p => p.Status == StatusPergunta.Parcial);
-        int pr = a.Achados.Count(x => x.Grav == Gravidade.Problema), at = a.Achados.Count(x => x.Grav == Gravidade.Atencao);
-        var l = new List<string>();
-        if (a.Perguntas.Count > 0) l.Add(nao + parc == 0 ? $"responde {(a.Perguntas.Count == 1 ? "a pergunta" : $"as {a.Perguntas.Count} perguntas")}" : $"{(nao > 0 ? $"{nao} pergunta(s) sem resposta" : "")}{(nao > 0 && parc > 0 ? " e " : "")}{(parc > 0 ? $"{parc} respondida(s) em parte" : "")}");
-        if (pr > 0) l.Add($"{pr} problema(s) para corrigir");
-        if (at > 0) l.Add($"{at} ponto(s) de atenção");
-        if (l.Count == 0 || (pr == 0 && at == 0 && nao + parc == 0)) return "Nenhum problema encontrado. Faça a conferência final abaixo antes de enviar.";
-        return char.ToUpper(string.Join(" · ", l)[0]) + string.Join(" · ", l)[1..] + ".";
-    }
-
+    // ===================== ações =====================
 
     async Task Copiar()
     {
+        if (System.Text.RegularExpressions.Regex.IsMatch(_resposta, @"\[[^\]\n]{1,60}\]")
+            && !await J.Pergunta("Copiar", "A resposta ainda tem texto entre colchetes para completar. Copiar mesmo assim?")) return;
         if (await E.Nav.Copiar(_resposta)) await J.Info("Copiado", "Resposta copiada. É só colar no Teams.");
         else await J.Aviso("Copiar", "Não consegui copiar automaticamente. Selecione o texto e use Ctrl+C.");
     }
 
-    void Limpar() { _pergunta = ""; _resposta = ""; _a = null; _checados.Clear(); }
+    async Task CopiarSugerida()
+    {
+        if (_res == null) return;
+        if (await E.Nav.Copiar(_res.RespostaSugerida)) await J.Info("Copiado", "Resposta sugerida copiada.");
+    }
+
+    void UsarSugerida()
+    {
+        if (_res == null) return;
+        _resposta = _res.RespostaSugerida;
+        _desatualizada = true;
+    }
+
+    void Limpar() { _pergunta = ""; _resposta = ""; _res = null; _erro = null; _desatualizada = false; _checados.Clear(); _ignorados.Clear(); }
 
     void Exemplo()
     {
-        _pergunta = "Bom dia! Qual o prazo para liberação do limite do associado João Pereira? E é possível aumentar o valor para R$ 50 mil?";
+        _pergunta = "Bom dia! Ainda não tivemos retorno sobre a proposta 458812 do associado João Pereira, já pedimos várias vezes. Qual o prazo para liberação do limite? E é possível aumentar o valor para R$ 50 mil?";
         _resposta = "oi pessoal, tudo bem? Então, a gente vai verificar isso em breve com a equipe, mas acho que não é possível aumentar, como já informado anteriormente. Vocês devem enviar a documentação pra gente!! Conforme normativo, o prazo é de 5 dias. Qualquer coisa me chama";
-        Analisar();
+        if (_res != null) _desatualizada = true;
     }
 }

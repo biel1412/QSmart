@@ -276,6 +276,13 @@
       } catch { return null; }
     },
   };
+  // Análise com IA: chamada direta do navegador para o Groq (a chave fica só neste navegador).
+  const ia = async (url, chave, corpo) => {
+    try {
+      const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + chave }, body: corpo });
+      return { status: r.status, texto: await r.text() };
+    } catch (e) { return { status: 0, texto: String(e) }; }
+  };
   const rolar = id => { const el = document.getElementById(id); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); };
-  window.qsmart = { kv, cofre, rolar, pasta, baixar, abrir, copiar, abrirUrl, pdfPaginas, pdfJuntar, pdfLinhas, tema, aoOcultar, focar, rolarLinha, pronto };
+  window.qsmart = { kv, cofre, rolar, ia, pasta, baixar, abrir, copiar, abrirUrl, pdfPaginas, pdfJuntar, pdfLinhas, tema, aoOcultar, focar, rolarLinha, pronto };
 })();
