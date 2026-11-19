@@ -14,10 +14,10 @@ public static class MrSmart
             "Não. As planilhas são lidas no seu próprio navegador e não são enviadas para nenhum servidor. O que fica salvo (histórico, férias, justificativas) fica guardado neste navegador."),
         new("Como abro o compilado?", new[] { "abrir", "compilado", "anexar", "carregar", "planilha", "arquivo", "upload" },
             "Em cada aba há um botão no canto superior direito, como “Abrir planilha” ou “Anexar compilado”. Clique nele e escolha o arquivo .xlsx. Em algumas abas dá para anexar vários compilados de uma vez."),
-        new("O que é o TMA?", new[] { "tma", "tempo medio", "atendimento", "sla" },
-            "O TMA (tempo médio de atendimento) usa só os fluxos com início e fim no mesmo dia. Para cada um, conto o tempo de fim − início e tiro a média, cortando os segundos quebrados (sem arredondar). Ele aparece na Estratégia do dia.", "estrategia"),
+        new("O que é o SLA do dia?", new[] { "sla", "tma", "tempo medio", "atendimento" },
+            "O SLA do dia (tempo médio dos fluxos) usa só os fluxos com início e fim no mesmo dia. Para cada um, conto o tempo de fim − início e tiro a média, cortando os segundos quebrados (sem arredondar). Ele aparece na Estratégia do dia.", "estrategia"),
         new("Como funciona a Estratégia do dia?", new[] { "estrategia", "teams", "mensagem", "bom dia", "centralizada", "autorizar", "paginas" },
-            "Anexe o compilado do dia: aparecem o resumo dos serviços, o TMA e o volume. Embaixo, preencha as páginas da Centralizada e da Autorizar (os fluxos são calculados como páginas × 15), escolha um modelo de estratégia e clique em Copiar ou Abrir no Teams.", "estrategia"),
+            "Anexe o compilado do dia: aparecem o resumo dos serviços, o SLA e o volume. Embaixo, preencha as páginas da Centralizada e da Autorizar (os fluxos são calculados como páginas × 15), escolha um modelo de estratégia e clique em Copiar ou Abrir no Teams.", "estrategia"),
         new("Como calcula os fluxos da Centralizada e Autorizar?", new[] { "15", "fluxos", "multiplica", "quinze" },
             "Ao digitar o número de páginas, o QSmart multiplica por 15 e preenche os fluxos sozinho. Se precisar, você pode ajustar o número à mão.", "estrategia"),
         new("Como vejo aprovações e reprovações?", new[] { "aprova", "reprova", "resumo", "motivo", "devolutiva", "segmento", "decis" },
@@ -94,7 +94,7 @@ public static class MrSmart
             "São outros sistemas da Insi. Em Ferramentas há atalhos para eles: ao clicar, abrem em uma nova aba do navegador."),
     };
 
-    public static readonly string[] Sugestoes = { "Como abro o compilado?", "O que é o TMA?", "Como faço backup?", "Como organizo as férias da equipe?", "O que é o controle automatizado de férias?" };
+    public static readonly string[] Sugestoes = { "Como abro o compilado?", "O que é o SLA do dia?", "Como faço backup?", "Como organizo as férias da equipe?", "O que é o controle automatizado de férias?" };
 
     /// <summary>Melhor resposta para a pergunta (ou null quando nada combina).</summary>
     public static RespostaMr? Responder(string pergunta)

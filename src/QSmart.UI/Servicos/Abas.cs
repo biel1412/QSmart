@@ -30,7 +30,7 @@ public static class Abas
         new("corredor", "Corredor (unir compilados e PDFs)", "Corredor", "corredor", "Operação",
             "Une vários compilados num só e junta PDFs na ordem escolhida.", "corredor"),
         new("estrategia", "Estratégia do dia", "Estratégia", "estrategia", "Operação",
-            "Resumo dos serviços, TMA e volume do dia a partir do compilado, com a mensagem da estratégia pronta para o Teams.", "estrategia"),
+            "Resumo dos serviços, SLA e volume do dia a partir do compilado, com a mensagem da estratégia pronta para o Teams.", "estrategia"),
         new("ferias", "Férias", "Férias", "ferias", "Coordenação",
             "Gera o modelo de planilha para a equipe pedir férias e compara os pedidos: choques, datas próximas, quem vende e quem sai em breve.", "ferias"),
         new("pontos", "Pontos de ação mensal", "Pontos de ação", "pontos", "Coordenação",

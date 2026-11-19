@@ -3,7 +3,7 @@
 @using QSmart.Core.Operacao
 
 @{ Calcular(); var r = _res; var M = E.EstMsg; }
-<Pagina Titulo="Estratégia do dia" Grupo="@A.Grupo" Sub="@(E.SubEst != "" ? E.SubEst : "Anexe o compilado do dia: o QSmart mostra o resumo dos serviços, o TMA e o volume do dia, e já preenche a mensagem da estratégia para o Teams.")">
+<Pagina Titulo="Estratégia do dia" Grupo="@A.Grupo" Sub="@(E.SubEst != "" ? E.SubEst : "Anexe o compilado do dia: o QSmart mostra o resumo dos serviços, o SLA e o volume do dia, e já preenche a mensagem da estratégia para o Teams.")">
     <Acoes>
         <button class="btn btn-hero" @onclick="Copiar"><Icone Nome="copiar" Tamanho="17" /> Copiar mensagem</button>
         <button class="btn btn-hero" @onclick="AbrirTeams"><Icone Nome="enviar" Tamanho="17" /> Abrir no Teams</button>
@@ -14,7 +14,7 @@
         <Kpi Titulo="Serviços distintos" Cor="green" Valor="@(r != null ? Fmt(r.Distintos) : "—")" Detalhe="@(r?.MaisFrequente is { } mf ? $"mais frequente: {mf.Servico}" : "")" />
         <Kpi Titulo="Média por serviço" Cor="amber" Valor="@(r != null ? Texto.F(r.MediaPorServico, 1) : "—")" Detalhe="@(r != null ? "registros por serviço" : "")" />
         <Kpi Titulo="Top 3 concentram" Cor="accent" Valor="@(r != null ? Texto.F(r.Top3, 1) + "%" : "—")" Detalhe="@(r != null ? "dos registros" : "")" Proporcao="@(r != null ? r.Top3 / 100 : null)" />
-        <Kpi Titulo="TMA médio geral" Cor="purple" Valor="@(r != null && r.FluxosDia > 0 ? Estrategia.Hms(r.TmaSeg) : "—")" Detalhe="@(r != null ? $"{Fmt(r.FluxosDia)} fluxos com início e fim em {Texto.Dm(r.Dia)}" : "tempo médio por fluxo")" />
+        <Kpi Titulo="SLA médio geral" Cor="purple" Valor="@(r != null && r.FluxosDia > 0 ? Estrategia.Hms(r.TmaSeg) : "—")" Detalhe="@(r != null ? $"{Fmt(r.FluxosDia)} fluxos com início e fim em {Texto.Dm(r.Dia)}" : "tempo médio por fluxo")" />
     </Kpis>
     <ChildContent>
         @if (E.EstBase == null)
@@ -22,7 +22,7 @@
             <div class="vazio-grande">
                 <span class="vazio-ic"><Icone Nome="estrategia" Tamanho="34" /></span>
                 <h3>Nenhum compilado anexado</h3>
-                <p class="muted">Anexe o compilado do dia para ver o resumo dos serviços, o TMA e o volume realizado.
+                <p class="muted">Anexe o compilado do dia para ver o resumo dos serviços, o SLA e o volume realizado.
                     A mensagem do Teams, mais abaixo, já pode ser preenchida mesmo sem o compilado.</p>
             </div>
         }
@@ -64,7 +64,7 @@
                         {
                             <table class="tabela est-tabela">
                                 <colgroup><col style="width:25%" /><col style="width:14%" /><col style="width:31%" /><col style="width:12%" /><col style="width:18%" /></colgroup>
-                                <thead><tr><th>Serviço</th><th class="al-c">Quantidade</th><th>Participação</th><th class="al-c" title="Fluxos com início e fim no dia escolhido">Do dia</th><th class="al-c" title="TMA dos fluxos com data do dia">TMA do dia</th></tr></thead>
+                                <thead><tr><th>Serviço</th><th class="al-c">Quantidade</th><th>Participação</th><th class="al-c" title="Fluxos com início e fim no dia escolhido">Do dia</th><th class="al-c" title="SLA dos fluxos com data do dia">SLA do dia</th></tr></thead>
                                 <tbody>
                                     @foreach (var s in (_az ? r.Servicos.OrderBy(x => x.Servico, StringComparer.Ordinal) : r.Servicos.AsEnumerable()))
                                     {
@@ -86,9 +86,9 @@
                 </Painel>
 
                 <div class="est-coluna">
-                    <Painel Titulo="TMA do dia">
+                    <Painel Titulo="SLA do dia">
                         <div class="est-tma">
-                            <span class="rotulo">TMA médio geral</span>
+                            <span class="rotulo">SLA médio geral</span>
                             <b class="est-tma-valor">@(r != null && r.FluxosDia > 0 ? Estrategia.Hms(r.TmaSeg) : "--:--:--")</b>
                             <span class="muted">tempo médio por fluxo (HH:MM:SS)</span>
                         </div>
@@ -166,7 +166,7 @@
                             <label>📥 Entraram nesse dia <input class="campo destaque" placeholder="digite" @bind="M.Entraram" @bind:event="oninput" @bind:after="Salvar" /></label>
                             <label>⏳ SLA a partir da entrada <input class="campo" @bind="M.Sla" @bind:event="oninput" @bind:after="Salvar" /></label>
                         </div>
-                        <span class="muted pequeno">Volume total = atividades que terminaram no dia. Realizado com essa data = terminaram no dia e começaram na data dos fluxos. SLA = TMA do dia. “Entraram” não está no compilado: digite.</span>
+                        <span class="muted pequeno">Volume total = atividades que terminaram no dia. Realizado com essa data = terminaram no dia e começaram na data dos fluxos. SLA = tempo médio dos fluxos com início e fim no dia. “Entraram” não está no compilado: digite.</span>
                     </div>
                 </div>
                 <div class="est-previa">
