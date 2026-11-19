@@ -279,7 +279,7 @@
                         <div class="rx-ct">🏛 PEP E VÍNCULO COM O GOVERNO</div>
                         @if (_pf == null && !E.PortalPronto)
                         {
-                            <p class="muted">Precisa da chave do Portal da Transparência. @Estado.MsgSemIA</p>
+                            <p class="muted">Não consegui consultar o Portal da Transparência agora.</p>
                         }
                         else
                         {
@@ -827,7 +827,7 @@
 
     async Task GerarParecer()
     {
-        if (E.ChaveIA == null) { await J.Aviso("Contate o suporte", Estado.MsgSemIA); return; }
+        if (E.ChaveIA == null) return;
         var seq = _seq;
         _parecerRodando = true; _parecerErro = null; StateHasChanged();
         try
@@ -897,7 +897,7 @@
             <span class="rx-ow"><MrSmartLogo /></span>
             <div class="rx-mr-txt">
                 <b>@(_modo == "cnpj" ? "Parecer 360 do Mr. Smart" : "Parecer do Mr. Smart")</b>
-                @if (E.ChaveIA == null) { <p class="muted">@Estado.MsgSemIA</p> }
+                @if (E.ChaveIA == null) { <p class="muted">Para ver o parecer, coloque a sua chave do Groq em <button class="rx-link" @onclick="AbrirConfig">Configurações › Modo desenvolvedor › Central de chaves de IA</button>. O resto do Radar funciona sem ela.</p> }
                 else if (_parecerRodando) { <p class="muted"><span class="ia-spin pequeno"></span> O Mr. Smart está lendo as checagens…</p> }
                 else if (_parecerErro != null) { <p class="txt-r">@_parecerErro</p> }
                 else if (_parecer != null) { <p>@_parecer</p> }
@@ -940,6 +940,14 @@
             else { <em class="rx-st @cls">@c.Rotulo</em> }
         </div>
     };
+
+    async Task AbrirConfig()
+    {
+        await E.Janelas.Configuracoes();
+        await E.IAConfigurada();
+        if (E.ChaveIA != null && (_emp != null || _cpfFeito)) await GerarParecer();
+        else StateHasChanged();
+    }
 
     async Task CopiarAtual() => await E.Nav.Copiar(_modo == "cnpj" ? _emp?.Cnpj ?? "" : _cpf);
 
