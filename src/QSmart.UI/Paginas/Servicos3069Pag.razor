@@ -27,7 +27,7 @@
             </label>
             <label class="rr-caixa resp">
                 <span class="rr-rot"><span class="rr-num">2</span> Nossa resposta <small>o que vai ser enviado pelo Teams</small></span>
-                <textarea class="campo area" rows="10" placeholder="Escreva ou cole a resposta aqui e clique em Analisar com IA."
+                <textarea class="campo area" rows="10" placeholder="Escreva ou cole a resposta aqui e clique em Analisar com Mr. Smart."
                           value="@_resposta" @oninput="MudouResposta"></textarea>
             </label>
         </div>
@@ -35,13 +35,12 @@
         <div class="ia-barra">
             <button class="ia-btn @(_analisando ? "rodando" : "")" @onclick="Analisar" disabled="@(_analisando || _chave == null || _pergunta.Trim() == "" || _resposta.Trim() == "")">
                 @if (_analisando) { <span class="ia-spin"></span> <span>Analisando… @_segundos s</span> }
-                else { <Icone Nome="faisca" Tamanho="18" /> <span>@(_res != null ? "Analisar de novo" : "Analisar com IA")</span> }
+                else { <Icone Nome="faisca" Tamanho="18" /> <span>Analisar com Mr. Smart</span> }
             </button>
             <div class="ia-info">
                 @if (_pergunta.Trim() == "" || _resposta.Trim() == "") { <span class="muted">Cole a pergunta e a resposta para analisar.</span> }
-                else if (_desatualizada) { <span class="ia-aviso"><Icone Nome="alerta" Tamanho="14" /> A resposta mudou depois da análise. Clique em “Analisar de novo”.</span> }
-                else if (_res != null) { <span class="muted">Analisado por @_res.Modelo às @_quando.ToString("HH:mm").</span> }
-                <span class="ia-priv"><Icone Nome="escudo" Tamanho="13" /> O texto é enviado ao Groq para análise (CPF, CNPJ, e-mail e telefone vão mascarados). O Groq não usa os textos para treinar modelos.</span>
+                else if (_desatualizada) { <span class="ia-aviso"><Icone Nome="alerta" Tamanho="14" /> A resposta mudou depois da análise. Clique em “Analisar com Mr. Smart”.</span> }
+                else if (_res != null) { <span class="muted">Analisado pelo Mr. Smart às @_quando.ToString("HH:mm").</span> }
             </div>
         </div>
 
