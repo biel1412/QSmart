@@ -293,9 +293,30 @@ public sealed class Estado
         if (!_transpLida)
         {
             try { var c = await Nav.CofreLer(CofreChaveTransp); if (c is { Length: > 0 }) ChaveTransp = System.Text.Encoding.UTF8.GetString(c); } catch { }
+            try { var x = await Nav.CofreLer(CofreProxyTransp); if (x is { Length: > 0 }) ProxyTransp = System.Text.Encoding.UTF8.GetString(x); } catch { }
             _transpLida = true;
         }
-        return !string.IsNullOrEmpty(ChaveTransp);
+        return PortalPronto;
+    }
+    /// <summary>Intermediário (proxy) para o Portal: o Portal não aceita consulta direta do navegador.</summary>
+    public const string CofreProxyTransp = "transp_proxy";
+    public string? ProxyTransp { get; private set; }
+    /// <summary>Há como consultar o Portal: chave neste navegador ou intermediário (que pode guardar a chave).</summary>
+    public bool PortalPronto => !string.IsNullOrEmpty(ChaveTransp) || !string.IsNullOrEmpty(ProxyTransp);
+    public async Task SalvarProxyTransp(string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url)) { await Nav.CofreApagar(CofreProxyTransp); ProxyTransp = null; return; }
+        url = url.Trim().TrimEnd('/');
+        await Nav.CofreGravar(CofreProxyTransp, System.Text.Encoding.UTF8.GetBytes(url));
+        ProxyTransp = url;
+    }
+    /// <summary>Endereço da consulta ao Portal, passando pelo intermediário se houver.</summary>
+    public string UrlPortal(string url) => ProxyTransp is { Length: > 0 } px ? url.Replace(QSmart.Core.Relacionamento.Radar.PortalBase, px + "/api-de-dados/") : url;
+    public Dictionary<string, string> CabecalhoPortal()
+    {
+        var d = new Dictionary<string, string> { ["Accept"] = "application/json" };
+        if (!string.IsNullOrEmpty(ChaveTransp)) d["chave-api-dados"] = ChaveTransp;
+        return d;
     }
     public async Task SalvarChaveTransp(string chave)
     {

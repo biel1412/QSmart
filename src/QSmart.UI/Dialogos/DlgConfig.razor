@@ -132,7 +132,13 @@
                         @if (E.ChaveTransp != null) { <button class="btn btn-sec" @onclick="RemoverTransp">Remover chave</button> }
                     </div>
                     @if (_msgTransp != "") { <p class="@(_transpOk ? "dev-ok" : "dev-erro")"><Icone Nome="@(_transpOk ? "check" : "alerta")" Tamanho="14" /> @_msgTransp</p> }
-                    <p class="muted pequeno">Gratuita: peça em portaldatransparencia.gov.br/api-de-dados/cadastrar-email com um e-mail gov.br. Fica guardada só neste navegador, criptografada.</p>
+                    <div class="dev-campos um" style="margin-top:10px">
+                        <label>Intermediário do Portal (endereço do proxy)<input class="campo" placeholder="https://qsmart-portal.SEU-USUARIO.workers.dev" @bind="_proxy" /></label>
+                    </div>
+                    <div class="linha-botoes">
+                        <button class="btn btn-sec" @onclick="SalvarProxy" disabled="@_testandoT"><Icone Nome="check" Tamanho="15" /> Salvar intermediário e testar</button>
+                    </div>
+                    <p class="muted pequeno">Gratuita: peça em portaldatransparencia.gov.br/api-de-dados/cadastrar-email entrando com a conta gov.br. Fica guardada só neste navegador, criptografada. O Portal não aceita consulta direta do navegador, por isso o Radar usa um intermediário (proxy); se a chave estiver guardada nele, este campo de chave pode ficar vazio.</p>
                 </div>
             }
         </Painel>
@@ -156,7 +162,7 @@
         if (!_devErro) { _abrirDev = false; _ = CarregarIA(); }
     }
 
-    async Task CarregarIA() { await E.IAConfigurada(); await E.TranspConfigurada(); _modelo = E.ModeloIA; StateHasChanged(); }
+    async Task CarregarIA() { await E.IAConfigurada(); await E.TranspConfigurada(); _modelo = E.ModeloIA; _proxy = E.ProxyTransp ?? ""; StateHasChanged(); }
 
     bool _testandoT, _transpOk;
     string _novaTransp = "", _msgTransp = "";
@@ -170,13 +176,34 @@
         _testandoT = true; StateHasChanged();
         try
         {
-            var r = await E.Nav.GetH(QSmart.Core.Relacionamento.Radar.UrlPortalTeste, new() { ["chave-api-dados"] = chave, ["Accept"] = "application/json" });
+            var r = await E.Nav.GetH(E.UrlPortal(QSmart.Core.Relacionamento.Radar.UrlPortalTeste), new() { ["chave-api-dados"] = chave, ["Accept"] = "application/json" });
             if (r.Status is 401 or 403) { _transpOk = false; _msgTransp = "O Portal recusou a chave. Confira se copiou inteira."; return; }
             await E.SalvarChaveTransp(chave);
-            _novaTransp = ""; _transpOk = true;
+            _novaTransp = ""; _transpOk = r.Status == 200;
             _msgTransp = r.Status == 200 ? "Chave testada e salva neste navegador." :
-                r.Status == 0 ? "Chave salva. O Portal não respondeu ao teste agora (rede ou bloqueio do navegador); o Radar tenta de novo em cada consulta." :
+                r.Status == 0 ? (E.ProxyTransp == null ? "Chave salva, mas o Portal não aceita consulta direta do navegador. Falta configurar o intermediário abaixo." : "Chave salva, mas o intermediário não respondeu.") :
                 $"Chave salva. O teste respondeu {r.Status}; o Radar tenta de novo em cada consulta.";
+        }
+        finally { _testandoT = false; }
+    }
+
+    string _proxy = "";
+    async Task SalvarProxy()
+    {
+        _testandoT = true; _msgTransp = ""; StateHasChanged();
+        try
+        {
+            await E.SalvarProxyTransp(_proxy);
+            if (E.ProxyTransp == null) { _transpOk = true; _msgTransp = "Intermediário removido."; return; }
+            var r = await E.Nav.GetH(E.UrlPortal(QSmart.Core.Relacionamento.Radar.UrlPortalTeste), E.CabecalhoPortal());
+            _transpOk = r.Status == 200;
+            _msgTransp = r.Status switch
+            {
+                200 => "Intermediário funcionando: o Portal respondeu.",
+                0 => "O intermediário não respondeu. Confira o endereço.",
+                401 or 403 => "O intermediário respondeu, mas o Portal recusou a chave.",
+                _ => $"O intermediário respondeu com erro {r.Status}.",
+            };
         }
         finally { _testandoT = false; }
     }

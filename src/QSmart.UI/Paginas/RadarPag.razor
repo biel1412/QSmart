@@ -249,7 +249,7 @@
                         @if (_pf?.Servidor == true) { <span class="rx-tag">Servidor(a) federal</span> }
                         @if (_pf?.ServidorInativo == true) { <span class="rx-tag">Servidor(a) federal inativo(a)</span> }
                         @if (_ligadas.Count > 0) { <span class="rx-tag">@_ligadas.Count @(_ligadas.Count == 1 ? "empresa ligada" : "empresas ligadas")</span> }
-                        @if (_pf == null && E.ChaveTransp == null) { <span class="rx-tag">Portal da Transparência sem chave</span> }
+                        @if (_pf == null && !E.PortalPronto) { <span class="rx-tag">Portal da Transparência sem chave</span> }
                     </div>
                     <div class="rx-kv">
                         <div><small>SANÇÕES FEDERAIS</small><b class="@CorTxt(placar[0].Cor)">@placar[0].Texto</b></div>
@@ -277,13 +277,14 @@
                 <div class="rx-col">
                     <div class="rx-card">
                         <div class="rx-ct">🏛 PEP E VÍNCULO COM O GOVERNO</div>
-                        @if (_pf == null && E.ChaveTransp == null)
+                        @if (_pf == null && !E.PortalPronto)
                         {
                             <p class="muted">Precisa da chave do Portal da Transparência. @Estado.MsgSemIA</p>
                         }
                         else
                         {
-                            @if (_peps.Count == 0) { <div class="rx-cnae"><b>Não é pessoa politicamente exposta</b><small>Portal da Transparência · lista PEP</small></div> }
+                            @if (Ck("pep") is { Status: not (StatusCheck.NadaConsta or StatusCheck.Atencao) } pc) { <div class="rx-cnae"><b>Não consegui consultar a lista PEP</b><small>@pc.Detalhe</small></div> }
+                            else if (_peps.Count == 0) { <div class="rx-cnae"><b>Não é pessoa politicamente exposta</b><small>Portal da Transparência · lista PEP</small></div> }
                             @foreach (var p in _peps)
                             {
                                 <div class="rx-cnae"><b>Pessoa politicamente exposta</b><small>Portal da Transparência · lista PEP</small>
@@ -302,7 +303,7 @@
                         <div class="rx-ct">💳 BENEFÍCIOS SOCIAIS</div>
                         @if (_pf == null)
                         {
-                            <p class="muted">@(E.ChaveTransp == null ? "Precisa da chave do Portal da Transparência." : "O Portal não respondeu.") <a href="@Radar.UrlPortal/beneficios" target="_blank" rel="noopener">Consultar no Portal ↗</a></p>
+                            <p class="muted">@(!E.PortalPronto ? "Precisa da chave do Portal da Transparência." : "O Portal não respondeu.") <a href="@Radar.UrlPortal/beneficios" target="_blank" rel="noopener">Consultar no Portal ↗</a></p>
                         }
                         else
                         {
@@ -435,7 +436,8 @@
         await E.Nav.Rolar("rx-doc");
     }
 
-    Dictionary<string, string> CabPortal() => new() { ["chave-api-dados"] = E.ChaveTransp ?? "", ["Accept"] = "application/json" };
+    Dictionary<string, string> CabPortal() => E.CabecalhoPortal();
+    string ErroP(int status) => status == 0 && E.ProxyTransp == null ? "o Portal não aceita consulta direta do navegador: falta o intermediário (veja Configurações)" : ErroP(status);
 
     // =============================== CNPJ ===============================
 
@@ -527,16 +529,16 @@
     async Task PortalPJ(Empresa e, int seq)
     {
         var cgu = Ck("cgu")!; var con = Ck("contratos")!;
-        if (E.ChaveTransp == null)
+        if (!E.PortalPronto)
         {
             cgu.Status = con.Status = StatusCheck.SemChave;
             cgu.Url = Radar.UrlPortal + "/sancoes/consulta"; con.Url = Radar.UrlPortal + "/contratos";
             cgu.Detalhe = con.Detalhe = "chave do Portal não configurada nesta máquina";
             Pronto(seq); return;
         }
-        var tPj = E.Nav.GetH(Radar.UrlPortalPJ(e.Cnpj), CabPortal()).AsTask();
-        var tLen = E.Nav.GetH(Radar.UrlLeniencia(e.Cnpj), CabPortal()).AsTask();
-        var tCon = E.Nav.GetH(Radar.UrlContratos(e.Cnpj), CabPortal()).AsTask();
+        var tPj = E.Nav.GetH(E.UrlPortal(Radar.UrlPortalPJ(e.Cnpj)), CabPortal()).AsTask();
+        var tLen = E.Nav.GetH(E.UrlPortal(Radar.UrlLeniencia(e.Cnpj)), CabPortal()).AsTask();
+        var tCon = E.Nav.GetH(E.UrlPortal(Radar.UrlContratos(e.Cnpj)), CabPortal()).AsTask();
         await Task.WhenAll(tPj, tLen, tCon);
         if (seq != _seq) return;
         var (rPj, rLen, rCon) = (tPj.Result, tLen.Result, tCon.Result);
@@ -551,7 +553,7 @@
             cgu.Detalhe = marcas.Count > 0 ? "consta em " + string.Join(", ", marcas) : "";
             cgu.Url = Radar.UrlPortal + "/sancoes/consulta";
         }
-        else { cgu.Status = rPj.Status == 0 ? StatusCheck.Atalho : StatusCheck.Erro; cgu.Detalhe = Radar.ErroPortal(rPj.Status); cgu.Url = Radar.UrlPortal + "/sancoes/consulta"; }
+        else { cgu.Status = rPj.Status == 0 ? StatusCheck.Atalho : StatusCheck.Erro; cgu.Detalhe = ErroP(rPj.Status); cgu.Url = Radar.UrlPortal + "/sancoes/consulta"; }
         if (rCon.Status == 200)
         {
             var (qtd, total, ult) = Radar.LerContratos(rCon.Texto);
@@ -559,7 +561,7 @@
             con.Detalhe = qtd == 0 ? "nenhum contrato" : $"{qtd}{(qtd >= 15 ? "+" : "")} contratos · {Radar.DinheiroCurto(total)}";
             if (ult != "") con.Fonte = "Portal da Transparência · último em " + ult;
         }
-        else { con.Status = rCon.Status == 0 ? StatusCheck.Atalho : StatusCheck.Erro; con.Detalhe = Radar.ErroPortal(rCon.Status); }
+        else { con.Status = rCon.Status == 0 ? StatusCheck.Atalho : StatusCheck.Erro; con.Detalhe = ErroP(rCon.Status); }
         con.Url = Radar.UrlPortal + "/contratos";
         Pronto(seq);
     }
@@ -734,13 +736,13 @@
     async Task PortalPF(string cpf, int seq)
     {
         var ceis = Ck("ceis")!; var ceaf = Ck("ceaf")!; var pep = Ck("pep")!; var ben = Ck("beneficios")!;
-        if (E.ChaveTransp == null)
+        if (!E.PortalPronto)
         {
             foreach (var c in new[] { ceis, ceaf, pep, ben }) { c.Status = StatusCheck.SemChave; c.Detalhe = "chave do Portal não configurada nesta máquina"; c.Url = Radar.UrlPortal; }
             return;
         }
-        var tPf = E.Nav.GetH(Radar.UrlPortalPF(cpf), CabPortal()).AsTask();
-        var tPep = E.Nav.GetH(Radar.UrlPeps(cpf), CabPortal()).AsTask();
+        var tPf = E.Nav.GetH(E.UrlPortal(Radar.UrlPortalPF(cpf)), CabPortal()).AsTask();
+        var tPep = E.Nav.GetH(E.UrlPortal(Radar.UrlPeps(cpf)), CabPortal()).AsTask();
         await Task.WhenAll(tPf, tPep);
         if (seq != _seq) return;
         var rPf = tPf.Result; var rPep = tPep.Result;
@@ -755,14 +757,14 @@
             ceis.Url = ceaf.Url = Radar.UrlPortal + "/sancoes/consulta"; ben.Url = Radar.UrlPortal + "/beneficios";
             if (p.Servidor || p.ServidorInativo)
             {
-                var rs = await E.Nav.GetH(Radar.UrlServidor(cpf), CabPortal());
+                var rs = await E.Nav.GetH(E.UrlPortal(Radar.UrlServidor(cpf)), CabPortal());
                 if (seq != _seq) return;
                 if (rs.Status == 200) _vinculos = Radar.LerServidor(rs.Texto);
             }
         }
         else
         {
-            foreach (var c in new[] { ceis, ceaf, ben }) { c.Status = rPf.Status == 0 ? StatusCheck.Atalho : StatusCheck.Erro; c.Detalhe = Radar.ErroPortal(rPf.Status); c.Url = Radar.UrlPortal; }
+            foreach (var c in new[] { ceis, ceaf, ben }) { c.Status = rPf.Status == 0 ? StatusCheck.Atalho : StatusCheck.Erro; c.Detalhe = ErroP(rPf.Status); c.Url = Radar.UrlPortal; }
         }
         if (rPep.Status == 200)
         {
@@ -770,7 +772,7 @@
             pep.Status = _peps.Count > 0 ? StatusCheck.Atencao : StatusCheck.NadaConsta;
             pep.Detalhe = _peps.Count > 0 ? "sim" + (_peps[0].FimCarencia != "" ? " · até " + _peps[0].FimCarencia[^4..] : "") : "";
         }
-        else { pep.Status = rPep.Status == 0 ? StatusCheck.Atalho : StatusCheck.Erro; pep.Detalhe = Radar.ErroPortal(rPep.Status); pep.Url = Radar.UrlPortal + "/pep"; }
+        else { pep.Status = rPep.Status == 0 ? StatusCheck.Atalho : StatusCheck.Erro; pep.Detalhe = ErroP(rPep.Status); pep.Url = Radar.UrlPortal + "/pep"; }
         StateHasChanged();
     }
 
