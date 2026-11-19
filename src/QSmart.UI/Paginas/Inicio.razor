@@ -4,14 +4,16 @@
 <div class="inicio">
     <section class="boas-vindas">
         <div class="bv-texto" @onmouseenter="() => _pausa = true" @onmouseleave="() => _pausa = false">
+            <div class="bv-linha">
+                @{ var (icC, txC) = Chip(); }
+                <div class="bv-saudacao"><Icone Nome="@icC" Tamanho="16" /> @txC</div>@Relogio
+            </div>
             <div class="bv-slides" aria-live="polite">
                 <div class="bv-slide @(_slide == 0 ? "on" : "")">
-                    <div class="bv-saudacao"><Icone Nome="faisca" Tamanho="16" /> @Saudacao()</div>
                     <h1>Bem-vindo ao <span class="grad">QSmart</span></h1>
                     <p>A plataforma de qualidade da <b>Insi</b>: decisões, inspeções, pareceres e operação em um só lugar. As planilhas são lidas aqui mesmo, no seu computador.</p>
                 </div>
                 <div class="bv-slide @(_slide == 1 ? "on" : "")">
-                    <div class="bv-saudacao"><Icone Nome="escudo" Tamanho="16" /> Sobre a plataforma</div>
                     <h1>@Ferramentas() ferramentas, <span class="grad">@Areas() áreas</span></h1>
                     <div class="bv-fatos">
                         <span><Icone Nome="escudo" Tamanho="15" /> Nenhum arquivo sai do seu computador</span>
@@ -21,18 +23,15 @@
                 </div>
                 <div class="bv-slide @(_slide == 2 ? "on" : "")">
                     @{ var c = Curiosidades[_cur % Curiosidades.Length]; var ab = Abas.Por(c.chave); }
-                    <div class="bv-saudacao"><Icone Nome="faisca" Tamanho="16" /> Você sabia?</div>
                     <h1 class="bv-curio"><span class="bv-curio-ic"><Icone Nome="@(ab?.Icone ?? "faisca")" Tamanho="22" /></span> <span class="grad">@(ab?.Nome ?? c.chave)</span></h1>
                     <p>@c.texto @if (ab != null && E.AbaAtiva(ab.Chave)) { <a class="bv-link" href="@ab.Rota">Abrir <Icone Nome="seta" Tamanho="14" /></a> }</p>
                 </div>
                 <div class="bv-slide @(_slide == 3 ? "on" : "")">
                     @{ var d = Dicas[_dica % Dicas.Length]; }
-                    <div class="bv-saudacao"><Icone Nome="busca" Tamanho="16" /> Dica rápida</div>
                     <h1>@d.titulo</h1>
                     <p>@d.texto</p>
                 </div>
                 <div class="bv-slide @(_slide == 4 ? "on" : "")">
-                    <div class="bv-saudacao"><Icone Nome="resumo" Tamanho="16" /> Seu painel agora</div>
                     <h1>@(Carregadas() == 0 ? "Pronto para começar" : $"{Carregadas()} de 4 bases abertas")</h1>
                     <div class="bv-fatos">
                         <span class="@(E.Resultado != null ? "ok" : "")"><Icone Nome="@(E.Resultado != null ? "check" : "resumo")" Tamanho="15" /> Aprovações @(E.Resultado != null ? "· carregada" : "· não aberta")</span>
@@ -42,7 +41,6 @@
                     </div>
                 </div>
                 <div class="bv-slide @(_slide == 5 ? "on" : "")">
-                    <div class="bv-saudacao"><Icone Nome="faisca" Tamanho="16" /> Novidades</div>
                     <h1>O que há de <span class="grad">novo</span></h1>
                     <div class="bv-fatos">
                         <span><Icone Nome="estrategia" Tamanho="15" /> Estratégia do dia com mensagem para o Teams</span>
@@ -178,7 +176,31 @@
     protected override void Entrar()
     {
         _timer = new System.Threading.Timer(_ => Avancar(), null, Intervalo, Intervalo);
+        // relógio: atualiza no começo de cada minuto
+        var ate = 60_000 - (int)(DateTime.Now.Second * 1000 + DateTime.Now.Millisecond) + 200;
+        _relogio = new System.Threading.Timer(_ => InvokeAsync(StateHasChanged), null, ate, 60_000);
+        _ = E.CarregarFeriados();
     }
+
+    System.Threading.Timer? _relogio;
+
+    (string, string) Chip() => _slide switch
+    {
+        1 => ("escudo", "Sobre a plataforma"),
+        2 => ("faisca", "Você sabia?"),
+        3 => ("busca", "Dica rápida"),
+        4 => ("resumo", "Seu painel agora"),
+        5 => ("faisca", "Novidades"),
+        _ => ("faisca", Saudacao()),
+    };
+
+    /// <summary>Data, hora e o aviso de feriado próximo, ao lado da saudação.</summary>
+    RenderFragment Relogio => @<text>
+        @{ var agora = DateTime.Now; var hoje = DateOnly.FromDateTime(agora); var aviso = QSmart.Core.Feriados.Aviso(E.FeriadosLista, hoje);
+           var prox = E.FeriadosLista.Where(f => f.Data >= hoje).OrderBy(f => f.Data).Take(3).ToList(); }
+        <span class="bv-pilula" title="@(prox.Count > 0 ? "Próximos feriados: " + string.Join(" · ", prox.Select(f => $"{f.Data:dd/MM} {f.Nome}")) : "")"><i></i>@QSmart.Core.Feriados.DiaCurto(hoje), @agora.ToString("dd/MM") · @agora.ToString("HH:mm")</span>
+        @if (aviso != null) { <span class="bv-pilula feriado">🎉 @aviso</span> }
+    </text>;
 
     void Avancar()
     {
@@ -200,6 +222,7 @@
     public override void Dispose()
     {
         _timer?.Dispose();
+        _relogio?.Dispose();
         base.Dispose();
     }
 

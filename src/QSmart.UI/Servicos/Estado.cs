@@ -200,6 +200,45 @@ public sealed class Estado
         return true;
     }
 
+    // ---- Feriados nacionais (BrasilAPI, com lista própria quando estiver sem internet) ----
+    public List<QSmart.Core.FeriadoDia> FeriadosLista { get; private set; } = new();
+    bool _feriadosLidos;
+    public async Task CarregarFeriados()
+    {
+        if (_feriadosLidos) return;
+        _feriadosLidos = true;
+        int ano = DateTime.Today.Year;
+        var l = new List<QSmart.Core.FeriadoDia>();
+        foreach (var y in new[] { ano, ano + 1 })
+        {
+            var lista = QSmart.Core.Feriados.Locais(y);
+            try
+            {
+                var cache = await Nav.Ler($"feriados_{y}");
+                if (!string.IsNullOrEmpty(cache)) lista = QSmart.Core.Feriados.LerBrasilApi(cache);
+            }
+            catch { }
+            l.AddRange(lista);
+        }
+        FeriadosLista = l;
+        Notificar();
+        // atualiza pela BrasilAPI em segundo plano
+        var novos = new List<QSmart.Core.FeriadoDia>();
+        bool mudou = false;
+        foreach (var y in new[] { ano, ano + 1 })
+        {
+            try
+            {
+                var r = await Nav.Get(QSmart.Core.Feriados.Url + y);
+                var lista = r.Status == 200 ? QSmart.Core.Feriados.LerBrasilApi(r.Texto) : new();
+                if (lista.Count > 0) { await Nav.Gravar($"feriados_{y}", r.Texto); novos.AddRange(lista); mudou = true; continue; }
+            }
+            catch { }
+            novos.AddRange(FeriadosLista.Where(f => f.Data.Year == y));
+        }
+        if (mudou) { FeriadosLista = novos; Notificar(); }
+    }
+
     // ---- Modo desenvolvedor e central de chaves de IA ----
     /// <summary>Liberado só nesta sessão (até fechar ou recarregar a página).</summary>
     public bool DevLiberado;

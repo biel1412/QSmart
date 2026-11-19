@@ -283,6 +283,10 @@
       return { status: r.status, texto: await r.text() };
     } catch (e) { return { status: 0, texto: String(e) }; }
   };
+  const get = async url => {
+    try { const r = await fetch(url); return { status: r.status, texto: await r.text() }; }
+    catch (e) { return { status: 0, texto: String(e) }; }
+  };
   const rolar = id => { const el = document.getElementById(id); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); };
-  window.qsmart = { kv, cofre, rolar, ia, pasta, baixar, abrir, copiar, abrirUrl, pdfPaginas, pdfJuntar, pdfLinhas, tema, aoOcultar, focar, rolarLinha, pronto };
+  window.qsmart = { kv, cofre, rolar, ia, get, pasta, baixar, abrir, copiar, abrirUrl, pdfPaginas, pdfJuntar, pdfLinhas, tema, aoOcultar, focar, rolarLinha, pronto };
 })();
