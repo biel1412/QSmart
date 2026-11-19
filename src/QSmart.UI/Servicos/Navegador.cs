@@ -41,6 +41,7 @@ public sealed class Navegador
     public sealed record RespostaHttp(int Status, string Texto);
     public ValueTask<RespostaHttp> IA(string url, string chave, string corpo) => _js.InvokeAsync<RespostaHttp>("qsmart.ia", url, chave, corpo);
     public ValueTask<RespostaHttp> Get(string url) => _js.InvokeAsync<RespostaHttp>("qsmart.get", url);
+    public ValueTask<RespostaHttp> GetH(string url, Dictionary<string, string>? cabecalhos = null, int ms = 25000) => _js.InvokeAsync<RespostaHttp>("qsmart.getH", url, cabecalhos ?? new(), ms);
     public ValueTask Rolar(string id) => _js.InvokeVoidAsync("qsmart.rolar", id);
     public ValueTask RolarLinha(string id, int linha) => _js.InvokeVoidAsync("qsmart.rolarLinha", id, linha);
     public ValueTask Pronto() => _js.InvokeVoidAsync("qsmart.pronto");

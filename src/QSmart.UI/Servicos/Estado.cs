@@ -284,6 +284,37 @@ public sealed class Estado
         ChaveIA = null; _iaLida = true;
         Notificar();
     }
+    // ---- Portal da Transparência (chave gratuita, usada pelo Radar Smart360) ----
+    public const string CofreChaveTransp = "transp_chave";
+    public string? ChaveTransp { get; private set; }
+    bool _transpLida;
+    public async Task<bool> TranspConfigurada()
+    {
+        if (!_transpLida)
+        {
+            try { var c = await Nav.CofreLer(CofreChaveTransp); if (c is { Length: > 0 }) ChaveTransp = System.Text.Encoding.UTF8.GetString(c); } catch { }
+            _transpLida = true;
+        }
+        return !string.IsNullOrEmpty(ChaveTransp);
+    }
+    public async Task SalvarChaveTransp(string chave)
+    {
+        await Nav.CofreGravar(CofreChaveTransp, System.Text.Encoding.UTF8.GetBytes(chave));
+        ChaveTransp = chave; _transpLida = true;
+    }
+    public async Task RemoverChaveTransp() { await Nav.CofreApagar(CofreChaveTransp); ChaveTransp = null; _transpLida = true; }
+
+    // ---- Radar Smart360: histórico de CNPJ (criptografado; CPF nunca é salvo) ----
+    public const string CofreRadar = "radar360";
+    public QSmart.Core.Relacionamento.BaseRadar? Radar { get; private set; }
+    public async Task<QSmart.Core.Relacionamento.BaseRadar> CarregarRadar()
+    {
+        if (Radar != null) return Radar;
+        try { Radar = QSmart.Core.Relacionamento.BaseRadar.DeBytes(await Nav.CofreLer(CofreRadar)); } catch { Radar = new(); }
+        return Radar;
+    }
+    public async Task SalvarRadar() { if (Radar != null) await Nav.CofreGravar(CofreRadar, Radar.ParaBytes()); }
+
     public const string MsgSemIA = "Esta ferramenta ainda não está liberada nesta máquina. Contate o suporte para configurar sua máquina para o uso total das ferramentas do QSmart.";
 
     // ---- One a One ----

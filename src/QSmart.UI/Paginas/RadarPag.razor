@@ -1,0 +1,981 @@
+@page "/radar-smart360"
+@inherits PaginaBase
+@using QSmart.Core.Relacionamento
+@implements IDisposable
+
+<Pagina Titulo="Radar Smart360" Grupo="@A.Grupo">
+    <Acoes>
+        @if (_emp != null && _modo == "cnpj")
+        {
+            <button class="btn btn-hero" @onclick="Pdf"><Icone Nome="pdf" Tamanho="17" /> Ficha em PDF</button>
+            <button class="btn btn-hero" @onclick="CopiarTeams"><Icone Nome="copiar" Tamanho="17" /> Copiar p/ Teams</button>
+        }
+        else if (_cpfFeito && _modo == "cpf")
+        {
+            <button class="btn btn-hero" @onclick="PdfCpf"><Icone Nome="pdf" Tamanho="17" /> Ficha em PDF</button>
+            <button class="btn btn-hero" @onclick="CopiarTeamsCpf"><Icone Nome="copiar" Tamanho="17" /> Copiar p/ Teams</button>
+        }
+    </Acoes>
+    <ChildContent>
+        <div class="rx-busca">
+            <div class="rx-tipo">
+                <button class="@(_modo == "cnpj" ? "on" : "")" @onclick="ModoCnpj"><Icone Nome="predio" Tamanho="15" /> CNPJ</button>
+                <button class="@(_modo == "cpf" ? "on" : "")" @onclick="ModoCpf"><Icone Nome="pessoa" Tamanho="15" /> CPF</button>
+            </div>
+            <input id="rx-doc" class="rx-in" inputmode="numeric" autocomplete="off" placeholder="@(_modo == "cnpj" ? "00.000.000/0000-00" : "000.000.000-00")"
+                   value="@_entrada" @oninput="Digitou" @onkeydown="Tecla" />
+            @if (_modo == "cpf")
+            {
+                <select class="rx-fin @(_finalidade == "" ? "vazio" : "")" value="@_finalidade" @onchange="MudouFinalidade" title="Finalidade da consulta (obrigatória)">
+                    <option value="">Finalidade…</option>
+                    @foreach (var f in Finalidades) { <option value="@f">@f</option> }
+                </select>
+            }
+            <button class="ia-btn rx-bt @(_buscando ? "rodando" : "")" @onclick="Consultar" disabled="@_buscando">
+                @if (_buscando) { <span class="ia-spin"></span> <span>Consultando…</span> }
+                else { <Icone Nome="busca" Tamanho="17" /> <span>Consultar</span> }
+            </button>
+        </div>
+        @if (_modo == "cpf")
+        {
+            <div class="rx-cpf-extra">
+                <input class="campo" placeholder="Nome completo (opcional: ajuda a achar inabilitados e empresas ligadas)" value="@_nomeDigitado" @oninput="MudouNome" @onkeydown="Tecla" />
+            </div>
+            <div class="rx-aviso"><Icone Nome="escudo" Tamanho="16" /> Consulta de CPF: o número aparece mascarado, nada desta consulta fica salvo no QSmart e a finalidade é obrigatória (LGPD).</div>
+        }
+        else if (_base != null && _base.Recentes.Count > 0)
+        {
+            <div class="rx-rec">
+                <span class="muted">Recentes:</span>
+                @foreach (var r in _base.Recentes.Take(8))
+                {
+                    <span class="rx-chip @(r.Monitorado ? "mon" : "")">
+                        <button class="rx-estrela" title="@(r.Monitorado ? "Parar de monitorar" : "Monitorar este CNPJ")" @onclick="() => AlternarMonitor(r)"><Icone Nome="estrela" Tamanho="13" /></button>
+                        <button class="rx-chip-txt" title="@Documento.FmtCnpj(r.Cnpj)" @onclick="() => AbrirCnpj(r.Cnpj)">@Curto(r.Nome)</button>
+                    </span>
+                }
+                @if (_base.Recentes.Any(x => x.Monitorado))
+                {
+                    <button class="btn btn-sec rx-mini" @onclick="VerificarMonitorados" disabled="@_verificando">
+                        <Icone Nome="radar" Tamanho="14" /> @(_verificando ? "Verificando…" : $"Verificar monitorados ({_base.Recentes.Count(x => x.Monitorado)})")
+                    </button>
+                }
+            </div>
+            @if (_resMonitor != null)
+            {
+                <div class="rx-monitor">
+                    <div class="rx-ct">MONITORADOS <em>verificado às @DateTime.Now.ToString("HH:mm")</em><button class="rx-x" @onclick="FecharMonitor"><Icone Nome="x" Tamanho="14" /></button></div>
+                    @foreach (var (cnpj, nome, msg, mudou) in _resMonitor)
+                    {
+                        <div class="rx-mon-l @(mudou ? "mudou" : "")"><span class="rx-dot @(mudou ? "y" : "g")"></span><button class="rx-link" @onclick="() => AbrirCnpj(cnpj)">@nome</button><small>@msg</small></div>
+                    }
+                </div>
+            }
+        }
+
+        @if (_erro != null)
+        {
+            <div class="ia-erro"><Icone Nome="alerta" Tamanho="18" /><div><b>Não foi possível consultar</b><span>@_erro</span></div></div>
+        }
+
+        @if (_modo == "cnpj" && _emp == null && !_buscando && _erro == null)
+        {
+            <div class="rx-vazio">
+                <span class="rx-radar"><Icone Nome="radar" Tamanho="38" /></span>
+                <b>Digite um CNPJ para montar a ficha 360</b>
+                <span class="muted">Cadastro da Receita, sócios e dirigentes, linha do tempo, Junta Comercial, mapa e checagens públicas (TCU, CNJ, CGU, Banco Central, diários oficiais), com placar e parecer do Mr. Smart.</span>
+            </div>
+        }
+        @if (_modo == "cpf" && !_cpfFeito && !_buscando && _erro == null)
+        {
+            <div class="rx-vazio">
+                <span class="rx-radar"><Icone Nome="pessoa" Tamanho="38" /></span>
+                <b>Digite um CPF e escolha a finalidade</b>
+                <span class="muted">Validação do CPF, sanções federais, PEP, vínculo de servidor, quadro de inabilitados do Banco Central, benefícios sociais e empresas ligadas.</span>
+            </div>
+        }
+
+        @if (_modo == "cnpj" && _emp != null)
+        {
+            var e = _emp;
+            var placar = PlacarPJ();
+            var hoje = DateOnly.FromDateTime(DateTime.Today);
+            <div class="rx-hero">
+                <div class="rx-hero-esq">
+                    <div class="rx-nome">@e.RazaoSocial</div>
+                    <div class="rx-fant">@(e.Fantasia != "" ? $"Nome fantasia: {e.Fantasia} · " : "")CNPJ @e.CnpjFmt · <b>@(e.Matriz ? "Matriz" : "Filial")</b></div>
+                    <div class="rx-tags">
+                        <span class="rx-tag @(e.Ativa ? "ok" : "r")">● @Cnae.Frase(e.Situacao).ToUpperInvariant() desde @Radar.Dmy(e.DataSituacao)</span>
+                        @if (!e.Ativa && e.MotivoSituacao != "") { <span class="rx-tag r">@Cnae.Frase(e.MotivoSituacao)</span> }
+                        @if (e.Natureza != "") { <span class="rx-tag">@e.Natureza</span> }
+                        @if (e.Porte != "") { <span class="rx-tag">Porte: @Cnae.Frase(e.Porte)</span> }
+                        <span class="rx-tag @(e.Simples == true ? "c" : "")">@(e.Simples == true ? $"Simples desde {Radar.Dmy(e.SimplesDesde)}" : "Não optante do Simples")</span>
+                        @if (e.Mei == true) { <span class="rx-tag c">MEI desde @Radar.Dmy(e.MeiDesde)</span> }
+                        @if (e.SituacaoEspecial != "") { <span class="rx-tag a">⚠ @Cnae.Frase(e.SituacaoEspecial)</span> }
+                        @{ var atencoes = _checks.Count(c => c.Status is StatusCheck.Consta or StatusCheck.Atencao); }
+                        @if (atencoes > 0) { <span class="rx-tag a">⚠ @atencoes @(atencoes == 1 ? "ponto de atenção" : "pontos de atenção")</span> }
+                        @if (_mudouAgora.Count > 0) { <span class="rx-tag k" title="@string.Join(", ", _mudouAgora)">↻ mudou desde a última consulta</span> }
+                    </div>
+                    <div class="rx-kv">
+                        <div><small>ABERTURA</small><b>@Radar.Dmy(e.Abertura) · @e.Idade(hoje)</b></div>
+                        <div><small>CAPITAL SOCIAL</small><b>@Radar.Dinheiro(e.Capital)</b></div>
+                        <div><small>SEDE</small><b>@e.Municipio · @e.Uf</b></div>
+                        <div><small>FONTE</small><b title="@e.Fonte">Receita · até 30 dias</b></div>
+                    </div>
+                </div>
+                <div class="rx-placar">
+                    <div class="rx-ct">PLACAR DO RADAR</div>
+                    @foreach (var p in placar)
+                    {
+                        <div class="rx-pl"><i class="@p.Cor"></i><span>@p.Dimensao</span><b class="@p.Cor">@p.Texto</b></div>
+                    }
+                </div>
+            </div>
+
+            @Parecer()
+
+            <div class="rx-g2">
+                <div class="rx-card">
+                    <div class="rx-ct">✓ CHECAGENS AUTOMÁTICAS <em>@(_quando.ToString("HH:mm"))</em></div>
+                    @foreach (var c in _checks.Where(c => c.Id != "cadastro"))
+                    {
+                        @Linha(c)
+                    }
+                    @if (_ibge != null) { <p class="rx-nota">IBGE: @e.Municipio/@e.Uf · @_ibge</p> }
+                    <p class="rx-nota">Filiais e processos judiciais não têm fonte pública aberta para consulta automática.</p>
+                </div>
+                <div class="rx-col">
+                    <div class="rx-card">
+                        <div class="rx-ct">🏭 ATIVIDADES <em>@e.Atividades.Count CNAE</em></div>
+                        @foreach (var a in e.Atividades.Take(_todasAtiv ? 99 : 4))
+                        {
+                            <div class="rx-cnae">
+                                <b>@a.CodigoFmt · @a.Descricao</b>
+                                <small>@(a.Principal ? "principal" : "secundária")@(a.Area != "" ? " · " + a.Area : "")</small>
+                            </div>
+                        }
+                        @if (e.Atividades.Count > 4) { <button class="rx-link" @onclick="AlternarAtiv">@(_todasAtiv ? "mostrar menos" : $"ver as {e.Atividades.Count} atividades")</button> }
+                    </div>
+                    <div class="rx-card">
+                        <div class="rx-ct">📍 LOCALIZAÇÃO</div>
+                        @if (_geo is { } g)
+                        {
+                            <iframe class="rx-mapa" src="@Radar.UrlMapa(g, _geoCidade ? 0.05 : 0.004)" loading="lazy" title="Mapa"></iframe>
+                        }
+                        else
+                        {
+                            <div class="rx-mapa vazio"><Icone Nome="mapa" Tamanho="26" /><span class="muted">@(_geoTentado ? "Endereço não localizado no mapa" : "Localizando…")</span></div>
+                        }
+                        <small class="rx-end">@e.Endereco · <a href="@Radar.UrlMapaAbrir(e, _geo)" target="_blank" rel="noopener">abrir no mapa ↗</a>@(_geoCidade ? " · (posição aproximada: centro da cidade)" : "")</small>
+                        @if (e.Telefone != "" || e.Email != "") { <small class="rx-end">@(e.Telefone != "" ? "Telefone " + Telefone(e.Telefone) : "")@(e.Telefone != "" && e.Email != "" ? " · " : "")@e.Email.ToLowerInvariant()</small> }
+                    </div>
+                </div>
+            </div>
+
+            <div class="rx-g3">
+                <div class="rx-card">
+                    <div class="rx-ct">👥 SÓCIOS E DIRIGENTES (QSA) <em>@e.Socios.Count</em></div>
+                    @if (e.Socios.Count == 0) { <p class="muted">A Receita não informa quadro de sócios para este CNPJ.</p> }
+                    @foreach (var s in e.Socios.Take(_todosSocios ? 99 : 6))
+                    {
+                        <div class="rx-soc">
+                            <span class="rx-av @(s.PJ ? "pj" : "")">@(s.PJ ? "PJ" : Radar.Iniciais(s.Nome))</span>
+                            <div><b>@Radar.NomeProprio(s.Nome)</b><small>@Radar.Qualificacao(s.Qualificacao)@(s.Entrada != null ? " · desde " + Radar.Dmy(s.Entrada) : "")@(s.FaixaEtaria != "" && !s.PJ ? " · " + s.FaixaEtaria.ToLowerInvariant() : "")</small></div>
+                            @if (s.CnpjSocio is { } cs) { <button class="rx-link" @onclick="() => AbrirCnpj(cs)">abrir ficha →</button> }
+                        </div>
+                    }
+                    @if (e.Socios.Count > 6) { <button class="rx-link" @onclick="AlternarSocios">@(_todosSocios ? "mostrar menos" : $"ver todos ({e.Socios.Count})")</button> }
+                    @if (e.Socios.Count > 0) { @Rede(e) }
+                </div>
+                <div class="rx-card">
+                    <div class="rx-ct">🕑 LINHA DO TEMPO</div>
+                    @{ var linha = Radar.Linha(e, _base?.De(e.Cnpj) ?? new(), _junta); }
+                    <div class="rx-tl">
+                        @foreach (var ev in linha.Take(_tlTudo ? 200 : 9))
+                        {
+                            <div class="rx-ev @ev.Cor"><b>@ev.Titulo</b><small>@Radar.Dmy(ev.Data)@(ev.Detalhe != "" ? " · " + ev.Detalhe : "")</small><span class="rx-f">@ev.Fonte</span></div>
+                        }
+                    </div>
+                    @if (linha.Count > 9) { <button class="rx-link" @onclick="AlternarTl">@(_tlTudo ? "mostrar menos" : $"ver os {linha.Count} eventos")</button> }
+                    <div class="rx-anexo">
+                        <BotaoArquivo Texto="Anexar certidão da Junta (PDF)" Icone="upload" Aceita=".pdf" AoEscolher="AnexarJunta" />
+                        @if (_junta.Count > 0) { <small class="muted">@_junta.Count eventos lidos da certidão (só nesta consulta)</small> }
+                    </div>
+                </div>
+                <div class="rx-card">
+                    <div class="rx-ct">🏛 JUNTAS COMERCIAIS</div>
+                    @{ var j = Radar.JuntaDe(_ufJunta ?? e.Uf); }
+                    @if (j != null)
+                    {
+                        <div class="rx-jun">
+                            <div><b>@j.Sigla</b><small>@(j.Uf.Equals(e.Uf, StringComparison.OrdinalIgnoreCase) ? "Junta da UF da empresa" : "Junta selecionada") · @j.Estado</small></div>
+                            <div class="rx-jun-bt">
+                                <a class="btn btn-sec rx-mini" href="@j.Site" target="_blank" rel="noopener">Site da Junta ↗</a>
+                                <a class="btn btn-sec rx-mini" href="@j.Drei" target="_blank" rel="noopener">Página no DREI ↗</a>
+                            </div>
+                        </div>
+                    }
+                    <div class="rx-uf">
+                        @foreach (var x in Radar.Juntas)
+                        {
+                            <button class="@(x.Uf.Equals(e.Uf, StringComparison.OrdinalIgnoreCase) ? "on" : "") @(x.Uf == _ufJunta ? "sel" : "")" title="@x.Sigla · @x.Estado" @onclick="() => EscolherUf(x.Uf)">@x.Uf</button>
+                        }
+                    </div>
+                    <p class="rx-nota">Peça a certidão simplificada ou de inteiro teor no site da Junta e anexe na linha do tempo.</p>
+                    <div class="rx-ct" style="margin-top:12px">↗ ATALHOS OFICIAIS</div>
+                    <div class="rx-atl">
+                        @foreach (var (nome, url) in Radar.AtalhosPJ) { <a class="btn btn-sec rx-mini" href="@url" target="_blank" rel="noopener" @onclick="() => CopiarDoc(e.Cnpj)" title="Abre o site oficial (o CNPJ é copiado para colar)">@nome</a> }
+                    </div>
+                    <div class="rx-atl" style="margin-top:10px">
+                        @{ var mon = _base?.Recentes.FirstOrDefault(r => r.Cnpj == e.Cnpj)?.Monitorado == true; }
+                        <button class="btn @(mon ? "btn-pri" : "btn-sec") rx-mini" @onclick="MonitorarAtual"><Icone Nome="estrela" Tamanho="14" /> @(mon ? "Monitorando" : "Monitorar")</button>
+                        <button class="btn btn-sec rx-mini" @onclick="Pdf"><Icone Nome="pdf" Tamanho="14" /> Ficha em PDF</button>
+                        <button class="btn btn-sec rx-mini" @onclick="CopiarTeams"><Icone Nome="copiar" Tamanho="14" /> Copiar p/ Teams</button>
+                    </div>
+                </div>
+            </div>
+        }
+
+        @if (_modo == "cpf" && _cpfFeito)
+        {
+            var placar = PlacarPF();
+            <div class="rx-hero">
+                <div class="rx-hero-esq">
+                    <div class="rx-nome">@(_cpfNome != "" ? _cpfNome.ToUpperInvariant() : "PESSOA CONSULTADA")</div>
+                    <div class="rx-fant">CPF @Documento.MascararCpf(_cpf) · consultado hoje, @_quando.ToString("HH:mm") · finalidade: @_finalidadeUsada.ToLowerInvariant()</div>
+                    <div class="rx-tags">
+                        <span class="rx-tag ok">✓ CPF válido</span>
+                        @if (_peps.Count > 0) { <span class="rx-tag a">⚠ Pessoa politicamente exposta</span> }
+                        @if (_pf?.Servidor == true) { <span class="rx-tag">Servidor(a) federal</span> }
+                        @if (_pf?.ServidorInativo == true) { <span class="rx-tag">Servidor(a) federal inativo(a)</span> }
+                        @if (_ligadas.Count > 0) { <span class="rx-tag">@_ligadas.Count @(_ligadas.Count == 1 ? "empresa ligada" : "empresas ligadas")</span> }
+                        @if (_pf == null && E.ChaveTransp == null) { <span class="rx-tag">Portal da Transparência sem chave</span> }
+                    </div>
+                    <div class="rx-kv">
+                        <div><small>SANÇÕES FEDERAIS</small><b class="@CorTxt(placar[0].Cor)">@placar[0].Texto</b></div>
+                        <div><small>PEP</small><b class="@CorTxt(placar[2].Cor)">@placar[2].Texto</b></div>
+                        <div><small>BANCO CENTRAL</small><b class="@CorTxt(placar[3].Cor)">@placar[3].Texto</b></div>
+                        <div><small>BENEFÍCIOS SOCIAIS</small><b>@placar[5].Texto</b></div>
+                    </div>
+                </div>
+                <div class="rx-placar">
+                    <div class="rx-ct">PLACAR DO RADAR · CPF</div>
+                    @foreach (var p in placar)
+                    {
+                        <div class="rx-pl"><i class="@p.Cor"></i><span>@p.Dimensao</span><b class="@p.Cor">@p.Texto</b></div>
+                    }
+                </div>
+            </div>
+
+            @Parecer()
+
+            <div class="rx-g3">
+                <div class="rx-card">
+                    <div class="rx-ct">✓ CHECAGENS AUTOMÁTICAS <em>@(_quando.ToString("HH:mm"))</em></div>
+                    @foreach (var c in _checks) { @Linha(c) }
+                </div>
+                <div class="rx-col">
+                    <div class="rx-card">
+                        <div class="rx-ct">🏛 PEP E VÍNCULO COM O GOVERNO</div>
+                        @if (_pf == null && E.ChaveTransp == null)
+                        {
+                            <p class="muted">Precisa da chave do Portal da Transparência. @Estado.MsgSemIA</p>
+                        }
+                        else
+                        {
+                            @if (_peps.Count == 0) { <div class="rx-cnae"><b>Não é pessoa politicamente exposta</b><small>Portal da Transparência · lista PEP</small></div> }
+                            @foreach (var p in _peps)
+                            {
+                                <div class="rx-cnae"><b>Pessoa politicamente exposta</b><small>Portal da Transparência · lista PEP</small>
+                                    <p>@p.Funcao@(p.Orgao != "" ? " · " + p.Orgao : "")@(p.Inicio != "" ? " · início " + p.Inicio : "")@(p.Fim != "" ? " · fim " + p.Fim : "")@(p.FimCarencia != "" ? " · PEP até " + p.FimCarencia : "")</p></div>
+                            }
+                            @if (_pf?.Servidor == true || _pf?.ServidorInativo == true || _vinculos.Count > 0)
+                            {
+                                <div class="rx-cnae"><b>Servidor(a) do Poder Executivo Federal</b><small>@(_pf?.ServidorInativo == true ? "inativo(a)" : "vínculo ativo")</small>
+                                    @foreach (var v in _vinculos) { <p>@v.Cargo@(v.Orgao != "" ? " · " + v.Orgao : "")@(v.Situacao != "" ? " · " + v.Situacao.ToLowerInvariant() : "")</p> }
+                                </div>
+                            }
+                            else if (_pf != null) { <div class="rx-cnae"><b>Sem vínculo de servidor federal</b><small>Portal da Transparência</small></div> }
+                        }
+                    </div>
+                    <div class="rx-card">
+                        <div class="rx-ct">💳 BENEFÍCIOS SOCIAIS</div>
+                        @if (_pf == null)
+                        {
+                            <p class="muted">@(E.ChaveTransp == null ? "Precisa da chave do Portal da Transparência." : "O Portal não respondeu.") <a href="@Radar.UrlPortal/beneficios" target="_blank" rel="noopener">Consultar no Portal ↗</a></p>
+                        }
+                        else
+                        {
+                            <button class="rx-ben @(_benAberto ? "aberto" : "")" @onclick="AlternarBen">
+                                <span class="rx-seta">▸</span>
+                                <div><b>Recebe benefício social: @(_pf.RecebeBeneficio ? "sim" : "não")</b><small>@string.Join(", ", _pf.Beneficios.Select(b => b.programa))</small></div>
+                                <span class="btn btn-sec rx-mini">@(_benAberto ? "fechar" : "ver detalhes")</span>
+                            </button>
+                            @if (_benAberto)
+                            {
+                                <div class="rx-ben-det">
+                                    @foreach (var (prog, recebe) in _pf.Beneficios) { <div><span class="rx-dot @(recebe ? "b" : "cz")"></span>@prog<b>@(recebe ? "recebe ou recebeu" : "não")</b></div> }
+                                    <small class="muted">Fonte: Portal da Transparência. Valores e parcelas: <a href="@Radar.UrlPortal/beneficios" target="_blank" rel="noopener">consultar no Portal ↗</a></small>
+                                </div>
+                            }
+                        }
+                    </div>
+                </div>
+                <div class="rx-card">
+                    <div class="rx-ct">🏢 EMPRESAS LIGADAS</div>
+                    @if (_procurandoLigadas) { <p class="muted"><span class="ia-spin pequeno"></span> Procurando nos quadros de sócios…</p> }
+                    @if (!_procurandoLigadas && _ligadas.Count == 0)
+                    {
+                        <p class="muted">@(_cpfNome == "" ? "Informe o nome para procurar a pessoa nos quadros de sócios." : $"Não encontrada no quadro de sócios dos {_conferidos} CNPJs conferidos.")</p>
+                    }
+                    @foreach (var (cnpj, nomeEmp, qual, situacao, ativa) in _ligadas)
+                    {
+                        <div class="rx-soc"><span class="rx-av pj">PJ</span><div><b>@nomeEmp</b><small>@qual · <span class="@(ativa ? "txt-g" : "txt-r")">@situacao.ToLowerInvariant()</span></small></div><button class="rx-link" @onclick="() => AbrirCnpj(cnpj)">ficha 360 →</button></div>
+                    }
+                    <div class="rx-conferir">
+                        <input class="campo" placeholder="Conferir também nestes CNPJs (separe por vírgula)" value="@_cnpjsExtra" @oninput="MudouExtra" />
+                        <button class="btn btn-sec rx-mini" @onclick="ConferirExtra" disabled="@(_procurandoLigadas || _cpfNome == "")">Conferir</button>
+                    </div>
+                    <p class="rx-nota">Busca aproximada: nome + dígitos visíveis do CPF no quadro de sócios dos CNPJs já consultados no Radar e dos que você digitar. Confira antes de concluir.</p>
+                    <div class="rx-ct" style="margin-top:12px">↗ ATALHOS OFICIAIS</div>
+                    <div class="rx-atl">
+                        @foreach (var (nome, url) in Radar.AtalhosPF) { <a class="btn btn-sec rx-mini" href="@url" target="_blank" rel="noopener" @onclick="() => CopiarDoc(_cpf)" title="Abre o site oficial (o CPF é copiado para colar)">@nome</a> }
+                    </div>
+                </div>
+            </div>
+        }
+    </ChildContent>
+</Pagina>
+
+@code {
+    protected override string Chave => "radar360";
+
+    static readonly string[] Finalidades =
+    {
+        "Dirigente de cooperativa", "Associado / cadastro", "Sócio de empresa associada", "Fornecedor / parceiro", "Prevenção à lavagem de dinheiro", "Outra finalidade interna",
+    };
+
+    string _modo = "cnpj", _entrada = "", _finalidade = "", _finalidadeUsada = "", _nomeDigitado = "", _cnpjsExtra = "";
+    bool _buscando, _verificando, _todasAtiv, _todosSocios, _tlTudo, _benAberto, _cpfFeito, _procurandoLigadas;
+    bool _geoTentado, _geoCidade, _parecerRodando;
+    string? _erro, _parecer, _parecerErro, _ibge, _ufJunta;
+    DateTime _quando;
+    int _seq, _conferidos;
+    Empresa? _emp;
+    BaseRadar? _base;
+    List<Checagem> _checks = new();
+    List<string> _mudouAgora = new();
+    List<Evento> _junta = new();
+    (double lat, double lon)? _geo;
+    List<(string cnpj, string nome, string msg, bool mudou)>? _resMonitor;
+    // CPF (nada disso é salvo)
+    string _cpf = "", _cpfNome = "";
+    Radar.PessoaPortal? _pf;
+    List<Radar.Pep> _peps = new();
+    List<Radar.Vinculo> _vinculos = new();
+    List<(string cnpj, string nome, string qual, string situacao, bool ativa)> _ligadas = new();
+
+    protected override void Entrar() => _ = Iniciar();
+
+    async Task Iniciar()
+    {
+        _base = await E.CarregarRadar();
+        await E.TranspConfigurada();
+        await E.IAConfigurada();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    static string Curto(string s) => s.Length > 26 ? s[..24] + "…" : s;
+    static string Telefone(string t) { var d = Documento.Digitos(t); return d.Length >= 10 ? $"({d[..2]}) {d[2..^4]}-{d[^4..]}" : t; }
+    static string CorTxt(string c) => c switch { "g" => "txt-g", "rr" => "txt-r", "y" => "txt-y", _ => "" };
+
+    void ModoCnpj() { if (_modo == "cnpj") return; _modo = "cnpj"; _entrada = _emp?.CnpjFmt ?? ""; _erro = null; LimparCpf(); }
+    void ModoCpf() { if (_modo == "cpf") return; _modo = "cpf"; _entrada = ""; _erro = null; _parecer = null; _parecerErro = null; _checks = new(); }
+    void Digitou(ChangeEventArgs a) => _entrada = Documento.Digitando(a.Value?.ToString(), _modo == "cnpj");
+    void MudouFinalidade(ChangeEventArgs a) => _finalidade = a.Value?.ToString() ?? "";
+    void MudouNome(ChangeEventArgs a) => _nomeDigitado = a.Value?.ToString() ?? "";
+    void MudouExtra(ChangeEventArgs a) => _cnpjsExtra = a.Value?.ToString() ?? "";
+    async Task Tecla(KeyboardEventArgs k) { if (k.Key == "Enter") await Consultar(); }
+    void AlternarAtiv() => _todasAtiv = !_todasAtiv;
+    void AlternarSocios() => _todosSocios = !_todosSocios;
+    void AlternarTl() => _tlTudo = !_tlTudo;
+    void AlternarBen() => _benAberto = !_benAberto;
+    void EscolherUf(string uf) => _ufJunta = uf == _ufJunta ? null : uf;
+    void FecharMonitor() => _resMonitor = null;
+
+    void LimparCpf()
+    {
+        _cpf = ""; _cpfNome = ""; _pf = null; _peps = new(); _vinculos = new(); _ligadas = new(); _cpfFeito = false; _benAberto = false;
+        if (_modo == "cpf") { _checks = new(); _parecer = null; }
+    }
+
+    async Task Consultar()
+    {
+        if (_buscando) return;
+        _erro = null;
+        if (_modo == "cnpj")
+        {
+            if (!Documento.CnpjValido(_entrada)) { _erro = Documento.Digitos(_entrada).Length != 14 ? "Digite os 14 números do CNPJ." : "Este CNPJ não é válido (os dígitos verificadores não conferem)."; return; }
+            await ConsultarCnpj(Documento.Digitos(_entrada));
+        }
+        else
+        {
+            if (!Documento.CpfValido(_entrada)) { _erro = Documento.Digitos(_entrada).Length != 11 ? "Digite os 11 números do CPF." : "Este CPF não é válido (os dígitos verificadores não conferem)."; return; }
+            if (_finalidade == "") { _erro = "Escolha a finalidade da consulta antes de consultar um CPF."; return; }
+            await ConsultarCpf(Documento.Digitos(_entrada));
+        }
+    }
+
+    async Task AbrirCnpj(string cnpj)
+    {
+        _modo = "cnpj"; LimparCpf();
+        _entrada = Documento.FmtCnpj(cnpj);
+        _erro = null;
+        await ConsultarCnpj(Documento.Digitos(cnpj));
+        await E.Nav.Rolar("rx-doc");
+    }
+
+    Dictionary<string, string> CabPortal() => new() { ["chave-api-dados"] = E.ChaveTransp ?? "", ["Accept"] = "application/json" };
+
+    // =============================== CNPJ ===============================
+
+    async Task<(Empresa? e, string? erro)> BuscarEmpresa(string cnpj)
+    {
+        var r = await E.Nav.GetH(LeitorCnpj.UrlBrasilApi(cnpj), null, 20000);
+        if (r.Status == 200 && LeitorCnpj.BrasilApi(r.Texto) is { } e1) return (e1, null);
+        if (r.Status == 404) return (null, "CNPJ não encontrado na base da Receita. Se foi aberto há poucos dias, pode ainda não ter entrado nos dados abertos.");
+        var r2 = await E.Nav.GetH(LeitorCnpj.UrlMinhaReceita(cnpj), null, 20000);
+        if (r2.Status == 200 && LeitorCnpj.BrasilApi(r2.Texto, "Receita Federal (via Minha Receita)") is { } e2) return (e2, null);
+        var r3 = await E.Nav.GetH(LeitorCnpj.UrlCnpja(cnpj), null, 20000);
+        if (r3.Status == 200 && LeitorCnpj.Cnpja(r3.Texto) is { } e3) return (e3, null);
+        if (r2.Status == 404 || r3.Status == 404) return (null, "CNPJ não encontrado na base da Receita.");
+        return (null, "As fontes de CNPJ não responderam agora (BrasilAPI, Minha Receita e CNPJá). Confira a internet ou tente de novo em 1 minuto.");
+    }
+
+    async Task ConsultarCnpj(string cnpj)
+    {
+        var seq = ++_seq;
+        _buscando = true; _parecer = null; _parecerErro = null; _junta = new(); _geo = null; _geoTentado = false; _geoCidade = false; _ibge = null;
+        _ufJunta = null; _todasAtiv = _todosSocios = _tlTudo = false; _mudouAgora = new();
+        StateHasChanged();
+        try
+        {
+            var (e, erro) = await BuscarEmpresa(cnpj);
+            if (seq != _seq) return;
+            if (e == null) { _erro = erro; _emp = null; return; }
+            _emp = e; _quando = DateTime.Now;
+            _base ??= await E.CarregarRadar();
+            _mudouAgora = _base.Registrar(e, _quando);
+            await E.SalvarRadar();
+            _checks = ChecagensIniciaisPJ(e);
+        }
+        finally { _buscando = false; StateHasChanged(); }
+
+        var emp = _emp!;
+        await Task.WhenAll(Tcu(emp, seq), PortalPJ(emp, seq), BancoCentral(emp, seq), Diarios(emp, seq), DominioRdap(emp, seq), Mapa(emp, seq), Ibge(emp, seq));
+        if (seq != _seq) return;
+        StateHasChanged();
+        if (E.ChaveIA != null) await GerarParecer();
+    }
+
+    List<Checagem> ChecagensIniciaisPJ(Empresa e)
+    {
+        var hoje = DateOnly.FromDateTime(DateTime.Today);
+        var l = new List<Checagem>();
+        var cad = new Checagem { Id = "cadastro", Titulo = "Situação na Receita", Fonte = "Receita Federal", Dimensao = "Cadastro" };
+        if (!e.Ativa) { cad.Status = StatusCheck.Consta; cad.Detalhe = Cnae.Frase(e.Situacao).ToLowerInvariant(); }
+        else if (e.SituacaoEspecial != "") { cad.Status = StatusCheck.Atencao; cad.Detalhe = Cnae.Frase(e.SituacaoEspecial); }
+        else if (e.Abertura is { } ab && ab > hoje.AddYears(-1)) { cad.Status = StatusCheck.Atencao; cad.Detalhe = "aberta há menos de 1 ano"; }
+        else cad.Status = StatusCheck.NadaConsta;
+        l.Add(cad);
+        l.Add(new Checagem { Id = "tcu", Titulo = "TCU · CNJ · CEIS · CNEP", Fonte = "Consulta consolidada TCU", Dimensao = "Sanções e compliance" });
+        l.Add(new Checagem { Id = "cgu", Titulo = "CGU · CEIS, CNEP, CEPIM e leniência", Fonte = "Portal da Transparência", Dimensao = "Sanções e compliance" });
+        l.Add(new Checagem { Id = "ibama", Titulo = "IBAMA · embargos", Fonte = "Consulta pública de áreas embargadas", Dimensao = "Ambiental", Status = StatusCheck.Atalho, Url = Radar.UrlIbama, Detalhe = "pede o CNPJ no site" });
+        l.Add(new Checagem { Id = "listasuja", Titulo = "Lista suja do trabalho", Fonte = "Ministério do Trabalho · cadastro de empregadores", Dimensao = "Trabalhista", Status = StatusCheck.Atalho, Url = Radar.UrlListaSuja, Detalhe = "lista em PDF; procure pelo CNPJ" });
+        l.Add(new Checagem { Id = "bc", Titulo = "Banco Central", Fonte = "IF.data · Banco Central", Dimensao = "Financeiro (Banco Central)" });
+        l.Add(new Checagem { Id = "contratos", Titulo = "Contratos com o governo federal", Fonte = "Portal da Transparência", Dimensao = "Governo" });
+        l.Add(new Checagem { Id = "diarios", Titulo = "Diários oficiais municipais", Fonte = "Querido Diário", Dimensao = "Governo" });
+        if (Radar.Dominio(e.Email) != null) l.Add(new Checagem { Id = "dominio", Titulo = "Domínio do e-mail", Fonte = "Registro.br", Dimensao = "Cadastro" });
+        if (e.SociedadeAnonima) l.Add(new Checagem { Id = "cvm", Titulo = "CVM · companhias abertas", Fonte = "CVM", Dimensao = "Cadastro", Status = StatusCheck.Atalho, Url = Radar.UrlCvm, Detalhe = "documentos e fatos relevantes" });
+        var cert = new Checagem { Id = "certidoes", Titulo = "Certidões com captcha", Fonte = "Receita/PGFN · TST · FGTS · protestos", Status = StatusCheck.Atalho, Url = Radar.AtalhosPJ[0].url };
+        foreach (var (n, u) in Radar.AtalhosPJ.Take(4)) cert.Itens.Add((n, u));
+        l.Add(cert);
+        return l;
+    }
+
+    Checagem? Ck(string id) => _checks.FirstOrDefault(c => c.Id == id);
+
+    void Pronto(int seq) { if (seq == _seq) InvokeAsync(StateHasChanged); }
+
+    async Task Tcu(Empresa e, int seq)
+    {
+        var r = await E.Nav.GetH(Radar.UrlTcu(e.Cnpj), null, 30000);
+        if (seq != _seq) return;
+        var itens = r.Status == 200 ? Radar.LerTcu(r.Texto) : new();
+        var i = _checks.FindIndex(c => c.Id == "tcu");
+        if (i < 0) return;
+        if (itens.Count > 0) { _checks.RemoveAt(i); _checks.InsertRange(i, itens); }
+        else
+        {
+            var c = _checks[i];
+            c.Status = StatusCheck.Atalho; c.Url = Radar.UrlTcuConsolidada;
+            c.Detalhe = r.Status == 0 ? "o site do TCU não libera consulta direta do navegador" : "o TCU não respondeu agora";
+        }
+        Pronto(seq);
+    }
+
+    async Task PortalPJ(Empresa e, int seq)
+    {
+        var cgu = Ck("cgu")!; var con = Ck("contratos")!;
+        if (E.ChaveTransp == null)
+        {
+            cgu.Status = con.Status = StatusCheck.SemChave;
+            cgu.Url = Radar.UrlPortal + "/sancoes/consulta"; con.Url = Radar.UrlPortal + "/contratos";
+            cgu.Detalhe = con.Detalhe = "chave do Portal não configurada nesta máquina";
+            Pronto(seq); return;
+        }
+        var tPj = E.Nav.GetH(Radar.UrlPortalPJ(e.Cnpj), CabPortal()).AsTask();
+        var tLen = E.Nav.GetH(Radar.UrlLeniencia(e.Cnpj), CabPortal()).AsTask();
+        var tCon = E.Nav.GetH(Radar.UrlContratos(e.Cnpj), CabPortal()).AsTask();
+        await Task.WhenAll(tPj, tLen, tCon);
+        if (seq != _seq) return;
+        var (rPj, rLen, rCon) = (tPj.Result, tLen.Result, tCon.Result);
+        if (rPj.Status == 200 && Radar.LerPortal(rPj.Texto) is { } p)
+        {
+            var marcas = new List<string>();
+            if (p.Ceis) marcas.Add("CEIS");
+            if (p.Cnep) marcas.Add("CNEP");
+            if (p.Cepim) marcas.Add("CEPIM");
+            if (rLen.Status == 200 && Radar.ContarLista(rLen.Texto) > 0) marcas.Add("acordo de leniência");
+            cgu.Status = marcas.Count > 0 ? StatusCheck.Consta : StatusCheck.NadaConsta;
+            cgu.Detalhe = marcas.Count > 0 ? "consta em " + string.Join(", ", marcas) : "";
+            cgu.Url = Radar.UrlPortal + "/sancoes/consulta";
+        }
+        else { cgu.Status = rPj.Status == 0 ? StatusCheck.Atalho : StatusCheck.Erro; cgu.Detalhe = Radar.ErroPortal(rPj.Status); cgu.Url = Radar.UrlPortal + "/sancoes/consulta"; }
+        if (rCon.Status == 200)
+        {
+            var (qtd, total, ult) = Radar.LerContratos(rCon.Texto);
+            con.Status = StatusCheck.Info;
+            con.Detalhe = qtd == 0 ? "nenhum contrato" : $"{qtd}{(qtd >= 15 ? "+" : "")} contratos · {Radar.DinheiroCurto(total)}";
+            if (ult != "") con.Fonte = "Portal da Transparência · último em " + ult;
+        }
+        else { con.Status = rCon.Status == 0 ? StatusCheck.Atalho : StatusCheck.Erro; con.Detalhe = Radar.ErroPortal(rCon.Status); }
+        con.Url = Radar.UrlPortal + "/contratos";
+        Pronto(seq);
+    }
+
+    async Task BancoCentral(Empresa e, int seq)
+    {
+        var c = Ck("bc")!;
+        if (!e.Financeira && !e.Cooperativa)
+        {
+            c.Status = StatusCheck.Info; c.Detalhe = "não se aplica"; c.Fonte = "não é instituição financeira";
+            Pronto(seq); return;
+        }
+        foreach (var url in Radar.UrlsIfData(e.Cnpj, DateOnly.FromDateTime(DateTime.Today)))
+        {
+            var r = await E.Nav.GetH(url, null, 20000);
+            if (seq != _seq) return;
+            if (r.Status != 200) break;
+            if (Radar.LerIfData(r.Texto) is { } info)
+            {
+                c.Status = StatusCheck.Info; c.Detalhe = "em funcionamento"; c.Fonte = "IF.data · " + (info != "" ? info : "consta no cadastro do Banco Central");
+                c.Url = Radar.UrlBcInstituicao; Pronto(seq); return;
+            }
+        }
+        c.Status = StatusCheck.Atalho; c.Url = Radar.UrlBcInstituicao; c.Fonte = "Banco Central · Encontre uma instituição";
+        c.Detalhe = "confira a autorização no site do BC";
+        Pronto(seq);
+    }
+
+    async Task Diarios(Empresa e, int seq)
+    {
+        var c = Ck("diarios")!;
+        var r = await E.Nav.GetH(Radar.UrlDiarios(e.Cnpj), null, 20000);
+        if (seq != _seq) return;
+        c.Url = "https://queridodiario.ok.org.br/pesquisa?term=" + Uri.EscapeDataString("\"" + e.CnpjFmt + "\"");
+        if (r.Status == 200)
+        {
+            var (total, itens) = Radar.LerDiarios(r.Texto);
+            c.Status = StatusCheck.Info;
+            c.Detalhe = total == 0 ? "nenhuma menção" : total == 1 ? "1 menção" : $"{total} menções";
+            c.Itens = itens;
+        }
+        else { c.Status = StatusCheck.Atalho; c.Detalhe = "o Querido Diário não respondeu agora"; }
+        Pronto(seq);
+    }
+
+    async Task DominioRdap(Empresa e, int seq)
+    {
+        if (Radar.Dominio(e.Email) is not { } d || Ck("dominio") is not { } c) return;
+        var r = await E.Nav.GetH(Radar.UrlRdap(d), null, 15000);
+        if (seq != _seq) return;
+        c.Url = "https://registro.br/tecnologia/ferramentas/whois?search=" + d;
+        if (r.Status == 200 && Radar.LerRdap(r.Texto) is { } dt) { c.Status = StatusCheck.Info; c.Detalhe = $"{d} · registrado em {Radar.Dmy(dt)}"; }
+        else if (r.Status == 404) { c.Status = StatusCheck.Atencao; c.Detalhe = $"{d} não está registrado"; }
+        else { c.Status = StatusCheck.Atalho; c.Detalhe = d; }
+        Pronto(seq);
+    }
+
+    async Task Mapa(Empresa e, int seq)
+    {
+        var r = await E.Nav.GetH(Radar.UrlGeocode(e), null, 15000);
+        if (seq != _seq) return;
+        var p = r.Status == 200 ? Radar.LerGeocode(r.Texto) : null;
+        if (p == null && e.Municipio != "")
+        {
+            var r2 = await E.Nav.GetH(Radar.UrlGeocodeCidade(e), null, 15000);
+            if (seq != _seq) return;
+            p = r2.Status == 200 ? Radar.LerGeocode(r2.Texto) : null;
+            _geoCidade = p != null;
+        }
+        _geo = p; _geoTentado = true;
+        Pronto(seq);
+    }
+
+    async Task Ibge(Empresa e, int seq)
+    {
+        if (e.CodigoIbge == "") return;
+        var r = await E.Nav.GetH(Radar.UrlIbge(e.CodigoIbge), null, 15000);
+        if (seq != _seq) return;
+        if (r.Status == 200) _ibge = Radar.LerIbge(r.Texto);
+        Pronto(seq);
+    }
+
+    List<Placa> PlacarPJ()
+    {
+        var l = Radar.DimensoesPJ.Select(d => Radar.Placar(d, _checks)).ToList();
+        if (l[0].Texto == "nada consta") l[0] = l[0] with { Texto = "regular" };
+        return l;
+    }
+
+    async Task AnexarJunta(List<QSmart.Core.Planilhas.Arquivo> arqs)
+    {
+        if (arqs.Count == 0) return;
+        try
+        {
+            var linhas = await E.Nav.PdfLinhas(arqs[0].Dados);
+            var ev = Radar.LerCertidaoJunta(linhas);
+            if (ev.Count == 0) { await J.Aviso("Certidão da Junta", "Não achei datas de arquivamento neste PDF. Se for uma imagem escaneada, o texto não pode ser lido."); return; }
+            _junta = ev; _tlTudo = true;
+            await J.Info("Certidão da Junta", $"{ev.Count} eventos entraram na linha do tempo (ficam só nesta consulta).");
+        }
+        catch (Exception ex) { await J.Aviso("Certidão da Junta", "Não consegui ler o PDF: " + ex.Message); }
+    }
+
+    async Task AlternarMonitor(Recente r)
+    {
+        r.Monitorado = !r.Monitorado;
+        await E.SalvarRadar();
+    }
+
+    async Task MonitorarAtual()
+    {
+        if (_emp == null || _base == null) return;
+        var r = _base.Recentes.FirstOrDefault(x => x.Cnpj == _emp.Cnpj);
+        if (r == null) return;
+        await AlternarMonitor(r);
+    }
+
+    async Task VerificarMonitorados()
+    {
+        if (_base == null) return;
+        _verificando = true; StateHasChanged();
+        var res = new List<(string, string, string, bool)>();
+        try
+        {
+            foreach (var r in _base.Recentes.Where(x => x.Monitorado).ToList())
+            {
+                var (e, erro) = await BuscarEmpresa(r.Cnpj);
+                if (e == null) { res.Add((r.Cnpj, r.Nome, "não consegui consultar agora", false)); continue; }
+                var dif = _base.Registrar(e, DateTime.Now);
+                res.Add((r.Cnpj, r.Nome, dif.Count > 0 ? "mudou: " + string.Join(", ", dif) : $"sem mudanças · {Cnae.Frase(e.Situacao).ToLowerInvariant()}", dif.Count > 0));
+            }
+            await E.SalvarRadar();
+        }
+        finally { _verificando = false; _resMonitor = res; StateHasChanged(); }
+    }
+
+    // =============================== CPF ===============================
+
+    async Task ConsultarCpf(string cpf)
+    {
+        var seq = ++_seq;
+        LimparCpf();
+        _cpf = cpf; _cpfNome = _nomeDigitado.Trim(); _finalidadeUsada = _finalidade;
+        _buscando = true; _parecer = null; _parecerErro = null; _quando = DateTime.Now; _entrada = Documento.MascararCpf(cpf);
+        _checks = ChecagensIniciaisPF();
+        _cpfFeito = true;
+        StateHasChanged();
+        try
+        {
+            await PortalPF(cpf, seq);
+            if (seq != _seq) return;
+            await Task.WhenAll(Qgi(seq), Ligadas(seq, null));
+        }
+        finally { if (seq == _seq) { _buscando = false; StateHasChanged(); } }
+        if (seq == _seq && E.ChaveIA != null) await GerarParecer();
+    }
+
+    List<Checagem> ChecagensIniciaisPF() => new()
+    {
+        new() { Id = "ceis", Titulo = "CGU · CEIS e CNEP", Fonte = "Portal da Transparência", Dimensao = "Sanções federais" },
+        new() { Id = "ceaf", Titulo = "CGU · expulsões (CEAF)", Fonte = "Portal da Transparência", Dimensao = "Sanções federais" },
+        new() { Id = "pep", Titulo = "Pessoa politicamente exposta", Fonte = "Portal da Transparência · lista PEP", Dimensao = "PEP" },
+        new() { Id = "tcu", Titulo = "TCU · inabilitados para função pública", Fonte = "Certidões do TCU", Dimensao = "TCU e CNJ", Status = StatusCheck.Atalho, Url = Radar.UrlTcuCertidoes, Detalhe = "certidão pelo CPF no site" },
+        new() { Id = "cnj", Titulo = "CNJ · improbidade administrativa", Fonte = "Cadastro de condenações cíveis", Dimensao = "TCU e CNJ", Status = StatusCheck.Atalho, Url = Radar.UrlCnjImprobidade, Detalhe = "busca pelo nome ou CPF" },
+        new() { Id = "qgi", Titulo = "Banco Central · inabilitados", Fonte = "Quadro Geral de Inabilitados", Dimensao = "Banco Central" },
+        new() { Id = "ibama", Titulo = "IBAMA · embargos", Fonte = "pessoa física", Dimensao = "Ambiental e trabalhista", Status = StatusCheck.Atalho, Url = Radar.UrlIbama, Detalhe = "pede o CPF no site" },
+        new() { Id = "listasuja", Titulo = "Lista suja do trabalho", Fonte = "empregador pessoa física", Dimensao = "Ambiental e trabalhista", Status = StatusCheck.Atalho, Url = Radar.UrlListaSuja, Detalhe = "lista em PDF" },
+        new() { Id = "beneficios", Titulo = "Benefícios sociais", Fonte = "Portal da Transparência", Dimensao = "Benefícios sociais" },
+        new() { Id = "receita", Titulo = "Situação do CPF na Receita", Fonte = "pede data de nascimento e captcha", Status = StatusCheck.Atalho, Url = Radar.AtalhosPF[0].url },
+    };
+
+    async Task PortalPF(string cpf, int seq)
+    {
+        var ceis = Ck("ceis")!; var ceaf = Ck("ceaf")!; var pep = Ck("pep")!; var ben = Ck("beneficios")!;
+        if (E.ChaveTransp == null)
+        {
+            foreach (var c in new[] { ceis, ceaf, pep, ben }) { c.Status = StatusCheck.SemChave; c.Detalhe = "chave do Portal não configurada nesta máquina"; c.Url = Radar.UrlPortal; }
+            return;
+        }
+        var tPf = E.Nav.GetH(Radar.UrlPortalPF(cpf), CabPortal()).AsTask();
+        var tPep = E.Nav.GetH(Radar.UrlPeps(cpf), CabPortal()).AsTask();
+        await Task.WhenAll(tPf, tPep);
+        if (seq != _seq) return;
+        var rPf = tPf.Result; var rPep = tPep.Result;
+        if (rPf.Status == 200 && Radar.LerPortal(rPf.Texto) is { } p)
+        {
+            _pf = p;
+            if (_cpfNome == "" && p.Nome != "") _cpfNome = Radar.NomeProprio(p.Nome);
+            var m = new List<string>(); if (p.Ceis) m.Add("CEIS"); if (p.Cnep) m.Add("CNEP");
+            ceis.Status = m.Count > 0 ? StatusCheck.Consta : StatusCheck.NadaConsta; ceis.Detalhe = m.Count > 0 ? "consta em " + string.Join(", ", m) : "";
+            ceaf.Status = p.Ceaf ? StatusCheck.Consta : StatusCheck.NadaConsta; ceaf.Detalhe = p.Ceaf ? "expulsão da administração federal" : "";
+            ben.Status = StatusCheck.Info; ben.Detalhe = p.RecebeBeneficio ? "recebe" : "não recebe";
+            ceis.Url = ceaf.Url = Radar.UrlPortal + "/sancoes/consulta"; ben.Url = Radar.UrlPortal + "/beneficios";
+            if (p.Servidor || p.ServidorInativo)
+            {
+                var rs = await E.Nav.GetH(Radar.UrlServidor(cpf), CabPortal());
+                if (seq != _seq) return;
+                if (rs.Status == 200) _vinculos = Radar.LerServidor(rs.Texto);
+            }
+        }
+        else
+        {
+            foreach (var c in new[] { ceis, ceaf, ben }) { c.Status = rPf.Status == 0 ? StatusCheck.Atalho : StatusCheck.Erro; c.Detalhe = Radar.ErroPortal(rPf.Status); c.Url = Radar.UrlPortal; }
+        }
+        if (rPep.Status == 200)
+        {
+            _peps = Radar.LerPeps(rPep.Texto);
+            pep.Status = _peps.Count > 0 ? StatusCheck.Atencao : StatusCheck.NadaConsta;
+            pep.Detalhe = _peps.Count > 0 ? "sim" + (_peps[0].FimCarencia != "" ? " · até " + _peps[0].FimCarencia[^4..] : "") : "";
+        }
+        else { pep.Status = rPep.Status == 0 ? StatusCheck.Atalho : StatusCheck.Erro; pep.Detalhe = Radar.ErroPortal(rPep.Status); pep.Url = Radar.UrlPortal + "/pep"; }
+        StateHasChanged();
+    }
+
+    async Task Qgi(int seq)
+    {
+        var c = Ck("qgi")!;
+        c.Url = Radar.UrlBcProcessos;
+        if (_cpfNome == "") { c.Status = StatusCheck.Atalho; c.Detalhe = "informe o nome para conferir"; Pronto(seq); return; }
+        var r = await E.Nav.GetH(Radar.UrlQgi, null, 30000);
+        if (seq != _seq) return;
+        if (r.Status == 200)
+        {
+            var (achou, det) = Radar.BuscarQgi(r.Texto, _cpfNome, _cpf);
+            c.Status = achou ? StatusCheck.Consta : StatusCheck.NadaConsta; c.Detalhe = achou ? det : "";
+        }
+        else { c.Status = StatusCheck.Atalho; c.Detalhe = "o Banco Central não respondeu agora"; }
+        Pronto(seq);
+    }
+
+    async Task Ligadas(int seq, IEnumerable<string>? extras)
+    {
+        if (_cpfNome == "") return;
+        _procurandoLigadas = true; Pronto(seq);
+        try
+        {
+            var alvos = (extras ?? (_base?.Recentes.Select(r => r.Cnpj) ?? Enumerable.Empty<string>())).Distinct().Take(15).ToList();
+            foreach (var cnpj in alvos)
+            {
+                if (_ligadas.Any(x => x.cnpj == cnpj)) continue;
+                var (e, _) = await BuscarEmpresa(cnpj);
+                if (seq != _seq) return;
+                _conferidos++;
+                if (e == null) continue;
+                var s = e.Socios.FirstOrDefault(x => Radar.MesmoSocio(x, _cpfNome, _cpf));
+                if (s != null) _ligadas.Add((e.Cnpj, e.Fantasia != "" ? e.Fantasia : e.RazaoSocial, Radar.Qualificacao(s.Qualificacao) + (s.Entrada != null ? " · desde " + s.Entrada.Value.Year : ""), Cnae.Frase(e.Situacao), e.Ativa));
+                Pronto(seq);
+            }
+        }
+        finally { if (seq == _seq) { _procurandoLigadas = false; Pronto(seq); } }
+    }
+
+    async Task ConferirExtra()
+    {
+        var lista = _cnpjsExtra.Split(new[] { ',', ';', '\n', ' ' }, StringSplitOptions.RemoveEmptyEntries).Select(Documento.Digitos).Where(Documento.CnpjValido).ToList();
+        if (lista.Count == 0) { await J.Aviso("Empresas ligadas", "Digite um ou mais CNPJs válidos, separados por vírgula."); return; }
+        await Ligadas(_seq, lista);
+    }
+
+    List<Placa> PlacarPF() => Radar.DimensoesPF.Select(d => Radar.Placar(d, _checks)).ToList();
+
+    // =============================== Parecer, PDF e Teams ===============================
+
+    async Task GerarParecer()
+    {
+        if (E.ChaveIA == null) { await J.Aviso("Contate o suporte", Estado.MsgSemIA); return; }
+        var seq = _seq;
+        _parecerRodando = true; _parecerErro = null; StateHasChanged();
+        try
+        {
+            var fatos = _modo == "cnpj" && _emp != null
+                ? RadarIA.FatosPJ(_emp, _checks, DateOnly.FromDateTime(DateTime.Today))
+                : RadarIA.FatosPF(_finalidadeUsada, _checks.Concat(ExtrasPF()), _ligadas.Count);
+            var r = await E.Nav.IA(AnaliseIA.Url, E.ChaveIA, RadarIA.Pedido(fatos, E.ModeloIA));
+            if (seq != _seq) return;
+            if (r.Status != 200) { _parecerErro = AnaliseIA.Erro(r.Status, r.Texto); return; }
+            _parecer = RadarIA.Ler(r.Texto);
+            if (_parecer == null) _parecerErro = "A IA devolveu um parecer vazio. Tente de novo.";
+        }
+        catch (Exception ex) { _parecerErro = ex.Message; }
+        finally { if (seq == _seq) { _parecerRodando = false; StateHasChanged(); } }
+    }
+
+    /// <summary>Fatos do CPF que não estão nas checagens (para o parecer, sem nome nem número).</summary>
+    IEnumerable<Checagem> ExtrasPF()
+    {
+        if (_peps.Count > 0) yield return new Checagem { Titulo = "Cargo PEP", Status = StatusCheck.Info, Detalhe = $"{_peps[0].Funcao} · {_peps[0].Orgao} · PEP até {_peps[0].FimCarencia}" };
+        if (_pf?.Servidor == true) yield return new Checagem { Titulo = "Servidor federal", Status = StatusCheck.Info, Detalhe = _vinculos.Count > 0 ? _vinculos[0].Cargo : "sim" };
+        foreach (var l in _ligadas) yield return new Checagem { Titulo = "Empresa ligada", Status = StatusCheck.Info, Detalhe = $"{l.qual} · {l.situacao}" };
+    }
+
+    async Task Pdf()
+    {
+        if (_emp == null) return;
+        var hoje = DateOnly.FromDateTime(DateTime.Today);
+        var bytes = QSmart.Core.Pdf.RadarPdf.Cnpj(_emp, PlacarPJ(), _checks, Radar.Linha(_emp, _base?.De(_emp.Cnpj) ?? new(), _junta), _parecer, hoje);
+        await E.Salvar($"Radar360_{_emp.Cnpj}_{DateTime.Now:yyyyMMdd}.pdf", bytes, QSmart.UI.Servicos.Navegador.MimePdf, "Ficha 360");
+    }
+
+    async Task PdfCpf()
+    {
+        var emp = _ligadas.Select(l => $"{l.nome} · {l.qual} · {l.situacao}");
+        var bytes = QSmart.Core.Pdf.RadarPdf.Cpf(_cpfNome, Documento.MascararCpf(_cpf), _finalidadeUsada, PlacarPF(), _checks, emp, _parecer);
+        await E.Salvar($"Radar360_CPF_{DateTime.Now:yyyyMMdd_HHmm}.pdf", bytes, QSmart.UI.Servicos.Navegador.MimePdf, "Consulta de CPF");
+    }
+
+    async Task CopiarTeams()
+    {
+        if (_emp == null) return;
+        var txt = Radar.TextoTeams(_emp, PlacarPJ(), _checks, _parecer, DateOnly.FromDateTime(DateTime.Today));
+        if (await E.Nav.Copiar(txt)) await J.Info("Copiado", "Resumo da ficha 360 copiado. É só colar no Teams.");
+        else await J.Aviso("Copiar", "Não consegui copiar automaticamente.");
+    }
+
+    async Task CopiarTeamsCpf()
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine($"📡 Radar Smart360 · consulta de CPF {Documento.MascararCpf(_cpf)}");
+        sb.AppendLine($"Finalidade: {_finalidadeUsada}");
+        foreach (var p in PlacarPF()) sb.AppendLine($"{Radar.Emoji(p.Cor)} {p.Dimensao}: {p.Texto}");
+        if (_ligadas.Count > 0) sb.AppendLine($"Empresas ligadas: {_ligadas.Count}");
+        if (!string.IsNullOrWhiteSpace(_parecer)) { sb.AppendLine(); sb.AppendLine("Parecer do Mr. Smart: " + _parecer); }
+        if (await E.Nav.Copiar(sb.ToString().TrimEnd())) await J.Info("Copiado", "Resumo copiado (sem o nome e com o CPF mascarado).");
+    }
+
+    async Task CopiarDoc(string doc) => await E.Nav.Copiar(Documento.Digitos(doc));
+
+    // =============================== pedaços da tela ===============================
+
+    RenderFragment Parecer() => __builder =>
+    {
+        <div class="rx-mr">
+            <span class="rx-ow"><MrSmartLogo /></span>
+            <div class="rx-mr-txt">
+                <b>@(_modo == "cnpj" ? "Parecer 360 do Mr. Smart" : "Parecer do Mr. Smart")</b>
+                @if (E.ChaveIA == null) { <p class="muted">@Estado.MsgSemIA</p> }
+                else if (_parecerRodando) { <p class="muted"><span class="ia-spin pequeno"></span> O Mr. Smart está lendo as checagens…</p> }
+                else if (_parecerErro != null) { <p class="txt-r">@_parecerErro</p> }
+                else if (_parecer != null) { <p>@_parecer</p> }
+                else { <p class="muted">O parecer sai quando as checagens terminarem.</p> }
+            </div>
+            @if (E.ChaveIA != null && !_parecerRodando && (_parecer != null || _parecerErro != null))
+            {
+                <button class="btn btn-sec rx-mini" @onclick="GerarParecer" title="Pede um novo parecer"><Icone Nome="faisca" Tamanho="14" /> Refazer</button>
+            }
+        </div>
+    };
+
+    RenderFragment Linha(Checagem c) => __builder =>
+    {
+        var (cls, ic) = c.Status switch
+        {
+            StatusCheck.NadaConsta => ("ok", "✓"), StatusCheck.Consta => ("no", "!"), StatusCheck.Atencao => ("at", "!"),
+            StatusCheck.Info => ("info", "i"), StatusCheck.Carregando => ("load", ""), StatusCheck.SemChave => ("lk", "🔑"), StatusCheck.Erro => ("lk", "×"), _ => ("lk", "↗"),
+        };
+        <div class="rx-chk">
+            <span class="rx-ic @cls">@if (c.Status == StatusCheck.Carregando) { <span class="ia-spin pequeno"></span> } else { @ic }</span>
+            <div>
+                <b>@c.Titulo</b>
+                <small>@c.Fonte@(c.Detalhe != "" && c.Status is not (StatusCheck.Consta or StatusCheck.Atencao) ? " · " + c.Detalhe : "")</small>
+                @if (c.Detalhe != "" && c.Status is StatusCheck.Consta or StatusCheck.Atencao) { <small class="@(c.Status == StatusCheck.Consta ? "txt-r" : "txt-y")">@c.Detalhe</small> }
+                @if (c.Itens.Count > 0)
+                {
+                    <div class="rx-itens">
+                        @foreach (var (t, u) in c.Itens)
+                        {
+                            @if (u != null) { <a href="@u" target="_blank" rel="noopener">@t ↗</a> } else { <span>@t</span> }
+                        }
+                    </div>
+                }
+            </div>
+            @if (c.Url != "" && c.Status != StatusCheck.Carregando)
+            {
+                <a class="rx-st @cls" href="@c.Url" target="_blank" rel="noopener" @onclick="CopiarAtual">@c.Rotulo@(c.Status is StatusCheck.Atalho or StatusCheck.SemChave or StatusCheck.Erro ? " ↗" : "")</a>
+            }
+            else { <em class="rx-st @cls">@c.Rotulo</em> }
+        </div>
+    };
+
+    async Task CopiarAtual() => await E.Nav.Copiar(_modo == "cnpj" ? _emp?.Cnpj ?? "" : _cpf);
+
+    RenderFragment Rede(Empresa e) => __builder =>
+    {
+        var nos = e.Socios.Take(8).ToList();
+        const double W = 320, H = 190, cx = W / 2, cy = H / 2;
+        <svg class="rx-rede" viewBox="0 0 @W @H" role="img" aria-label="Rede de sócios">
+            @for (int i = 0; i < nos.Count; i++)
+            {
+                var ang = -Math.PI / 2 + i * 2 * Math.PI / nos.Count;
+                var x = cx + Math.Cos(ang) * 96; var y = cy + Math.Sin(ang) * 70;
+                <line x1="@F(cx)" y1="@F(cy)" x2="@F(x)" y2="@F(y)" class="rx-rede-l" />
+            }
+            @for (int i = 0; i < nos.Count; i++)
+            {
+                var s = nos[i];
+                var ang = -Math.PI / 2 + i * 2 * Math.PI / nos.Count;
+                var x = cx + Math.Cos(ang) * 96; var y = cy + Math.Sin(ang) * 70;
+                var nome = Curto14(Radar.NomeProprio(s.Nome));
+                var w = nome.Length * 5.6 + 16;
+                var cs = s.CnpjSocio;
+                <g class="rx-no @(s.PJ ? "pj" : "")" @onclick="() => AbrirSocio(cs)">
+                    <rect x="@F(x - w / 2)" y="@F(y - 10)" width="@F(w)" height="20" rx="10" />
+                    <text x="@F(x)" y="@F(y + 3.5)" text-anchor="middle">@nome</text>
+                </g>
+            }
+            @{ var cen = Curto14(Radar.NomeProprio(e.Fantasia != "" ? e.Fantasia : e.RazaoSocial)); var cw = cen.Length * 6 + 22; }
+            <g class="rx-no centro">
+                <rect x="@F(cx - cw / 2)" y="@F(cy - 12)" width="@F(cw)" height="24" rx="12" />
+                <text x="@F(cx)" y="@F(cy + 4)" text-anchor="middle">@cen</text>
+            </g>
+        </svg>
+    };
+
+    static string F(double v) => v.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture);
+    static string Curto14(string s) => s.Length > 18 ? s[..17] + "…" : s;
+    async Task AbrirSocio(string? cnpj) { if (cnpj != null) await AbrirCnpj(cnpj); }
+
+    public override void Dispose() => base.Dispose();
+}

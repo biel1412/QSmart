@@ -287,6 +287,13 @@
     try { const r = await fetch(url); return { status: r.status, texto: await r.text() }; }
     catch (e) { return { status: 0, texto: String(e) }; }
   };
+  // GET com cabeçalhos (ex.: chave do Portal da Transparência) e tempo-limite
+  const getH = async (url, cab, ms) => {
+    const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), ms || 25000);
+    try { const r = await fetch(url, { headers: cab || {}, signal: ctl.signal }); return { status: r.status, texto: await r.text() }; }
+    catch (e) { return { status: 0, texto: String(e) }; }
+    finally { clearTimeout(t); }
+  };
   const rolar = id => { const el = document.getElementById(id); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); };
-  window.qsmart = { kv, cofre, rolar, ia, get, pasta, baixar, abrir, copiar, abrirUrl, pdfPaginas, pdfJuntar, pdfLinhas, tema, aoOcultar, focar, rolarLinha, pronto };
+  window.qsmart = { kv, cofre, rolar, ia, get, getH, pasta, baixar, abrir, copiar, abrirUrl, pdfPaginas, pdfJuntar, pdfLinhas, tema, aoOcultar, focar, rolarLinha, pronto };
 })();

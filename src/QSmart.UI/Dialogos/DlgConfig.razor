@@ -115,6 +115,24 @@
                     </div>
                     @if (_msgChave != "") { <p class="@(_chaveOk ? "dev-ok" : "dev-erro")"><Icone Nome="@(_chaveOk ? "check" : "alerta")" Tamanho="14" /> @_msgChave</p> }
                     <p class="muted pequeno">A chave fica guardada só neste navegador, criptografada (AES-256, com uma chave que não sai do navegador). Crie em console.groq.com/keys e, no Groq, ligue Settings › Data Controls › Zero Data Retention.</p>
+
+                    <div class="dev-chave" style="margin-top:14px">
+                        <span class="dev-prov transp">Portal</span>
+                        <div>
+                            <b>Portal da Transparência (Radar Smart360)</b>
+                            <small class="muted">@(E.ChaveTransp != null ? "Configurada neste navegador: sanções, PEP, servidores, benefícios e contratos entram no Radar." : "Sem chave: o Radar mostra essas checagens como atalho para o site.")</small>
+                        </div>
+                        <span class="dev-st @(E.ChaveTransp != null ? "ok" : "")">@(E.ChaveTransp != null ? "ativa" : "sem chave")</span>
+                    </div>
+                    <div class="dev-campos um">
+                        <label>Chave do Portal da Transparência<input class="campo" type="password" autocomplete="new-password" placeholder="@(E.ChaveTransp != null ? "•••••••• (salva) — cole outra para trocar" : "chave recebida por e-mail")" @bind="_novaTransp" /></label>
+                    </div>
+                    <div class="linha-botoes">
+                        <button class="btn btn-pri" @onclick="SalvarTransp" disabled="@_testandoT"><Icone Nome="check" Tamanho="15" /> @(_testandoT ? "Testando…" : "Salvar e testar")</button>
+                        @if (E.ChaveTransp != null) { <button class="btn btn-sec" @onclick="RemoverTransp">Remover chave</button> }
+                    </div>
+                    @if (_msgTransp != "") { <p class="@(_transpOk ? "dev-ok" : "dev-erro")"><Icone Nome="@(_transpOk ? "check" : "alerta")" Tamanho="14" /> @_msgTransp</p> }
+                    <p class="muted pequeno">Gratuita: peça em portaldatransparencia.gov.br/api-de-dados/cadastrar-email com um e-mail gov.br. Fica guardada só neste navegador, criptografada.</p>
                 </div>
             }
         </Painel>
@@ -138,7 +156,32 @@
         if (!_devErro) { _abrirDev = false; _ = CarregarIA(); }
     }
 
-    async Task CarregarIA() { await E.IAConfigurada(); _modelo = E.ModeloIA; StateHasChanged(); }
+    async Task CarregarIA() { await E.IAConfigurada(); await E.TranspConfigurada(); _modelo = E.ModeloIA; StateHasChanged(); }
+
+    bool _testandoT, _transpOk;
+    string _novaTransp = "", _msgTransp = "";
+
+    async Task SalvarTransp()
+    {
+        var chave = _novaTransp.Trim();
+        if (chave == "") chave = E.ChaveTransp ?? "";
+        _msgTransp = "";
+        if (chave == "") { _transpOk = false; _msgTransp = "Cole a chave recebida por e-mail do Portal da Transparência."; return; }
+        _testandoT = true; StateHasChanged();
+        try
+        {
+            var r = await E.Nav.GetH(QSmart.Core.Relacionamento.Radar.UrlPortalTeste, new() { ["chave-api-dados"] = chave, ["Accept"] = "application/json" });
+            if (r.Status is 401 or 403) { _transpOk = false; _msgTransp = "O Portal recusou a chave. Confira se copiou inteira."; return; }
+            await E.SalvarChaveTransp(chave);
+            _novaTransp = ""; _transpOk = true;
+            _msgTransp = r.Status == 200 ? "Chave testada e salva neste navegador." :
+                r.Status == 0 ? "Chave salva. O Portal não respondeu ao teste agora (rede ou bloqueio do navegador); o Radar tenta de novo em cada consulta." :
+                $"Chave salva. O teste respondeu {r.Status}; o Radar tenta de novo em cada consulta.";
+        }
+        finally { _testandoT = false; }
+    }
+
+    async Task RemoverTransp() { await E.RemoverChaveTransp(); _transpOk = true; _msgTransp = "Chave do Portal removida deste navegador."; }
 
     async Task SalvarChave()
     {
