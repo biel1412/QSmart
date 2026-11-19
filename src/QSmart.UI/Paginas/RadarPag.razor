@@ -437,7 +437,7 @@
     }
 
     Dictionary<string, string> CabPortal() => E.CabecalhoPortal();
-    string ErroP(int status) => status == 0 && E.ProxyTransp == null ? "o Portal não aceita consulta direta do navegador: falta o intermediário (veja Configurações)" : ErroP(status);
+    string ErroP(int status) => status == 0 && E.ProxyTransp == null ? "o Portal não aceita consulta direta do navegador: falta o intermediário (veja Configurações)" : Radar.ErroPortal(status);
 
     // =============================== CNPJ ===============================
 
