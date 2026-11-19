@@ -136,11 +136,7 @@
                     </div>
 
                     <div class="est-bloco">
-                        <span class="est-bloco-tit">Texto da estratégia <span class="muted">clique num modelo para adicionar e depois ajuste</span>
-                            <button class="ia-btn est-ia @(_iaRodando ? "rodando" : "")" @onclick="PedirMrSmart" disabled="@_iaRodando" title="O Mr. Smart lê os números do dia e escreve a estratégia">
-                                @if (_iaRodando) { <span class="ia-spin"></span> <span>Mr. Smart escrevendo…</span> }
-                                else { <Icone Nome="faisca" Tamanho="12" /> <span>Pedir que Mr. Smart faça a estratégia do dia</span> }
-                            </button></span>
+                        <span class="est-bloco-tit">Texto da estratégia <span class="muted">clique num modelo para adicionar e depois ajuste</span></span>
                         <div class="est-modelos">
                             @foreach (var mo in Estrategia.Modelos(r, M))
                             {
@@ -148,7 +144,13 @@
                             }
                         </div>
                         <textarea class="campo est-texto" rows="5" placeholder="Escreva a estratégia do dia ou escolha um modelo acima" @bind="M.Texto" @bind:event="oninput" @bind:after="Salvar"></textarea>
-                        @if (M.Texto != "") { <button class="btn btn-sec btn-peq est-limpar" @onclick="LimparTexto">Limpar texto</button> }
+                        <div class="est-texto-acoes">
+                            @if (M.Texto != "") { <button class="btn btn-sec btn-peq est-limpar" @onclick="LimparTexto">Limpar texto</button> }
+                            <button class="ia-btn est-ia @(_iaRodando ? "rodando" : "")" @onclick="PedirMrSmart" disabled="@_iaRodando" title="O Mr. Smart lê os números do dia e escreve a estratégia">
+                                @if (_iaRodando) { <span class="ia-spin"></span> <span>Mr. Smart escrevendo…</span> }
+                                else { <Icone Nome="faisca" Tamanho="12" /> <span>Pedir que Mr. Smart faça a estratégia do dia</span> }
+                            </button>
+                        </div>
                     </div>
 
                     <div class="est-bloco">
