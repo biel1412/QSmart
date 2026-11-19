@@ -170,6 +170,10 @@
     async Task SalvarTransp()
     {
         var chave = _novaTransp.Trim();
+        // aceita a linha inteira copiada do e-mail/site: [{"key":"chave-api-dados","value":"..."}]
+        var mv = System.Text.RegularExpressions.Regex.Match(chave, "\"value\"\\s*:\\s*\"([^\"]+)\"");
+        if (mv.Success) chave = mv.Groups[1].Value.Trim();
+        chave = chave.Trim('"', '\'', ' ');
         if (chave == "") chave = E.ChaveTransp ?? "";
         _msgTransp = "";
         if (chave == "") { _transpOk = false; _msgTransp = "Cole a chave recebida por e-mail do Portal da Transparência."; return; }
@@ -177,7 +181,7 @@
         try
         {
             var r = await E.Nav.GetH(E.UrlPortal(QSmart.Core.Relacionamento.Radar.UrlPortalTeste), new() { ["chave-api-dados"] = chave, ["Accept"] = "application/json" });
-            if (r.Status is 401 or 403) { _transpOk = false; _msgTransp = "O Portal recusou a chave. Confira se copiou inteira."; return; }
+            if (r.Status is 401 or 403) { _transpOk = false; _msgTransp = $"O Portal recusou ({r.Status}). Resposta: {Trecho(r.Texto)}"; return; }
             await E.SalvarChaveTransp(chave);
             _novaTransp = ""; _transpOk = r.Status == 200;
             _msgTransp = r.Status == 200 ? "Chave testada e salva neste navegador." :
@@ -188,6 +192,12 @@
     }
 
     string _proxy = "";
+    static string Trecho(string t)
+    {
+        t = System.Text.RegularExpressions.Regex.Replace(t ?? "", "<[^>]+>", " ");
+        t = System.Text.RegularExpressions.Regex.Replace(t, @"\s+", " ").Trim();
+        return t == "" ? "(vazia)" : t.Length > 180 ? t[..180] + "…" : t;
+    }
     async Task SalvarProxy()
     {
         _testandoT = true; _msgTransp = ""; StateHasChanged();
@@ -201,8 +211,8 @@
             {
                 200 => "Intermediário funcionando: o Portal respondeu.",
                 0 => "O intermediário não respondeu. Confira o endereço.",
-                401 or 403 => "O intermediário respondeu, mas o Portal recusou a chave.",
-                _ => $"O intermediário respondeu com erro {r.Status}.",
+                401 or 403 => $"O intermediário respondeu, mas o Portal recusou ({r.Status}). Resposta: {Trecho(r.Texto)}",
+                _ => $"O intermediário respondeu com erro {r.Status}. Resposta: {Trecho(r.Texto)}",
             };
         }
         finally { _testandoT = false; }

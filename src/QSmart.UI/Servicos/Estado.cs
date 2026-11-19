@@ -306,7 +306,7 @@ public sealed class Estado
     public async Task SalvarProxyTransp(string? url)
     {
         if (string.IsNullOrWhiteSpace(url)) { await Nav.CofreApagar(CofreProxyTransp); ProxyTransp = null; return; }
-        url = url.Trim().TrimEnd('/');
+        url = url.Trim().TrimEnd('/', '.', ' ');
         await Nav.CofreGravar(CofreProxyTransp, System.Text.Encoding.UTF8.GetBytes(url));
         ProxyTransp = url;
     }
