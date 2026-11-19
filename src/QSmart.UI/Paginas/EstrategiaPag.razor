@@ -136,7 +136,11 @@
                     </div>
 
                     <div class="est-bloco">
-                        <span class="est-bloco-tit">Texto da estratégia <span class="muted">clique num modelo para adicionar e depois ajuste</span></span>
+                        <span class="est-bloco-tit">Texto da estratégia <span class="muted">clique num modelo para adicionar e depois ajuste</span>
+                            <button class="ia-btn est-ia @(_iaRodando ? "rodando" : "")" @onclick="PedirMrSmart" disabled="@_iaRodando" title="O Mr. Smart lê os números do dia e escreve a estratégia">
+                                @if (_iaRodando) { <span class="ia-spin"></span> <span>Mr. Smart escrevendo…</span> }
+                                else { <Icone Nome="faisca" Tamanho="15" /> <span>Pedir que Mr. Smart faça a estratégia do dia</span> }
+                            </button></span>
                         <div class="est-modelos">
                             @foreach (var mo in Estrategia.Modelos(r, M))
                             {
@@ -259,6 +263,31 @@
         var M = E.EstMsg;
         M.Texto = string.IsNullOrWhiteSpace(M.Texto) ? texto : M.Texto.TrimEnd() + "\n\n" + texto;
         await Salvar();
+    }
+
+    bool _iaRodando;
+    async Task PedirMrSmart()
+    {
+        if (!await E.IAConfigurada())
+        {
+            await J.Aviso("Contate o suporte", "Contate o suporte para configurar sua máquina para habilitar todos os recursos.");
+            return;
+        }
+        var M = E.EstMsg;
+        if (M.Texto.Trim() != "" && !await J.Pergunta("Estratégia do dia", "Já tem um texto na estratégia. O Mr. Smart vai usar as ideias dele e escrever um novo no lugar. Continuar?")) return;
+        _iaRodando = true; StateHasChanged();
+        try
+        {
+            var fatos = QSmart.Core.Operacao.EstrategiaIA.Fatos(M, _res, DateTime.Now);
+            var r = await E.Nav.IA(QSmart.Core.Relacionamento.AnaliseIA.Url, E.ChaveIA!, QSmart.Core.Operacao.EstrategiaIA.Pedido(fatos, E.ModeloIA));
+            if (r.Status != 200) { await J.Aviso("Mr. Smart", QSmart.Core.Relacionamento.AnaliseIA.Erro(r.Status, r.Texto)); return; }
+            var txt = QSmart.Core.Operacao.EstrategiaIA.Ler(r.Texto);
+            if (txt == null) { await J.Aviso("Mr. Smart", "A IA não devolveu a estratégia. Tente de novo."); return; }
+            M.Texto = txt;
+            await Salvar();
+        }
+        catch (Exception ex) { await J.Aviso("Mr. Smart", ex.Message); }
+        finally { _iaRodando = false; StateHasChanged(); }
     }
 
     async Task LimparTexto() { E.EstMsg.Texto = ""; await Salvar(); }

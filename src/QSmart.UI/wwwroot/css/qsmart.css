@@ -1488,3 +1488,5 @@ a.rx-st:hover { text-decoration: underline; }
 }
 .dev-campos.um { grid-template-columns: 1fr; }
 .dev-prov.transp { background: #1351B4; }
+.est-bloco-tit .est-ia { margin-left: auto; padding: 7px 14px; font-size: 12.5px; border-radius: 10px; gap: 7px; }
+.est-bloco-tit .est-ia .ia-spin { width: 13px; height: 13px; }
