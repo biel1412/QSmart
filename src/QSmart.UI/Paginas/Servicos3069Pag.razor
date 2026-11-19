@@ -6,6 +6,7 @@
     <Acoes>
         <button class="btn btn-hero" @onclick="Exemplo" title="Carrega uma pergunta e uma resposta de exemplo"><Icone Nome="faisca" Tamanho="17" /> Exemplo</button>
         <button class="btn btn-hero" @onclick="Limpar" disabled="@(_pergunta == "" && _resposta == "")"><Icone Nome="lixo" Tamanho="17" /> Limpar</button>
+        <button class="btn btn-hero" @onclick="AplicarTodas" disabled="@(_a == null || !_a.Achados.Any(x => x.Troca != null && !x.Troca.Contains('[')))" title="Aplica de uma vez todas as correções que o QSmart sabe fazer sozinho"><Icone Nome="check" Tamanho="17" /> Aplicar correções</button>
         <button class="btn btn-pri" @onclick="Copiar" disabled="@(_resposta.Trim() == "")" title="Copia a resposta para colar no Teams"><Icone Nome="copiar" Tamanho="17" /> Copiar resposta</button>
     </Acoes>
     <ChildContent>
@@ -44,75 +45,79 @@
         else
         {
             var a = _a;
+            var vis = a.Achados.Where(x => !_ignorados.Contains(x.Chave)).ToList();
+            var filtrados = vis.Where(x => _filtro == null || x.Categoria == _filtro).ToList();
+            var locais = filtrados.Where(x => x.Ini >= 0 && x.Fim > x.Ini).OrderBy(x => x.Ini).ThenByDescending(x => x.Grav).ToList();
+            var gerais = filtrados.Where(x => !(x.Ini >= 0 && x.Fim > x.Ini)).OrderByDescending(x => x.Grav).ToList();
+            var num = new Dictionary<string, int>();
+            foreach (var x in locais) num.TryAdd(x.Chave, num.Count + 1);
             <div class="rr-hero @a.VereditoClasse">
                 <div class="rr-nota" style="--p:@a.Nota"><span><b>@a.Nota</b><small>de 100</small></span></div>
                 <div class="rr-ver">
                     <span class="rotulo">Resultado</span>
                     <b>@a.Veredito</b>
                     <small>@Resumo(a)</small>
+                    <small class="rr-leg">Leitura @a.LegibilidadeTexto · @a.Palavras palavras · ~@a.SegundosLeitura s</small>
                 </div>
-                <div class="rr-chips">
+                <div class="rr-crit">
                     @foreach (var c in Categorias)
                     {
-                        int pr = c == Cat.Responde ? a.Perguntas.Count(p => p.Status == StatusPergunta.NaoAtendida) : a.Da(c).Count(x => x.Grav == Gravidade.Problema);
-                        int at = c == Cat.Responde ? a.Perguntas.Count(p => p.Status == StatusPergunta.Parcial) : a.Da(c).Count(x => x.Grav != Gravidade.Problema);
-                        <a class="rr-chip @(pr > 0 ? "r" : at > 0 ? "a" : "g")" href="@($"servicos-3069#rr-{c}")" @onclick:preventDefault="true" @onclick="() => Ir(c)">
-                            <Icone Nome="@(pr > 0 ? "alerta" : at > 0 ? "info" : "check")" Tamanho="14" /> @Cat.Nome(c)
-                            @if (pr + at > 0) { <em>@(pr + at)</em> }
-                        </a>
+                        var n = a.NotaPorCategoria.TryGetValue(c, out var v) ? v : 100;
+                        int q = c == Cat.Responde ? a.Perguntas.Count(p => p.Status != StatusPergunta.Atendida) + vis.Count(x => x.Categoria == c) : vis.Count(x => x.Categoria == c);
+                        <button class="rr-cr @c @(_filtro == c ? "on" : "") @(_filtro != null && _filtro != c ? "apaga" : "")" title="Mostrar só @Cat.Nome(c)" @onclick="() => _filtro = _filtro == c ? null : c">
+                            <span class="rr-cr-anel" style="--p:@n;--k:@CorNota(n)"><b>@n</b></span>
+                            <span class="rr-cr-nome">@Cat.Nome(c)</span>
+                            <small>@(q == 0 ? "sem apontamentos" : q == 1 ? "1 apontamento" : $"{q} apontamentos")</small>
+                        </button>
                     }
                 </div>
             </div>
 
-            <div class="rr-grade">
-                <Painel Titulo="A resposta responde a pergunta?" Nota="@($"{a.Perguntas.Count(p => p.Status == StatusPergunta.Atendida)} de {a.Perguntas.Count}")" Classe="@($"rr-sec rr-{Cat.Responde}")">
-                    @if (_pergunta.Trim() == "")
-                    {
-                        <p class="muted pequeno">Cole a pergunta da 3069 para o QSmart conferir se a resposta atende o que foi perguntado.</p>
-                    }
+            @if (a.Perguntas.Count > 0 && (_filtro == null || _filtro == Cat.Responde))
+            {
+                <div class="rr-pxr">
+                    <span class="rr-pxr-tit"><Icone Nome="info" Tamanho="15" /> Pergunta × resposta</span>
                     @foreach (var p in a.Perguntas)
                     {
-                        <div class="rr-perg @(p.Status switch { StatusPergunta.Atendida => "g", StatusPergunta.Parcial => "a", _ => "r" })">
-                            <span class="rr-perg-ic"><Icone Nome="@(p.Status == StatusPergunta.Atendida ? "check" : p.Status == StatusPergunta.Parcial ? "info" : "x")" Tamanho="15" /></span>
+                        var st = p.Status switch { StatusPergunta.Atendida => "g", StatusPergunta.Parcial => "a", _ => "r" };
+                        <div class="rr-pq @st">
+                            <span class="rr-pq-ic"><Icone Nome="@(st == "g" ? "check" : st == "a" ? "info" : "x")" Tamanho="14" /></span>
                             <div>
                                 <b>“@p.Texto”</b>
-                                <small><span class="rr-tipo">@p.Tipo</span> @(p.Status switch { StatusPergunta.Atendida => "Respondida.", StatusPergunta.Parcial => "Respondida em parte: ", _ => "Não respondida: " })@(p.Status == StatusPergunta.Atendida ? "" : p.Motivo + ".")</small>
-                                @if (p.TermosFaltando.Count > 0) { <small class="muted">A resposta não fala de: @string.Join(", ", p.TermosFaltando).</small> }
+                                <small><span class="rr-tipo">@p.Tipo</span>@(p.Status switch { StatusPergunta.Atendida => "Respondida.", StatusPergunta.Parcial => "Em parte: " + p.Motivo + ".", _ => "Não respondida: " + p.Motivo + "." })</small>
+                                @if (p.TermosFaltando.Count > 0) { <small class="muted">Não fala de: @string.Join(", ", p.TermosFaltando).</small> }
                             </div>
                         </div>
                     }
-                </Painel>
+                </div>
+            }
 
-                <Painel Titulo="Resposta marcada" Nota="passe o mouse nos destaques">
-                    <div class="rr-texto">@Marcado(a)</div>
+            <div class="rr-rev">
+                <div class="rr-doc">
+                    <div class="rr-doc-cab"><b>Resposta revisada</b><small class="muted">clique num destaque para ver o apontamento</small></div>
+                    <div class="rr-doc-txt">@Documento(locais, num)</div>
                     <div class="rr-legenda">
-                        @foreach (var c in Categorias.Skip(1)) { <span class="rr-m @c">@Cat.Nome(c)</span> }
+                        @foreach (var c in Categorias) { <span class="rr-lg @c"><i></i>@Cat.Nome(c)</span> }
                     </div>
-                </Painel>
-            </div>
-
-            <div class="rr-cards">
-                @foreach (var c in Categorias.Skip(1))
-                {
-                    var lista = a.Da(c).OrderByDescending(x => x.Grav).ToList();
-                    <div class="rr-card @c" id="@($"rr-{c}")">
-                        <div class="rr-card-cab">
-                            <b>@Cat.Nome(c)</b>
-                            @if (lista.Count == 0) { <span class="rr-ok"><Icone Nome="check" Tamanho="14" /> nada encontrado</span> }
-                            else { <span class="rr-qtd">@lista.Count</span> }
-                        </div>
-                        <p class="muted pequeno">@Explica(c)</p>
-                        @foreach (var x in lista)
-                        {
-                            <div class="rr-achado @Grav(x.Grav)">
-                                <div class="rr-a-tit"><i></i><b>@x.Titulo</b></div>
-                                @if (!string.IsNullOrEmpty(x.Trecho) && !x.Titulo.Contains(x.Trecho)) { <q>@x.Trecho</q> }
-                                <span>@x.Explicacao</span>
-                                @if (x.Sugestao != null) { <span class="rr-sug"><Icone Nome="direita" Tamanho="13" /> @x.Sugestao</span> }
-                            </div>
-                        }
-                    </div>
-                }
+                </div>
+                <div class="rr-mar">
+                    @if (_filtro != null) { <div class="rr-filtro">Mostrando só <b>@Cat.Nome(_filtro)</b> <button class="btn btn-sec btn-peq" @onclick="() => _filtro = null">ver todos</button></div> }
+                    @if (gerais.Count + locais.Count == 0)
+                    {
+                        <div class="rr-limpo"><Icone Nome="check" Tamanho="22" /><b>Nenhum apontamento@(_filtro != null ? " neste critério" : "")</b><small class="muted">Faça a conferência final abaixo antes de enviar.</small></div>
+                    }
+                    @if (gerais.Count > 0)
+                    {
+                        <span class="rr-mar-tit">Sobre a resposta toda</span>
+                        @foreach (var x in gerais) { @Cartao(x, null) }
+                    }
+                    @if (locais.Count > 0)
+                    {
+                        <span class="rr-mar-tit">No texto</span>
+                        @foreach (var x in locais) { @Cartao(x, num[x.Chave]) }
+                    }
+                    @if (_ignorados.Count > 0) { <button class="rr-ign" @onclick="() => _ignorados.Clear()">@_ignorados.Count ignorado(s) · mostrar de novo</button> }
+                </div>
             </div>
 
             <Painel Titulo="Antes de enviar" Nota="confira você mesmo">
@@ -147,6 +152,94 @@
     void MudouPergunta(ChangeEventArgs e) { _pergunta = e.Value?.ToString() ?? ""; Analisar(); }
     void MudouResposta(ChangeEventArgs e) { _resposta = e.Value?.ToString() ?? ""; Analisar(); }
     void Analisar() { _a = AnaliseResposta.Analisar(_pergunta, _resposta); _checados.Clear(); }
+    readonly HashSet<string> _ignorados = new();
+    string? _filtro, _foco;
+
+    static string CorNota(int n) => n >= 85 ? "#10B981" : n >= 60 ? "#F59E0B" : "#EF4444";
+    static string IdCartao(string chave) => "rr-c-" + (uint)chave.GetHashCode();
+
+    async Task Focar(Achado x) { _foco = x.Chave; StateHasChanged(); await Task.Delay(30); await E.Nav.Rolar(IdCartao(x.Chave)); }
+
+    void AplicarAchado(Achado x)
+    {
+        _resposta = AnaliseResposta.Aplicar(_resposta, x);
+        _foco = null;
+        Analisar();
+    }
+
+    async Task AplicarTodas()
+    {
+        int n = 0;
+        for (int i = 0; i < 60; i++)
+        {
+            var x = _a?.Achados.FirstOrDefault(x => x.Troca != null && x.Ini >= 0 && !x.Troca.Contains('[') && !_ignorados.Contains(x.Chave));
+            if (x == null) break;
+            _resposta = AnaliseResposta.Aplicar(_resposta, x); n++;
+            Analisar();
+        }
+        await J.Info("Correções aplicadas", n == 0 ? "Não há correções automáticas para aplicar." : $"{n} correção(ões) aplicada(s). Os apontamentos que dependem de você (datas, motivos, valores) continuam na lista.");
+    }
+
+    RenderFragment Cartao(Achado x, int? n) => @<text>
+        <div class="rr-c @x.Categoria @Grav(x.Grav) @(_foco == x.Chave ? "foco" : "")" id="@IdCartao(x.Chave)">
+            <div class="rr-c-cab">
+                @if (n != null) { <span class="rr-c-num">@n</span> } else { <span class="rr-c-num geral"><Icone Nome="info" Tamanho="12" /></span> }
+                <b>@x.Titulo</b>
+                <span class="rr-c-cat">@Cat.Nome(x.Categoria)</span>
+            </div>
+            @if (x.Troca != null && x.Fim > x.Ini)
+            {
+                <div class="rr-dp"><del>@_resposta[x.Ini..x.Fim]</del> <Icone Nome="direita" Tamanho="13" /> @if (x.Troca.Trim() == "") { <ins class="rem">(retirar)</ins> } else { <ins>@x.Troca.Trim()</ins> }</div>
+            }
+            else if (x.Troca != null)
+            {
+                <div class="rr-dp"><Icone Nome="mais" Tamanho="13" /> <ins>@x.Troca.Trim()</ins></div>
+            }
+            else if (!string.IsNullOrEmpty(x.Trecho))
+            {
+                <div class="rr-dp so"><span class="rr-q">@x.Trecho</span></div>
+            }
+            <p>@x.Explicacao</p>
+            @if (x.Sugestao != null) { <p class="rr-c-sug"><Icone Nome="faisca" Tamanho="13" /> @x.Sugestao</p> }
+            <div class="rr-c-acts">
+                @if (x.Troca != null) { <button class="btn btn-pri btn-peq" @onclick="() => AplicarAchado(x)"><Icone Nome="check" Tamanho="13" /> Aplicar</button> }
+                <button class="btn btn-sec btn-peq" @onclick="() => _ignorados.Add(x.Chave)">Ignorar</button>
+            </div>
+        </div>
+    </text>;
+
+    RenderFragment Documento(List<Achado> locais, Dictionary<string, int> num) => b =>
+    {
+        int seq = 0, pos = 0;
+        var texto = _resposta;
+        int i = 0;
+        while (i < locais.Count)
+        {
+            var m = locais[i];
+            if (m.Ini < pos || m.Fim > texto.Length) { i++; continue; }
+            // todos os apontamentos que começam dentro deste destaque
+            var grupo = locais.Skip(i).TakeWhile(x => x.Ini < m.Fim).ToList();
+            if (m.Ini > pos) b.AddContent(seq++, texto[pos..m.Ini]);
+            b.OpenElement(seq++, "mark");
+            b.AddAttribute(seq++, "class", $"rr-u {m.Categoria} {(grupo.Any(g => g.Chave == _foco) ? "foco" : "")}");
+            b.AddAttribute(seq++, "title", m.Titulo);
+            b.AddAttribute(seq++, "onclick", EventCallback.Factory.Create(this, () => Focar(m)));
+            b.AddContent(seq++, texto[m.Ini..m.Fim]);
+            b.CloseElement();
+            foreach (var g in grupo.Where(g => num.ContainsKey(g.Chave)))
+            {
+                b.OpenElement(seq++, "sup");
+                b.AddAttribute(seq++, "class", $"rr-n {g.Categoria}");
+                b.AddAttribute(seq++, "onclick", EventCallback.Factory.Create(this, () => Focar(g)));
+                b.AddContent(seq++, num[g.Chave]);
+                b.CloseElement();
+            }
+            pos = Math.Max(pos, grupo.Max(g => Math.Min(g.Fim, texto.Length)));
+            pos = Math.Max(pos, m.Fim);
+            i += grupo.Count;
+        }
+        if (pos < texto.Length) b.AddContent(seq++, texto[pos..]);
+    };
 
     static string Grav(Gravidade g) => g switch { Gravidade.Problema => "r", Gravidade.Atencao => "a", _ => "l" };
 
@@ -171,26 +264,6 @@
         return char.ToUpper(string.Join(" · ", l)[0]) + string.Join(" · ", l)[1..] + ".";
     }
 
-    RenderFragment Marcado(Analise a) => b =>
-    {
-        int seq = 0, pos = 0;
-        var marcas = a.Achados.Where(x => x.Ini >= 0 && x.Fim > x.Ini && x.Fim <= _resposta.Length)
-            .OrderBy(x => x.Ini).ThenByDescending(x => x.Grav).ToList();
-        foreach (var m in marcas)
-        {
-            if (m.Ini < pos) continue;
-            if (m.Ini > pos) b.AddContent(seq++, _resposta[pos..m.Ini]);
-            b.OpenElement(seq++, "mark");
-            b.AddAttribute(seq++, "class", $"rr-m {m.Categoria} {Grav(m.Grav)}");
-            b.AddAttribute(seq++, "title", $"{m.Titulo}. {m.Explicacao}{(m.Sugestao != null ? " → " + m.Sugestao : "")}");
-            b.AddContent(seq++, _resposta[m.Ini..m.Fim]);
-            b.CloseElement();
-            pos = m.Fim;
-        }
-        if (pos < _resposta.Length) b.AddContent(seq++, _resposta[pos..]);
-    };
-
-    async Task Ir(string c) => await E.Nav.Rolar($"rr-{c}");
 
     async Task Copiar()
     {
