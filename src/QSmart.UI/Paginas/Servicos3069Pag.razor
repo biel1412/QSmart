@@ -7,35 +7,18 @@
     <Acoes>
         <button class="btn btn-hero" @onclick="Exemplo" title="Carrega uma pergunta e uma resposta de exemplo"><Icone Nome="faisca" Tamanho="17" /> Exemplo</button>
         <button class="btn btn-hero" @onclick="Limpar" disabled="@(_pergunta == "" && _resposta == "")"><Icone Nome="lixo" Tamanho="17" /> Limpar</button>
-        <button class="btn btn-hero" @onclick="() => _config = !_config" title="Chave e modelo do Groq"><Icone Nome="config" Tamanho="17" /> Configurar IA</button>
         <button class="btn btn-pri" @onclick="Copiar" disabled="@(_resposta.Trim() == "")" title="Copia a resposta para colar no Teams"><Icone Nome="copiar" Tamanho="17" /> Copiar resposta</button>
     </Acoes>
     <ChildContent>
-        @if (_carregado && (_chave == null || _config))
+        @if (_carregado && _chave == null)
         {
-            <div class="ia-config">
-                <div class="ia-config-cab">
-                    <span class="ia-logo"><Icone Nome="faisca" Tamanho="20" /></span>
-                    <div><b>@(_chave == null ? "Conecte a IA (Groq) para analisar as respostas" : "Configurar a IA")</b>
-                        <small class="muted">A chave fica guardada só neste navegador, criptografada. Cada pessoa usa a sua.</small></div>
-                    @if (_chave != null) { <button class="oo-x" @onclick="() => _config = false" title="Fechar"><Icone Nome="x" Tamanho="18" /></button> }
-                </div>
-                <div class="ia-passos">
-                    <div><span>1</span><p>Entre em <b>console.groq.com/keys</b> com uma conta (Google ou e-mail). O plano gratuito não pede cartão.</p></div>
-                    <div><span>2</span><p>Clique em <b>Create API Key</b>, dê um nome (ex.: QSmart) e copie a chave (começa com <b>gsk_</b>).</p></div>
-                    <div><span>3</span><p>Recomendado: em <b>Settings › Data Controls</b>, ligue <b>Zero Data Retention</b>, para o Groq não guardar nem os registros temporários.</p></div>
-                </div>
-                <div class="ia-campos">
-                    <label>Chave do Groq<input class="campo" type="password" autocomplete="off" placeholder="@(_chave != null ? "•••••••• (chave salva) — cole outra para trocar" : "gsk_…")" @bind="_novaChave" /></label>
-                    <label>Modelo<input class="campo" @bind="_modelo" placeholder="@AnaliseIA.ModeloPadrao" /></label>
-                    <div class="ia-campos-acts">
-                        <button class="btn btn-pri" @onclick="SalvarChave" disabled="@_testando"><Icone Nome="check" Tamanho="15" /> @(_testando ? "Testando…" : "Salvar e testar")</button>
-                        @if (_chave != null) { <button class="btn btn-sec" @onclick="RemoverChave">Remover chave</button> }
-                    </div>
-                </div>
+            <div class="ia-bloqueio">
+                <span class="ia-logo"><Icone Nome="escudo" Tamanho="22" /></span>
+                <div><b>Ferramenta não liberada nesta máquina</b><span>@Estado.MsgSemIA</span></div>
             </div>
         }
-
+        else if (_carregado)
+        {
         <div class="rr-entrada">
             <label class="rr-caixa">
                 <span class="rr-rot"><span class="rr-num">1</span> Pergunta da 3069 <small>cole a mensagem que chegou pelo Teams</small></span>
@@ -55,8 +38,7 @@
                 else { <Icone Nome="faisca" Tamanho="18" /> <span>@(_res != null ? "Analisar de novo" : "Analisar com IA")</span> }
             </button>
             <div class="ia-info">
-                @if (_chave == null) { <span class="muted">Configure a chave do Groq acima para analisar.</span> }
-                else if (_pergunta.Trim() == "" || _resposta.Trim() == "") { <span class="muted">Cole a pergunta e a resposta para analisar.</span> }
+                @if (_pergunta.Trim() == "" || _resposta.Trim() == "") { <span class="muted">Cole a pergunta e a resposta para analisar.</span> }
                 else if (_desatualizada) { <span class="ia-aviso"><Icone Nome="alerta" Tamanho="14" /> A resposta mudou depois da análise. Clique em “Analisar de novo”.</span> }
                 else if (_res != null) { <span class="muted">Analisado por @_res.Modelo às @_quando.ToString("HH:mm").</span> }
                 <span class="ia-priv"><Icone Nome="escudo" Tamanho="13" /> O texto é enviado ao Groq para análise (CPF, CNPJ, e-mail e telefone vão mascarados). O Groq não usa os textos para treinar modelos.</span>
@@ -206,12 +188,12 @@
                 </div>
             </div>
         }
+        }
     </ChildContent>
 </Pagina>
 
 @code {
     protected override string Chave => "servicos3069";
-    const string CofreChave = "groq_chave", CofreModelo = "groq_modelo";
     static readonly string[] Categorias = { Cat.Responde, Cat.Objetividade, Cat.Discordancia, Cat.Contestavel, Cat.Tom, Cat.Escrita };
     static readonly (string, string)[] Checklist =
     {
@@ -224,9 +206,10 @@
     };
 
     string _pergunta = "", _resposta = "";
-    string? _chave, _erro, _filtro, _foco;
-    string _novaChave = "", _modelo = AnaliseIA.ModeloPadrao;
-    bool _carregado, _config, _testando, _analisando, _desatualizada;
+    string? _erro, _filtro, _foco;
+    string? _chave => E.ChaveIA;
+    string _modelo => E.ModeloIA;
+    bool _carregado, _analisando, _desatualizada;
     int _segundos;
     DateTime _quando;
     ResultadoIA? _res;
@@ -235,14 +218,7 @@
 
     protected override async Task OnInitializedAsync()
     {
-        try
-        {
-            var c = await E.Nav.CofreLer(CofreChave);
-            if (c is { Length: > 0 }) _chave = System.Text.Encoding.UTF8.GetString(c);
-            var m = await E.Nav.CofreLer(CofreModelo);
-            if (m is { Length: > 0 }) _modelo = System.Text.Encoding.UTF8.GetString(m);
-        }
-        catch { }
+        await E.IAConfigurada();
         _carregado = true;
     }
 
@@ -255,39 +231,11 @@
     static string Grav(Gravidade g) => g switch { Gravidade.Problema => "r", Gravidade.Atencao => "a", _ => "l" };
     static string IdCartao(string chave) => "rr-c-" + (uint)chave.GetHashCode();
 
-    // ===================== chave =====================
-
-    async Task SalvarChave()
-    {
-        var chave = _novaChave.Trim();
-        if (chave == "") chave = _chave ?? "";
-        if (chave == "") { await J.Aviso("Chave do Groq", "Cole a chave do Groq (começa com gsk_)."); return; }
-        var modelo = string.IsNullOrWhiteSpace(_modelo) ? AnaliseIA.ModeloPadrao : _modelo.Trim();
-        _testando = true; StateHasChanged();
-        try
-        {
-            var r = await E.Nav.IA(AnaliseIA.Url, chave, AnaliseIA.PedidoTeste(modelo));
-            if (r.Status != 200) { await J.Erro("Chave do Groq", AnaliseIA.Erro(r.Status, r.Texto)); return; }
-            await E.Nav.CofreGravar(CofreChave, System.Text.Encoding.UTF8.GetBytes(chave));
-            await E.Nav.CofreGravar(CofreModelo, System.Text.Encoding.UTF8.GetBytes(modelo));
-            _chave = chave; _modelo = modelo; _novaChave = ""; _config = false;
-            await J.Info("IA conectada", $"Chave testada e salva neste navegador. Modelo: {modelo}.");
-        }
-        finally { _testando = false; }
-    }
-
-    async Task RemoverChave()
-    {
-        if (!await J.Pergunta("Remover chave", "Apagar a chave do Groq deste navegador?")) return;
-        await E.Nav.CofreApagar(CofreChave);
-        _chave = null; _config = false;
-    }
-
     // ===================== análise =====================
 
     async Task Analisar()
     {
-        if (_chave == null) { _config = true; return; }
+        if (_chave == null) { await J.Aviso("Contate o suporte", Estado.MsgSemIA); return; }
         _erro = null; _analisando = true; _segundos = 0;
         _relogio?.Dispose();
         _relogio = new System.Threading.Timer(_ => { _segundos++; InvokeAsync(StateHasChanged); }, null, 1000, 1000);

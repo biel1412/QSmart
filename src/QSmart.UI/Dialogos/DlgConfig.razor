@@ -72,6 +72,52 @@
                 <BotaoArquivo Texto="Importar dados…" Icone="upload" Aceita=".json" Varios="true" AoEscolher="ImportarDados" />
             </div>
         </Painel>
+
+        <Painel Classe="mt dev-painel">
+            <div class="dev-cab">
+                <span class="dev-ic"><Icone Nome="teclado" Tamanho="18" /></span>
+                <div><h3 class="painel-titulo">Modo desenvolvedor</h3><p class="muted pequeno">Área do suporte: configura esta máquina (central de chaves de IA).</p></div>
+                <span class="mola"></span>
+                @if (E.DevLiberado) { <button class="btn btn-sec btn-peq" @onclick="() => { E.DevLiberado = false; _abrirDev = false; }">Sair</button> }
+                else if (!_abrirDev) { <button class="btn btn-sec" @onclick="() => _abrirDev = true"><Icone Nome="escudo" Tamanho="15" /> Entrar</button> }
+            </div>
+
+            @if (!E.DevLiberado && _abrirDev)
+            {
+                <div class="dev-login">
+                    <label>Usuário<input class="campo" @bind="_devUsuario" @bind:event="oninput" autocomplete="off" /></label>
+                    <label>Senha<input class="campo" type="password" @bind="_devSenha" @bind:event="oninput" @onkeydown="TeclaSenha" autocomplete="off" /></label>
+                    <button class="btn btn-pri" @onclick="EntrarDev">Entrar</button>
+                    <button class="btn btn-sec" @onclick="() => { _abrirDev = false; _devErro = false; }">Cancelar</button>
+                </div>
+                @if (_devErro) { <p class="dev-erro"><Icone Nome="alerta" Tamanho="14" /> Usuário ou senha incorretos.</p> }
+            }
+
+            @if (E.DevLiberado)
+            {
+                <div class="dev-central">
+                    <div class="rotulo">Central de chaves de IA</div>
+                    <div class="dev-chave">
+                        <span class="dev-prov">Groq</span>
+                        <div>
+                            <b>Análise de respostas (Serviços 3069)</b>
+                            <small class="muted">@(E.ChaveIA != null ? $"Configurada neste navegador · modelo {E.ModeloIA}" : "Não configurada nesta máquina: a aba Serviços 3069 fica bloqueada.")</small>
+                        </div>
+                        <span class="dev-st @(E.ChaveIA != null ? "ok" : "")">@(E.ChaveIA != null ? "ativa" : "sem chave")</span>
+                    </div>
+                    <div class="dev-campos">
+                        <label>Chave do Groq<input class="campo" type="password" autocomplete="new-password" placeholder="@(E.ChaveIA != null ? "•••••••• (salva) — cole outra para trocar" : "gsk_…")" @bind="_novaChave" /></label>
+                        <label>Modelo<input class="campo" @bind="_modelo" /></label>
+                    </div>
+                    <div class="linha-botoes">
+                        <button class="btn btn-pri" @onclick="SalvarChave" disabled="@_testando"><Icone Nome="check" Tamanho="15" /> @(_testando ? "Testando…" : "Salvar e testar")</button>
+                        @if (E.ChaveIA != null) { <button class="btn btn-sec" @onclick="RemoverChave">Remover chave</button> }
+                    </div>
+                    @if (_msgChave != "") { <p class="@(_chaveOk ? "dev-ok" : "dev-erro")"><Icone Nome="@(_chaveOk ? "check" : "alerta")" Tamanho="14" /> @_msgChave</p> }
+                    <p class="muted pequeno">A chave fica guardada só neste navegador, criptografada (AES-256, com uma chave que não sai do navegador). Crie em console.groq.com/keys e, no Groq, ligue Settings › Data Controls › Zero Data Retention.</p>
+                </div>
+            }
+        </Painel>
     </ChildContent>
     <Rodape><span class="muted pequeno">QSmart · Insi</span><span class="mola"></span><button class="btn btn-pri" @onclick="() => Fechar(null)">Fechar</button></Rodape>
 </Modal>
@@ -80,6 +126,43 @@
     [Parameter] public Action<object?> Fechar { get; set; } = _ => { };
     [Inject] Estado E { get; set; } = null!;
     ConfigBackup _bk = new();
+    bool _abrirDev, _devErro, _testando, _chaveOk;
+    string _devUsuario = "", _devSenha = "", _novaChave = "", _modelo = QSmart.Core.Relacionamento.AnaliseIA.ModeloPadrao, _msgChave = "";
+
+    void TeclaSenha(KeyboardEventArgs e) { if (e.Key == "Enter") EntrarDev(); }
+
+    void EntrarDev()
+    {
+        _devErro = !E.EntrarDev(_devUsuario, _devSenha);
+        _devSenha = "";
+        if (!_devErro) { _abrirDev = false; _ = CarregarIA(); }
+    }
+
+    async Task CarregarIA() { await E.IAConfigurada(); _modelo = E.ModeloIA; StateHasChanged(); }
+
+    async Task SalvarChave()
+    {
+        var chave = _novaChave.Trim();
+        if (chave == "") chave = E.ChaveIA ?? "";
+        _msgChave = "";
+        if (chave == "") { _chaveOk = false; _msgChave = "Cole a chave do Groq (começa com gsk_)."; return; }
+        var modelo = string.IsNullOrWhiteSpace(_modelo) ? QSmart.Core.Relacionamento.AnaliseIA.ModeloPadrao : _modelo.Trim();
+        _testando = true; StateHasChanged();
+        try
+        {
+            var r = await E.Nav.IA(QSmart.Core.Relacionamento.AnaliseIA.Url, chave, QSmart.Core.Relacionamento.AnaliseIA.PedidoTeste(modelo));
+            if (r.Status != 200) { _chaveOk = false; _msgChave = QSmart.Core.Relacionamento.AnaliseIA.Erro(r.Status, r.Texto); return; }
+            await E.SalvarChaveIA(chave, modelo);
+            _novaChave = ""; _chaveOk = true; _msgChave = $"Chave testada e salva neste navegador. Modelo: {modelo}.";
+        }
+        finally { _testando = false; }
+    }
+
+    async Task RemoverChave()
+    {
+        await E.RemoverChaveIA();
+        _chaveOk = true; _msgChave = "Chave removida deste navegador.";
+    }
     string _ultimo = "";
 
     protected override async Task OnInitializedAsync()

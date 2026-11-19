@@ -1295,3 +1295,26 @@ button.fer-alerta:hover { filter: brightness(.97); }
 .ia-bloco-tit { font-size: 12px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
 .ia-bloco.forte ul { margin: 6px 0 0; padding-left: 18px; color: var(--ink); }
 .ia-bloco.forte .ia-bloco-tit { color: var(--green); }
+
+/* ===== Configurações: modo desenvolvedor ===== */
+.dev-painel { border: 1px dashed color-mix(in srgb, #7C3AED 40%, var(--line)); }
+.dev-cab { display: flex; align-items: center; gap: 12px; }
+.dev-cab .painel-titulo { margin: 0; }
+.dev-cab p { margin: 2px 0 0; }
+.dev-ic { width: 36px; height: 36px; border-radius: 11px; display: grid; place-items: center; color: #fff; flex: none; background: linear-gradient(135deg, #334155, #7C3AED); }
+.dev-login { display: grid; grid-template-columns: 1fr 1fr auto auto; gap: 10px; align-items: end; margin-top: 14px; }
+@media (max-width: 700px) { .dev-login { grid-template-columns: 1fr; } }
+.dev-login label, .dev-campos label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 600; color: var(--muted); }
+.dev-erro { display: flex; gap: 6px; align-items: center; color: var(--red); font-size: 13px; font-weight: 600; margin: 10px 0 0; }
+.dev-ok { display: flex; gap: 6px; align-items: center; color: var(--green); font-size: 13px; font-weight: 600; margin: 10px 0 0; }
+.dev-central { margin-top: 14px; display: flex; flex-direction: column; gap: 10px; }
+.dev-chave { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 12px; background: var(--surface2); }
+.dev-chave > div { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.dev-prov { flex: none; font-size: 12px; font-weight: 800; padding: 6px 10px; border-radius: 9px; color: #fff; background: #F55036; }
+.dev-st { flex: none; font-size: 11.5px; font-weight: 700; padding: 3px 10px; border-radius: 99px; color: var(--amber); background: var(--amber-soft); }
+.dev-st.ok { color: var(--green); background: var(--green-soft); }
+.dev-campos { display: grid; grid-template-columns: 1.5fr 1fr; gap: 10px; }
+@media (max-width: 700px) { .dev-campos { grid-template-columns: 1fr; } }
+.ia-bloqueio { display: flex; gap: 14px; align-items: center; padding: 22px 24px; border-radius: 18px; background: var(--surface); border: 1px solid var(--line); }
+.ia-bloqueio > div { display: flex; flex-direction: column; gap: 4px; }
+.ia-bloqueio b { font-size: 16px; } .ia-bloqueio span { color: var(--muted); }

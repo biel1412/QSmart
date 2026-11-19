@@ -200,6 +200,53 @@ public sealed class Estado
         return true;
     }
 
+    // ---- Modo desenvolvedor e central de chaves de IA ----
+    /// <summary>Liberado só nesta sessão (até fechar ou recarregar a página).</summary>
+    public bool DevLiberado;
+    const string HashDev = "178374ad0c2ae6657e0a1a2436889293ddb8001196822b5d4c95a0b976e10469";
+    /// <summary>Bloqueio simples para o usuário comum (não é segurança forte: o app roda todo no navegador).</summary>
+    public bool EntrarDev(string usuario, string senha)
+    {
+        var h = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(usuario.Trim().ToLowerInvariant() + "\n" + senha))).ToLowerInvariant();
+        DevLiberado = h == HashDev;
+        return DevLiberado;
+    }
+
+    public const string CofreChaveIA = "groq_chave", CofreModeloIA = "groq_modelo";
+    public string? ChaveIA { get; private set; }
+    public string ModeloIA { get; private set; } = QSmart.Core.Relacionamento.AnaliseIA.ModeloPadrao;
+    bool _iaLida;
+    public async Task<bool> IAConfigurada()
+    {
+        if (!_iaLida)
+        {
+            _iaLida = true;
+            try
+            {
+                var c = await Nav.CofreLer(CofreChaveIA);
+                if (c is { Length: > 0 }) ChaveIA = System.Text.Encoding.UTF8.GetString(c);
+                var m = await Nav.CofreLer(CofreModeloIA);
+                if (m is { Length: > 0 }) ModeloIA = System.Text.Encoding.UTF8.GetString(m);
+            }
+            catch { }
+        }
+        return !string.IsNullOrEmpty(ChaveIA);
+    }
+    public async Task SalvarChaveIA(string chave, string modelo)
+    {
+        await Nav.CofreGravar(CofreChaveIA, System.Text.Encoding.UTF8.GetBytes(chave));
+        await Nav.CofreGravar(CofreModeloIA, System.Text.Encoding.UTF8.GetBytes(modelo));
+        ChaveIA = chave; ModeloIA = modelo; _iaLida = true;
+        Notificar();
+    }
+    public async Task RemoverChaveIA()
+    {
+        await Nav.CofreApagar(CofreChaveIA);
+        ChaveIA = null; _iaLida = true;
+        Notificar();
+    }
+    public const string MsgSemIA = "Esta ferramenta ainda não está liberada nesta máquina. Contate o suporte para configurar sua máquina para o uso total das ferramentas do QSmart.";
+
     // ---- One a One ----
     public QSmart.Core.Coordenacao.BaseOO? OneBase;
     bool _oneLido;

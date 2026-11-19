@@ -31,6 +31,13 @@
                         </a>
                         continue;
                     }
+                    if (PrecisaIA.Contains(a.Chave))
+                    {
+                        <a class="@($"item m-{Abas.Cor(a.Grupo)} {(Rotas.Uri.Contains("/" + a.Rota) ? "active" : "")}")" href="@a.Rota" title="@a.Nome" @onclick="() => AbrirComIA(a.Rota)" @onclick:preventDefault="true">
+                            <Icone Nome="@a.Icone" /><span class="item-txt">@a.Menu</span>
+                        </a>
+                        continue;
+                    }
                     <NavLink class="@($"item m-{Abas.Cor(a.Grupo)}")" href="@a.Rota" title="@a.Nome" @onclick="FecharMovel">
                         <Icone Nome="@a.Icone" /><span class="item-txt">@a.Menu</span>
                         @if (Indicador(a.Chave)) { <span class="ponto" title="Planilha carregada"></span> }
@@ -107,6 +114,14 @@
 
     void Atualizar() { InvokeAsync(() => { Proteger(); StateHasChanged(); }); }
     void FecharMovel() => _menuMovel = false;
+    static readonly HashSet<string> PrecisaIA = new() { "servicos3069" };
+    async Task AbrirComIA(string rota)
+    {
+        _menuMovel = false;
+        if (!await E.IAConfigurada()) { await E.Janelas.Aviso("Contate o suporte", Estado.MsgSemIA); return; }
+        Rotas.NavigateTo(rota);
+    }
+
     async Task Config() { _menuMovel = false; await E.Janelas.Configuracoes(); }
 
     bool Indicador(string chave) => chave switch
