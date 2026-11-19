@@ -2,8 +2,7 @@
 @inherits PaginaBase
 @using QSmart.Core.Relacionamento
 
-<Pagina Titulo="Serviços 3069" Grupo="@A.Grupo"
-        Sub="Analisador de resposta: cole a pergunta da 3069 e a nossa resposta antes de enviar pelo Teams. Responder à 3069 é como responder ao Presidente da República: cada detalhe conta.">
+<Pagina Titulo="Serviços 3069" Grupo="@A.Grupo">
     <Acoes>
         <button class="btn btn-hero" @onclick="Exemplo" title="Carrega uma pergunta e uma resposta de exemplo"><Icone Nome="faisca" Tamanho="17" /> Exemplo</button>
         <button class="btn btn-hero" @onclick="Limpar" disabled="@(_pergunta == "" && _resposta == "")"><Icone Nome="lixo" Tamanho="17" /> Limpar</button>
