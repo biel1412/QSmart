@@ -110,7 +110,7 @@
         var itens = visiveis.Where(a => a.Grupo == g).ToList();
         if (itens.Count == 0) continue;
         <section class="grupo-mod">
-            <h2 class="grupo-titulo"><span class="gt-ponto g-@Indice(g)"></span>@g <span class="gt-desc">@DescGrupo(g)</span></h2>
+            <h2 class="grupo-titulo"><span class="gt-ponto g-@Indice(g)"></span>@g @if (DescGrupo(g) != "") { <span class="gt-desc">@DescGrupo(g)</span> }</h2>
             <div class="cartoes">
                 @foreach (var a in itens)
                 {
@@ -257,7 +257,7 @@
         "Conformidade" => "pareceres conferidos com o padrão",
         "Operação" => "volume, ociosidade, consolidação de arquivos e estratégia do dia",
         "Coordenação" => "férias, 1:1 e produtividade do mês",
-        "Relacionamento e cooperativas" => "respostas impecáveis para as cooperativas",
+        "Relacionamento e cooperativas" => "",
         _ => "diagnóstico das planilhas e outros sistemas da Insi",
     };
 
