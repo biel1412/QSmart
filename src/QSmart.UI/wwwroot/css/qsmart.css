@@ -1496,8 +1496,17 @@ a.rx-st:hover { text-decoration: underline; }
 .est-texto-acoes .est-ia { padding: 6px 12px; }
 
 /* ===================== Universo QSmart (Início) ===================== */
-.uni { position: relative; height: 660px; border-radius: 26px; overflow: hidden; isolation: isolate; color: #E6EDF7;
-  background: radial-gradient(70% 70% at 50% 52%, #1B1642 0%, #0B0F26 55%, #05070F 100%); border: 1px solid rgba(255,255,255,.06); }
+.uni { position: relative; height: 660px; color: #E6EDF7; isolation: isolate; }
+/* Início: o espaço do universo cobre a tela toda, sem painel */
+.conteudo:has(.inicio) {
+  background:
+    radial-gradient(1px 1px at 12% 18%, rgba(255,255,255,.7), transparent), radial-gradient(1px 1px at 33% 64%, rgba(255,255,255,.5), transparent),
+    radial-gradient(1.3px 1.3px at 71% 22%, rgba(255,255,255,.6), transparent), radial-gradient(1px 1px at 88% 74%, rgba(255,255,255,.5), transparent),
+    radial-gradient(1px 1px at 52% 8%, rgba(255,255,255,.5), transparent), radial-gradient(1px 1px at 6% 88%, rgba(255,255,255,.45), transparent),
+    radial-gradient(55% 60% at 55% 70%, rgba(56,40,140,.55), transparent 70%), radial-gradient(40% 45% at 12% 22%, rgba(16,185,129,.14), transparent 70%),
+    radial-gradient(40% 45% at 92% 16%, rgba(124,58,237,.22), transparent 70%), linear-gradient(180deg, #0B0F26, #05070F);
+  background-attachment: fixed; }
+.inicio-rodape { color: #7E8CA8 !important; }
 .uni .g-0 { --c: #10B981; } .uni .g-1 { --c: #0EA5E9; } .uni .g-2 { --c: #8B5CF6; } .uni .g-3 { --c: #F59E0B; }
 .uni .g-4 { --c: #94A3B8; } .uni .g-5 { --c: #14B8A6; } .uni .g-6 { --c: #EC4899; }
 .uni-estrelas { position: absolute; inset: 0; z-index: -1; pointer-events: none;

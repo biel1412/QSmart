@@ -76,28 +76,6 @@
         </div>
     </section>
 
-    <section class="situacao">
-        <div class="sit-card">
-            <span class="sit-ic" style="--c:var(--green)"><Icone Nome="resumo" /></span>
-            <div><div class="sit-rotulo">Planilha de aprovações</div><div class="sit-valor">@(E.Resultado?.Arquivo ?? "Nenhuma carregada")</div>
-                <div class="sit-det">@(E.Resultado != null ? $"{Fmt(E.Resultado.Linhas)} registros · {E.Resultado.Usuarios} usuários" : "Abra no Resumo")</div></div>
-        </div>
-        <div class="sit-card">
-            <span class="sit-ic" style="--c:var(--blue)"><Icone Nome="inspecao" /></span>
-            <div><div class="sit-rotulo">Planilha de inspeção</div><div class="sit-valor">@(E.Evolucao?.Arquivo ?? "Nenhuma carregada")</div>
-                <div class="sit-det">@(E.Evolucao != null ? $"{Fmt(E.Evolucao.Avaliacoes)} avaliações · {Fmt(E.Evolucao.Desvios)} desvios" : "Abra na Evolução")</div></div>
-        </div>
-        <div class="sit-card">
-            <span class="sit-ic" style="--c:var(--purple)"><Icone Nome="historico" /></span>
-            <div><div class="sit-rotulo">Histórico</div><div class="sit-valor">@(E.Historico.Count == 0 ? "Nenhum mês gravado" : $"{E.Historico.Count} mês(es) gravado(s)")</div>
-                <div class="sit-det">@(E.Historico.Count > 0 ? $"{Texto.NomeMes(E.Historico[0].Mes)} a {Texto.NomeMes(E.Historico[^1].Mes)}" : "Grave a partir da Evolução")</div></div>
-        </div>
-        <div class="sit-card">
-            <span class="sit-ic" style="--c:var(--amber)"><Icone Nome="pareceres" /></span>
-            <div><div class="sit-rotulo">Pareceres padrão</div><div class="sit-valor">@(E.ParPadroes.Count == 0 ? "Nenhum documento" : $"{E.ParPadroes.Count} pareceres")</div>
-                <div class="sit-det">@(E.ParDocumento != "" ? E.ParDocumento : "Anexe na aba Pareceres")</div></div>
-        </div>
-    </section>
 
     @{ var visiveis = Abas.Todas.Where(a => E.AbaAtiva(a.Chave) && Combina(a)).ToList(); }
     @if (_busca.Trim() == "")
