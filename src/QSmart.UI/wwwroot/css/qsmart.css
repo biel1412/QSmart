@@ -1494,3 +1494,57 @@ a.rx-st:hover { text-decoration: underline; }
 .est-texto-acoes .est-ia .ia-spin { width: 11px; height: 11px; }
 .est-texto-acoes { display: flex; align-items: center; gap: 8px; }
 .est-texto-acoes .est-ia { padding: 6px 12px; }
+
+/* ===================== Universo QSmart (Início) ===================== */
+.uni { position: relative; height: 660px; border-radius: 26px; overflow: hidden; isolation: isolate; color: #E6EDF7;
+  background: radial-gradient(70% 70% at 50% 52%, #1B1642 0%, #0B0F26 55%, #05070F 100%); border: 1px solid rgba(255,255,255,.06); }
+.uni .g-0 { --c: #10B981; } .uni .g-1 { --c: #0EA5E9; } .uni .g-2 { --c: #8B5CF6; } .uni .g-3 { --c: #F59E0B; }
+.uni .g-4 { --c: #94A3B8; } .uni .g-5 { --c: #14B8A6; } .uni .g-6 { --c: #EC4899; }
+.uni-estrelas { position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  background-image: radial-gradient(1px 1px at 7% 12%, #fff, transparent), radial-gradient(1px 1px at 22% 78%, #fff, transparent), radial-gradient(1.4px 1.4px at 35% 30%, #fff, transparent),
+    radial-gradient(1px 1px at 48% 88%, #fff, transparent), radial-gradient(1.2px 1.2px at 63% 14%, #fff, transparent), radial-gradient(1px 1px at 77% 66%, #fff, transparent),
+    radial-gradient(1.4px 1.4px at 91% 38%, #fff, transparent), radial-gradient(1px 1px at 14% 52%, #fff, transparent), radial-gradient(1px 1px at 86% 90%, #fff, transparent),
+    radial-gradient(1.2px 1.2px at 56% 46%, #fff, transparent), radial-gradient(1px 1px at 3% 92%, #fff, transparent), radial-gradient(1px 1px at 96% 8%, #fff, transparent); }
+.uni-estrelas.e1 { opacity: .55; animation: uni-pisca 5s ease-in-out infinite; }
+.uni-estrelas.e2 { opacity: .35; transform: rotate(180deg) scale(1.1); animation: uni-pisca 7s ease-in-out -2s infinite; }
+@keyframes uni-pisca { 0%, 100% { opacity: .25; } 50% { opacity: .75; } }
+.uni-tit { position: absolute; left: 30px; bottom: 24px; z-index: 3; }
+.uni-tit b { display: block; font-size: 24px; font-weight: 850; letter-spacing: -.01em; }
+.uni-tit b span { background: linear-gradient(90deg, #5EEAD4, #A78BFA); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.uni-tit small { color: #8FA0BC; font-size: 13px; }
+.uni-orbitas { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0; }
+.uni-orbitas ellipse { fill: none; stroke: #2E3766; stroke-width: 1.2; stroke-dasharray: 3 8; vector-effect: non-scaling-stroke; animation: uni-gira 60s linear infinite; }
+.uni-orbitas ellipse + ellipse { animation-duration: 90s; animation-direction: reverse; }
+@keyframes uni-gira { to { stroke-dashoffset: -400; } }
+.uni-sol { position: absolute; left: 50%; top: 52%; transform: translate(-50%, -50%); z-index: 1; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.uni-sol b { font-size: 15px; font-weight: 800; letter-spacing: .02em; }
+.uni-halo { position: absolute; left: 50%; top: 46px; width: 260px; height: 260px; transform: translate(-50%, -50%); border-radius: 50%; z-index: -1;
+  background: radial-gradient(circle, rgba(94,234,212,.38), rgba(124,58,237,.12) 45%, transparent 70%); animation: uni-pulsa 4s ease-in-out infinite; }
+@keyframes uni-pulsa { 0%, 100% { opacity: .7; transform: translate(-50%, -50%) scale(.94); } 50% { opacity: 1; transform: translate(-50%, -50%) scale(1.04); } }
+
+.uni-pl { position: absolute; width: 0; height: 0; z-index: 2; animation: uni-flutua 7s ease-in-out infinite; }
+.uni-pl:hover, .uni-pl.on { z-index: 4; }
+@keyframes uni-flutua { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-7px); } }
+.uni-nucleo { position: absolute; left: 0; top: 0; width: 96px; height: 96px; transform: translate(-50%, -50%); border-radius: 50%; border: 0; cursor: pointer;
+  display: grid; place-items: center; padding: 6px; font: inherit; font-size: 13px; font-weight: 800; color: #fff; text-shadow: 0 1px 6px rgba(0,0,0,.35); line-height: 1.1;
+  background: radial-gradient(circle at 32% 28%, color-mix(in srgb, var(--c) 55%, #fff), var(--c) 45%, color-mix(in srgb, var(--c) 55%, #0B1024) 100%);
+  box-shadow: 0 0 0 16px color-mix(in srgb, var(--c) 12%, transparent), 0 0 42px -4px var(--c); transition: transform .25s, box-shadow .25s; }
+.uni-pl:hover .uni-nucleo, .uni-pl.on .uni-nucleo { transform: translate(-50%, -50%) scale(1.1); box-shadow: 0 0 0 22px color-mix(in srgb, var(--c) 16%, transparent), 0 0 60px 0 var(--c); }
+.uni-lua { position: absolute; left: 0; top: 0; width: 38px; height: 38px; margin: -19px 0 0 -19px; transform: translate(var(--dx), var(--dy)); text-decoration: none; color: var(--c); }
+.uni-lua::before { content: ""; position: absolute; left: 19px; top: 19px; width: 82px; height: 1px; background: color-mix(in srgb, var(--c) 40%, transparent);
+  transform-origin: 0 0; transform: rotate(var(--rot, 0deg)); display: none; }
+.uni-lua-ic { width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; background: #0B1024; border: 1.5px solid var(--c);
+  box-shadow: 0 0 16px -6px var(--c); transition: transform .2s, background .2s; }
+.uni-lua:hover .uni-lua-ic { transform: scale(1.18); background: var(--c); color: #fff; }
+.uni-novo { position: absolute; left: 22px; top: -9px; font-size: 8.5px; font-weight: 900; letter-spacing: .06em; padding: 2px 5px; border-radius: 5px; background: #EC4899; color: #fff; }
+.uni-rot { position: absolute; left: 50%; top: 44px; transform: translateX(-50%) translateY(-4px); white-space: nowrap; font-size: 11.5px; font-weight: 750; color: #fff;
+  padding: 3px 9px; border-radius: 99px; background: rgba(11,16,36,.92); border: 1px solid color-mix(in srgb, var(--c) 55%, transparent); opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; }
+.uni-pl:hover .uni-rot, .uni-pl.on .uni-rot, .uni-lua:focus-visible .uni-rot { opacity: 1; transform: translateX(-50%) translateY(0); }
+.uni-pl:hover .uni-lua:hover .uni-rot { background: var(--c); }
+.vitrine.uni-alt { display: none; }
+@media (max-width: 1100px) { .uni { display: none; } .vitrine.uni-alt { display: block; } }
+@media (prefers-reduced-motion: reduce) { .uni *, .uni-pl { animation: none !important; } }
+.uni-lua.ld .uni-rot { left: 46px; top: 50%; transform: translate(-4px, -50%); }
+.uni-lua.le .uni-rot { left: auto; right: 46px; top: 50%; transform: translate(4px, -50%); }
+.uni-lua.lc .uni-rot { top: auto; bottom: 44px; }
+.uni-pl:hover .uni-lua.ld .uni-rot, .uni-pl.on .uni-lua.ld .uni-rot, .uni-pl:hover .uni-lua.le .uni-rot, .uni-pl.on .uni-lua.le .uni-rot { transform: translate(0, -50%); }

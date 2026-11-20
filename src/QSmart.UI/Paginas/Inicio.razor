@@ -100,7 +100,47 @@
     </section>
 
     @{ var visiveis = Abas.Todas.Where(a => E.AbaAtiva(a.Chave) && Combina(a)).ToList(); }
-    <section class="vitrine">
+    @if (_busca.Trim() == "")
+    {
+        <section class="uni" aria-label="Ferramentas do QSmart">
+            <div class="uni-estrelas e1"></div><div class="uni-estrelas e2"></div>
+            <div class="uni-tit"><b>Universo <span>QSmart</span></b><small>cada área é um planeta · passe o mouse ou toque para ver as ferramentas</small></div>
+            <svg class="uni-orbitas" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+                <ellipse cx="50" cy="52" rx="@F(RxIn)" ry="@F(RyIn)" /><ellipse cx="50" cy="52" rx="@F(RxOut)" ry="@F(RyOut)" />
+            </svg>
+            <div class="uni-sol"><span class="uni-halo"></span><Logo Tamanho="92" /><b>QSmart</b></div>
+            @{ int ordem = 0; }
+            @foreach (var (grupo, ang, fora, luas) in Planetas)
+            {
+                var itens = visiveis.Where(a => a.Grupo == grupo).ToList();
+                if (itens.Count == 0) continue;
+                var r = Math.PI * ang / 180;
+                var x = 50 + Math.Cos(r) * (fora ? RxOut : RxIn);
+                var y = 52 + Math.Sin(r) * (fora ? RyOut : RyIn);
+                var dir = luas;
+                var abre = _planeta == grupo;
+                var atraso = (ordem++ * 0.7).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture);
+                <div class="uni-pl g-@Indice(grupo) @(abre ? "on" : "")" style="left:@F(x)%;top:@F(y)%;animation-delay:-@(atraso)s">
+                    <button class="uni-nucleo" title="@grupo" @onclick="() => AlternarPlaneta(grupo)">@NomePlaneta(grupo)</button>
+                    @for (int k = 0; k < itens.Count; k++)
+                    {
+                        var a = itens[k];
+                        var passo = itens.Count >= 4 ? 40.0 : 46.0;
+                        var b = Math.PI * (dir + (k - (itens.Count - 1) / 2.0) * passo) / 180;
+                        var dx = Math.Cos(b) * 82; var dy = Math.Sin(b) * 82;
+                        var lado = Math.Cos(b) > 0.45 ? "ld" : Math.Cos(b) < -0.45 ? "le" : Math.Sin(b) > 0 ? "lb" : "lc";
+                        <a class="uni-lua @lado" href="@a.Rota" target="@(a.Externo ? "_blank" : null)" rel="@(a.Externo ? "noopener" : null)"
+                           style="--dx:@F(dx)px;--dy:@F(dy)px" title="@a.Nome · @a.Descricao">
+                            <span class="uni-lua-ic"><Icone Nome="@a.Icone" Tamanho="17" /></span>
+                            @if (Novos.Contains(a.Chave)) { <span class="uni-novo">NOVO</span> }
+                            <span class="uni-rot">@a.Nome</span>
+                        </a>
+                    }
+                </div>
+            }
+        </section>
+    }
+    <section class="vitrine @(_busca.Trim() == "" ? "uni-alt" : "")">
         <span class="vt-luz l1"></span><span class="vt-luz l2"></span><span class="vt-luz l3"></span>
         <div class="vt-conteudo">
     @if (visiveis.Count == 0)
@@ -255,6 +295,20 @@
     }
 
     static int Indice(string g) => Abas.Cor(g);
+
+    // ---- Universo QSmart: cada área é um planeta; as ferramentas, luas ----
+    const double RxIn = 21, RyIn = 25, RxOut = 38, RyOut = 38;
+    /// <summary>Área, ângulo na órbita (graus, sentido horário a partir da direita) e se fica na órbita de fora.</summary>
+    static readonly (string grupo, double ang, bool fora, double luas)[] Planetas =
+    {
+        ("Decisões", 205, false, 180), ("Inspeção", 245, true, 180), ("Conformidade", 330, false, 330), ("Operação", 15, true, 180),
+        ("Coordenação", 95, false, 90), ("Relacionamento e cooperativas", 150, true, 300), ("Ferramentas", 295, true, 0),
+    };
+    static readonly HashSet<string> Novos = new() { "radar360", "servicos3069", "oneaone" };
+    string? _planeta;
+    void AlternarPlaneta(string g) => _planeta = _planeta == g ? null : g;
+    static string NomePlaneta(string g) => g == "Relacionamento e cooperativas" ? "Relacionamento" : g;
+    static string F(double v) => v.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
 
     static string DescGrupo(string g) => g switch
     {
