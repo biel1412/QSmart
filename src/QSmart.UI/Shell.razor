@@ -3,7 +3,11 @@
 @inject Estado E
 @inject NavigationManager Rotas
 
-@if (E.Iniciado && !E.Conta.Logado)
+@if (_cadernoPublico != null)
+{
+    <CadernoPublico Token="@_cadernoPublico" />
+}
+else if (E.Iniciado && !E.Conta.Logado)
 {
     <Acesso />
 }
@@ -136,6 +140,13 @@ else
 
 @code {
     bool _menuMovel;
+    // link compartilhado do Smart Note (?caderno=...): abre só a leitura, sem login
+    string? _cadernoPublico;
+    protected override void OnParametersSet()
+    {
+        var q = new Uri(Rotas.Uri).Query.TrimStart('?').Split('&').Select(x => x.Split('=', 2)).FirstOrDefault(x => x.Length == 2 && x[0] == "caderno");
+        _cadernoPublico = q != null && q[1].Length >= 20 ? Uri.UnescapeDataString(q[1]) : null;
+    }
     DotNetObjectReference<Estado>? _ref;
 
     protected override async Task OnInitializedAsync()

@@ -16,8 +16,9 @@
             int n = _pags.Count(p => p.Caderno == c.Id);
             <div class="sn-cad @(c.Id == _cad ? "on" : "")" style="--c:@c.Cor" @onclick="() => AbrirCaderno(c.Id)">
                 <span class="sn-cad-ic"><Icone Nome="caderno" Tamanho="16" /></span>
-                <span class="sn-cad-nome"><b>@c.Nome</b><small>@(n == 1 ? "1 página" : $"{n} páginas")</small></span>
+                <span class="sn-cad-nome"><b>@c.Nome</b><small>@(n == 1 ? "1 página" : $"{n} páginas")@if (c.Link != "") { <em class="sn-cad-pub" title="Tem link de leitura ativo"><Icone Nome="link" Tamanho="11" /> compartilhado</em> }</small></span>
                 <span class="sn-cad-ac">
+                    <button title="Compartilhar por link" @onclick:stopPropagation="true" @onclick="() => _comp = c"><Icone Nome="link" Tamanho="14" /></button>
                     <button title="Renomear" @onclick:stopPropagation="true" @onclick="() => RenomearCaderno(c)"><Icone Nome="editar" Tamanho="14" /></button>
                     <button title="Mudar a cor" @onclick:stopPropagation="true" @onclick="() => MudarCor(c)"><span class="sn-bolinha"></span></button>
                     <button title="Excluir caderno" @onclick:stopPropagation="true" @onclick="() => ExcluirCaderno(c)"><Icone Nome="lixo" Tamanho="14" /></button>
@@ -33,7 +34,10 @@
         {
             <div class="sn-cab">
                 <b class="sn-pags-tit">@cad.Nome</b>
-                <button class="sn-mais" title="Nova página" @onclick="() => NovaPagina(null)"><Icone Nome="mais" Tamanho="16" /></button>
+                <span class="sn-cab-bts">
+                    <button class="sn-mais @(cad.Link != "" ? "pub" : "")" title="@(cad.Link != "" ? "Compartilhado por link" : "Compartilhar por link (só leitura)")" @onclick="() => _comp = cad"><Icone Nome="link" Tamanho="16" /></button>
+                    <button class="sn-mais" title="Nova página" @onclick="() => NovaPagina(null)"><Icone Nome="mais" Tamanho="16" /></button>
+                </span>
             </div>
             <div class="sn-busca"><Icone Nome="busca" Tamanho="14" /><input placeholder="Buscar páginas…" @bind="_busca" @bind:event="oninput" /></div>
             <div class="sn-lista">
@@ -141,10 +145,73 @@
     </section>
 </div>
 
+@if (_comp is { } cc)
+{
+    <div class="sn-comp-fundo" @onclick="() => _comp = null"></div>
+    <div class="sn-comp" style="--c:@cc.Cor">
+        <div class="sn-comp-cab">
+            <span class="sn-cad-ic"><Icone Nome="caderno" Tamanho="16" /></span>
+            <div><b>Compartilhar “@cc.Nome”</b><small>Quem tiver o link vê o caderno inteiro no navegador, sem login, e não consegue editar.</small></div>
+            <button class="oo-x" @onclick="() => _comp = null" title="Fechar"><Icone Nome="x" Tamanho="18" /></button>
+        </div>
+        @if (cc.Link == "")
+        {
+            <div class="sn-comp-corpo">
+                <ul class="sn-comp-lista">
+                    <li><Icone Nome="olho" Tamanho="15" /> Somente leitura: ninguém edita pelo link.</li>
+                    <li><Icone Nome="estrela" Tamanho="15" /> Dá para salvar nos favoritos e voltar quando quiser; o que você mudar aparece lá.</li>
+                    <li><Icone Nome="cadeado" Tamanho="15" /> Você pode desativar o link a qualquer momento.</li>
+                </ul>
+                <button class="btn btn-pri" disabled="@_gerando" @onclick="() => GerarLink(cc)"><Icone Nome="link" Tamanho="16" /> @(_gerando ? "Gerando…" : "Gerar link de leitura")</button>
+            </div>
+        }
+        else
+        {
+            <div class="sn-comp-corpo">
+                <span class="sn-comp-ativo"><i></i> Link ativo</span>
+                <div class="sn-comp-url"><input readonly value="@Url(cc)" @onfocus="@(e => { })" /><button class="btn btn-pri" @onclick="() => CopiarLink(cc)"><Icone Nome="@(_copiado ? "check" : "copiar")" Tamanho="15" /> @(_copiado ? "Copiado" : "Copiar")</button></div>
+                <div class="sn-comp-pe">
+                    <a class="btn btn-sec" href="@Url(cc)" target="_blank" rel="noopener"><Icone Nome="olho" Tamanho="15" /> Ver como os outros veem</a>
+                    <span class="mola"></span>
+                    <button class="btn btn-sec" disabled="@_gerando" @onclick="() => GerarLink(cc, true)" title="O link atual para de funcionar">Gerar outro link</button>
+                    <button class="btn btn-sec sn-comp-off" @onclick="() => DesativarLink(cc)">Desativar</button>
+                </div>
+            </div>
+        }
+    </div>
+}
+
 @code {
     protected override string Chave => "smartnote";
+    Caderno? _comp;
+    bool _gerando, _copiado;
 
-    sealed class Caderno { public string Id = ""; public string Nome = ""; public string Cor = ""; public int Ordem; }
+    string Url(Caderno c) => Rotas.BaseUri + "?caderno=" + Uri.EscapeDataString(c.Link);
+
+    async Task GerarLink(Caderno c, bool trocar = false)
+    {
+        if (trocar && !await J.Pergunta("Gerar outro link", "O link atual vai parar de funcionar para quem já tem. Gerar um novo?")) return;
+        _gerando = true;
+        var r = await E.Conta.Chamar("POST", "sn/link", new JsonObject { ["caderno"] = c.Id });
+        _gerando = false;
+        if (!r.Ok) { await J.Erro("Compartilhar", r.Erro); return; }
+        c.Link = S(r.Json, "token");
+        _copiado = false;
+        await CopiarLink(c);
+        _ = E.Conta.Registrar("nota.link", true);
+    }
+
+    async Task CopiarLink(Caderno c) { _copiado = await E.Nav.Copiar(Url(c)); StateHasChanged(); }
+
+    async Task DesativarLink(Caderno c)
+    {
+        if (!await J.Pergunta("Desativar link", $"Quem tiver o link de “{c.Nome}” não vai mais conseguir abrir. Desativar?")) return;
+        var r = await E.Conta.Chamar("DELETE", "sn/link?caderno=" + Uri.EscapeDataString(c.Id));
+        if (!r.Ok) { await J.Erro("Compartilhar", r.Erro); return; }
+        c.Link = ""; _copiado = false;
+    }
+
+    sealed class Caderno { public string Id = ""; public string Nome = ""; public string Cor = ""; public int Ordem; public string Link = ""; }
     sealed class Pagina { public string Id = ""; public string Caderno = ""; public string Pai = ""; public string Titulo = ""; public int Ordem; public string CriadoEm = ""; public string AtualizadoEm = ""; }
 
     static readonly string[] Cores = { "#7C3AED", "#0EA5E9", "#10B981", "#F59E0B", "#EC4899", "#EF4444", "#14B8A6", "#6366F1" };
@@ -174,7 +241,7 @@
         _carregando = false;
         if (!r.Ok) { await J.Erro("Smart Note", "Não consegui abrir os seus cadernos: " + r.Erro); return; }
         foreach (var x in r.Json?["cadernos"] as JsonArray ?? new())
-            _cads.Add(new Caderno { Id = S(x, "id"), Nome = S(x, "nome"), Cor = S(x, "cor") is { Length: > 0 } c ? c : Cores[0], Ordem = I(x, "ordem") });
+            _cads.Add(new Caderno { Id = S(x, "id"), Nome = S(x, "nome"), Cor = S(x, "cor") is { Length: > 0 } c ? c : Cores[0], Ordem = I(x, "ordem"), Link = S(x, "link") });
         foreach (var x in r.Json?["paginas"] as JsonArray ?? new())
             _pags.Add(new Pagina { Id = S(x, "id"), Caderno = S(x, "caderno"), Pai = S(x, "pai"), Titulo = S(x, "titulo"), Ordem = I(x, "ordem"), CriadoEm = S(x, "criadoEm"), AtualizadoEm = S(x, "atualizadoEm") });
         var ult = await E.Nav.Ler("sn_ultima");

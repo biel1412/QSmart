@@ -50,6 +50,8 @@ public sealed class Navegador
     public ValueTask NotaGuardarSelecao(Microsoft.AspNetCore.Components.ElementReference el) => _js.InvokeVoidAsync("qsmart.nota.guardarSelecao", el);
     public ValueTask NotaImagens(Microsoft.AspNetCore.Components.ElementReference el, Microsoft.AspNetCore.Components.ElementReference input) => _js.InvokeVoidAsync("qsmart.nota.imagens", el, input);
     public ValueTask ColarImagens(Microsoft.AspNetCore.Components.ElementReference el, object refNet) => _js.InvokeVoidAsync("qsmart.colarImagens", el, refNet);
+    public ValueTask NotaVer(Microsoft.AspNetCore.Components.ElementReference el, string html) => _js.InvokeVoidAsync("qsmart.nota.ver", el, html);
+    public ValueTask TrocarUrl(string url, string? titulo = null) => _js.InvokeVoidAsync("qsmart.trocarUrl", url, titulo);
     public ValueTask Clicar(Microsoft.AspNetCore.Components.ElementReference el) => _js.InvokeVoidAsync("qsmart.clicar", el);
     public ValueTask<string> ReduzirImagem(byte[] dados, int max) => _js.InvokeAsync<string>("qsmart.reduzirImagem", dados, max);
     public ValueTask<RespostaHttp> GetH(string url, Dictionary<string, string>? cabecalhos = null, int ms = 25000) => _js.InvokeAsync<RespostaHttp>("qsmart.getH", url, cabecalhos ?? new(), ms);

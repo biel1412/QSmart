@@ -201,6 +201,26 @@ async function api(req, env, url) {
     return json({ token, expira, perfil: await perfil(env, u) });
   }
 
+  // ---------- Smart Note compartilhado: só leitura, sem login, por link ----------
+  if (rota === "publico/caderno" || rota === "publico/pagina") {
+    if (m !== "GET") return erro("Método inválido.", 405);
+    const t = (url.searchParams.get("t") || "").slice(0, 80);
+    const l = t.length >= 20 ? await env.DB.prepare("SELECT caderno_id, usuario_id FROM sn_links WHERE token = ?").bind(await sha256(t)).first() : null;
+    if (!l) return erro("Este link não existe mais ou foi desativado por quem compartilhou.", 404);
+    const c = await env.DB.prepare("SELECT nome, cor FROM sn_cadernos WHERE id = ? AND usuario_id = ?").bind(l.caderno_id, l.usuario_id).first();
+    if (!c) return erro("Este caderno não existe mais.", 404);
+    if (rota === "publico/pagina") {
+      const x = await env.DB.prepare("SELECT conteudo FROM sn_paginas WHERE id = ? AND caderno_id = ? AND usuario_id = ?").bind(url.searchParams.get("id") || "", l.caderno_id, l.usuario_id).first();
+      if (!x) return erro("Página não encontrada.", 404);
+      return json({ conteudo: await decifrar(env, x.conteudo) });
+    }
+    const a = await env.DB.prepare("SELECT nome, sobrenome FROM usuarios WHERE id = ?").bind(l.usuario_id).first();
+    const p = await env.DB.prepare("SELECT id, pai_id, titulo, ordem, criado_em, atualizado_em FROM sn_paginas WHERE caderno_id = ? AND usuario_id = ? ORDER BY ordem, criado_em").bind(l.caderno_id, l.usuario_id).all();
+    const paginas = [];
+    for (const x of p.results || []) paginas.push({ id: x.id, pai: x.pai_id || "", titulo: await decifrar(env, x.titulo), ordem: x.ordem, criadoEm: x.criado_em, atualizadoEm: x.atualizado_em });
+    return json({ nome: await decifrar(env, c.nome), cor: c.cor || "", autor: a ? `${a.nome} ${a.sobrenome}`.trim() : "", paginas });
+  }
+
   // ---------- daqui para baixo, só logado ----------
   const u = await logado(req, env);
   if (!u) return erro("Sessão expirada. Entre de novo.", 401, { motivo: "sessao" });
@@ -283,6 +303,7 @@ async function api(req, env, url) {
         env.DB.prepare("DELETE FROM dias WHERE usuario_id = ?").bind(b.id),
         env.DB.prepare("DELETE FROM sn_paginas WHERE usuario_id = ?").bind(b.id),
         env.DB.prepare("DELETE FROM sn_cadernos WHERE usuario_id = ?").bind(b.id),
+        env.DB.prepare("DELETE FROM sn_links WHERE usuario_id = ?").bind(b.id),
         env.DB.prepare("DELETE FROM notificacoes WHERE usuario_id = ? OR de_id = ?").bind(b.id, b.id),
         env.DB.prepare("DELETE FROM feed_curtidas WHERE usuario_id = ?").bind(b.id),
         env.DB.prepare("DELETE FROM feed_comentarios WHERE usuario_id = ?").bind(b.id),
@@ -381,10 +402,10 @@ async function api(req, env, url) {
   if (rota.startsWith("sn")) {
     const MAX_PAG = 1450000;
     if (rota === "sn" && m === "GET") {
-      const c = await env.DB.prepare("SELECT id, nome, cor, ordem FROM sn_cadernos WHERE usuario_id = ? ORDER BY ordem, criado_em").bind(u.id).all();
+      const c = await env.DB.prepare("SELECT c.id, c.nome, c.cor, c.ordem, (SELECT l.token_cifrado FROM sn_links l WHERE l.caderno_id = c.id LIMIT 1) AS link FROM sn_cadernos c WHERE c.usuario_id = ? ORDER BY c.ordem, c.criado_em").bind(u.id).all();
       const p = await env.DB.prepare("SELECT id, caderno_id, pai_id, titulo, ordem, criado_em, atualizado_em, length(conteudo) AS tam FROM sn_paginas WHERE usuario_id = ? ORDER BY ordem, criado_em").bind(u.id).all();
       const cadernos = [], paginas = [];
-      for (const x of c.results || []) cadernos.push({ id: x.id, nome: await decifrar(env, x.nome), cor: x.cor || "", ordem: x.ordem });
+      for (const x of c.results || []) cadernos.push({ id: x.id, nome: await decifrar(env, x.nome), cor: x.cor || "", ordem: x.ordem, link: x.link ? await decifrar(env, x.link) : "" });
       for (const x of p.results || []) paginas.push({ id: x.id, caderno: x.caderno_id, pai: x.pai_id || "", titulo: await decifrar(env, x.titulo), ordem: x.ordem, criadoEm: x.criado_em, atualizadoEm: x.atualizado_em, tam: x.tam || 0 });
       return json({ cadernos, paginas });
     }
@@ -403,10 +424,28 @@ async function api(req, env, url) {
         .bind(id, u.id, await cifrar(env, nome), String(b.cor || "").slice(0, 20), Number(b.ordem) || 0, agora()).run();
       return json({ ok: true });
     }
+    if (rota === "sn/link" && m === "POST") {
+      // gera um link novo (o antigo deixa de funcionar); só o hash fica no banco
+      const b = await corpo(req); const cad = String(b.caderno || "");
+      const c = await env.DB.prepare("SELECT id FROM sn_cadernos WHERE id = ? AND usuario_id = ?").bind(cad, u.id).first();
+      if (!c) return erro("Caderno não encontrado.", 404);
+      const bytes = crypto.getRandomValues(new Uint8Array(24));
+      const token = b64(bytes).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+      await env.DB.batch([
+        env.DB.prepare("DELETE FROM sn_links WHERE caderno_id = ? AND usuario_id = ?").bind(cad, u.id),
+        env.DB.prepare("INSERT INTO sn_links (token, caderno_id, usuario_id, criado_em, token_cifrado) VALUES (?, ?, ?, ?, ?)").bind(await sha256(token), cad, u.id, agora(), await cifrar(env, token)),
+      ]);
+      return json({ ok: true, token });
+    }
+    if (rota === "sn/link" && m === "DELETE") {
+      await env.DB.prepare("DELETE FROM sn_links WHERE caderno_id = ? AND usuario_id = ?").bind(url.searchParams.get("caderno") || "", u.id).run();
+      return json({ ok: true });
+    }
     if (rota === "sn/caderno" && m === "DELETE") {
       const id = url.searchParams.get("id") || "";
       await env.DB.batch([
         env.DB.prepare("DELETE FROM sn_paginas WHERE caderno_id = ? AND usuario_id = ?").bind(id, u.id),
+        env.DB.prepare("DELETE FROM sn_links WHERE caderno_id = ? AND usuario_id = ?").bind(id, u.id),
         env.DB.prepare("DELETE FROM sn_cadernos WHERE id = ? AND usuario_id = ?").bind(id, u.id),
       ]);
       return json({ ok: true });

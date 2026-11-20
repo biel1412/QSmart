@@ -467,5 +467,7 @@
     el.addEventListener("paste", el._colar);
   };
   const clicar = el => { if (el) el.click(); };
-  window.qsmart = { kv, cofre, rolar, ia, get, getH, req, reduzirImagem, imagem, nota, colarImagens, clicar, pasta, baixar, abrir, copiar, abrirUrl, pdfPaginas, pdfJuntar, pdfLinhas, tema, aoOcultar, focar, rolarLinha, pronto };
+  nota.ver = (el, html) => { if (el) { el.contentEditable = "false"; el.innerHTML = limpar(html) || ""; } };
+  const trocarUrl = (u, titulo) => { try { history.replaceState(history.state, "", u); } catch { } if (titulo) document.title = titulo; };
+  window.qsmart = { kv, cofre, rolar, ia, get, getH, req, reduzirImagem, imagem, nota, colarImagens, clicar, trocarUrl, pasta, baixar, abrir, copiar, abrirUrl, pdfPaginas, pdfJuntar, pdfLinhas, tema, aoOcultar, focar, rolarLinha, pronto };
 })();

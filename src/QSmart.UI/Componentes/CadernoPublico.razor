@@ -1,0 +1,133 @@
+@inject Estado E
+@inject NavigationManager Rotas
+@using System.Text.Json.Nodes
+
+<div class="cp" style="--c:@(_cor == "" ? "#7C3AED" : _cor)">
+    <header class="cp-topo">
+        <span class="cp-logo"><Logo Tamanho="34" /></span>
+        <div class="cp-tit">
+            <small>Smart Note · QSmart</small>
+            <b>@(_nome == "" ? "Caderno compartilhado" : _nome)</b>
+        </div>
+        <span class="cp-selo"><Icone Nome="olho" Tamanho="14" /> Somente leitura</span>
+        @if (_autor != "") { <span class="cp-autor">compartilhado por <b>@_autor</b></span> }
+        <span class="mola"></span>
+        <span class="cp-fav" title="Para voltar depois, salve esta página nos favoritos do navegador"><Icone Nome="estrela" Tamanho="15" /> Ctrl+D para favoritar</span>
+        <button class="cp-menu-bt" @onclick="() => _lista = !_lista" title="Páginas"><Icone Nome="menu" Tamanho="18" /></button>
+    </header>
+
+    @if (_erro != null)
+    {
+        <div class="cp-erro">
+            <span class="cp-erro-ic"><Icone Nome="cadeado" Tamanho="34" /></span>
+            <h2>Não foi possível abrir o caderno</h2>
+            <p class="muted">@_erro</p>
+        </div>
+    }
+    else
+    {
+        <div class="cp-corpo @(_lista ? "lista-aberta" : "")">
+            <nav class="cp-pags">
+                <div class="sn-busca"><Icone Nome="busca" Tamanho="14" /><input placeholder="Buscar páginas…" @bind="_busca" @bind:event="oninput" /></div>
+                @if (_carregando) { <p class="muted pequeno sn-pad"><span class="ia-spin pequeno"></span> Abrindo…</p> }
+                @foreach (var (p, nivel) in Arvore())
+                {
+                    <button class="cp-pag @(p.Id == _pag ? "on" : "")" style="--n:@nivel" @onclick="() => Abrir(p.Id)">
+                        @(p.Titulo == "" ? "Sem título" : p.Titulo)
+                    </button>
+                }
+                @if (!_carregando && _pags.Count == 0) { <p class="muted pequeno sn-pad">Este caderno ainda não tem páginas.</p> }
+            </nav>
+            <main class="cp-folha">
+                @if (Pag is { } pg)
+                {
+                    <div class="cp-trilha">@foreach (var t in Caminho(pg)) { <span>@t</span><Icone Nome="direita" Tamanho="11" /> }</div>
+                    <h1 class="cp-h1">@(pg.Titulo == "" ? "Sem título" : pg.Titulo)</h1>
+                    <div class="sn-meta">Atualizada em @Data(pg.AtualizadoEm)</div>
+                    @if (_abrindo) { <p class="muted"><span class="ia-spin pequeno"></span> Abrindo a página…</p> }
+                    <div @key="pg.Id" class="sn-texto cp-texto @(_abrindo ? "oculto" : "")" @ref="_el"></div>
+                    var filhas = _pags.Where(x => x.Pai == pg.Id).OrderBy(x => x.Ordem).ToList();
+                    @if (filhas.Count > 0)
+                    {
+                        <div class="cp-filhas"><b>Subpáginas</b>
+                            @foreach (var f in filhas) { <button @onclick="() => Abrir(f.Id)"><Icone Nome="subpagina" Tamanho="15" /> @(f.Titulo == "" ? "Sem título" : f.Titulo)</button> }
+                        </div>
+                    }
+                }
+            </main>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public string Token { get; set; } = "";
+
+    sealed class Pg { public string Id = ""; public string Pai = ""; public string Titulo = ""; public int Ordem; public string AtualizadoEm = ""; public string CriadoEm = ""; }
+    readonly List<Pg> _pags = new();
+    string _nome = "", _cor = "", _autor = "", _busca = "", _html = "";
+    string? _erro, _pag, _mostrar;
+    bool _carregando = true, _abrindo, _lista;
+    ElementReference _el;
+
+    Pg? Pag => _pags.FirstOrDefault(p => p.Id == _pag);
+    static string S(JsonNode? n, string k) => n?[k] is JsonValue v && v.TryGetValue<string>(out var s) ? s : "";
+    static int I(JsonNode? n, string k) => n?[k] is JsonValue v && v.TryGetValue<int>(out var i) ? i : 0;
+    string T => Uri.EscapeDataString(Token);
+
+    protected override async Task OnInitializedAsync()
+    {
+        var r = await E.Conta.Chamar("GET", "publico/caderno?t=" + T);
+        _carregando = false;
+        if (!r.Ok || r.Json == null) { _erro = r.Erro; return; }
+        _nome = S(r.Json, "nome"); _cor = S(r.Json, "cor"); _autor = S(r.Json, "autor");
+        foreach (var x in r.Json["paginas"] as JsonArray ?? new())
+            _pags.Add(new Pg { Id = S(x, "id"), Pai = S(x, "pai"), Titulo = S(x, "titulo"), Ordem = I(x, "ordem"), AtualizadoEm = S(x, "atualizadoEm"), CriadoEm = S(x, "criadoEm") });
+        var q = new Uri(Rotas.Uri).Query.TrimStart('?').Split('&').Select(x => x.Split('=', 2)).FirstOrDefault(x => x.Length == 2 && x[0] == "p");
+        var ini = q != null && _pags.Any(p => p.Id == q[1]) ? q[1] : Arvore().Select(x => x.p.Id).FirstOrDefault();
+        if (ini != null) await Abrir(ini);
+        else await E.Nav.TrocarUrl(Rotas.Uri, _nome + " · Smart Note");
+    }
+
+    protected override async Task OnAfterRenderAsync(bool primeira)
+    {
+        if (_mostrar != null && !_abrindo && _mostrar == _pag) { _mostrar = null; await E.Nav.NotaVer(_el, _html); }
+    }
+
+    async Task Abrir(string id)
+    {
+        _pag = id; _abrindo = true; _lista = false; StateHasChanged();
+        var r = await E.Conta.Chamar("GET", $"publico/pagina?t={T}&id={Uri.EscapeDataString(id)}");
+        if (_pag != id) return;
+        _html = r.Ok ? S(r.Json, "conteudo") : $"<p>{System.Net.WebUtility.HtmlEncode(r.Erro)}</p>";
+        _abrindo = false; _mostrar = id;
+        var baseUrl = Rotas.Uri.Split('?')[0];
+        await E.Nav.TrocarUrl($"{baseUrl}?caderno={T}&p={Uri.EscapeDataString(id)}", $"{(Pag?.Titulo is { Length: > 0 } t ? t + " · " : "")}{_nome} · Smart Note");
+        StateHasChanged();
+    }
+
+    List<(Pg p, int nivel)> Arvore()
+    {
+        var l = new List<(Pg, int)>();
+        var ids = _pags.Select(p => p.Id).ToHashSet();
+        var busca = QSmart.Core.Coordenacao.Ferias.Norm(_busca);
+        if (busca != "") { foreach (var p in _pags.Where(p => QSmart.Core.Coordenacao.Ferias.Norm(p.Titulo).Contains(busca)).OrderBy(p => p.Titulo)) l.Add((p, 0)); return l; }
+        void Anda(string pai, int n)
+        {
+            foreach (var p in _pags.Where(p => p.Pai == pai || (pai == "" && p.Pai != "" && !ids.Contains(p.Pai))).OrderBy(p => p.Ordem).ThenBy(p => p.CriadoEm))
+            { l.Add((p, n)); if (n < 12) Anda(p.Id, n + 1); }
+        }
+        Anda("", 0);
+        return l;
+    }
+
+    IEnumerable<string> Caminho(Pg p)
+    {
+        var l = new List<string>();
+        var x = _pags.FirstOrDefault(y => y.Id == p.Pai); int g = 0;
+        while (x != null && g++ < 20) { l.Insert(0, x.Titulo == "" ? "Sem título" : x.Titulo); x = _pags.FirstOrDefault(y => y.Id == x.Pai); }
+        l.Insert(0, _nome);
+        return l;
+    }
+
+    static string Data(string iso) => DateTime.TryParse(iso, null, System.Globalization.DateTimeStyles.RoundtripKind, out var d) ? d.ToLocalTime().ToString("dd/MM/yyyy 'às' HH:mm") : "";
+}
