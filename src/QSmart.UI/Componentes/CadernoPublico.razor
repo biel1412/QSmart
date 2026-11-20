@@ -2,7 +2,7 @@
 @inject NavigationManager Rotas
 @using System.Text.Json.Nodes
 
-<div class="cp" style="--c:@(_cor == "" ? "#7C3AED" : _cor)">
+<div class="cp" style="--c:@CorAtual">
     <header class="cp-topo">
         <span class="cp-logo"><Logo Tamanho="34" /></span>
         <div class="cp-tit">
@@ -30,13 +30,27 @@
             <nav class="cp-pags">
                 <div class="sn-busca"><Icone Nome="busca" Tamanho="14" /><input placeholder="Buscar páginas…" @bind="_busca" @bind:event="oninput" /></div>
                 @if (_carregando) { <p class="muted pequeno sn-pad"><span class="ia-spin pequeno"></span> Abrindo…</p> }
-                @foreach (var (p, nivel) in Arvore())
+                @foreach (var c in _cads)
                 {
-                    <button class="cp-pag @(p.Id == _pag ? "on" : "")" style="--n:@nivel" @onclick="() => Abrir(p.Id)">
-                        @(p.Titulo == "" ? "Sem título" : p.Titulo)
-                    </button>
+                    var arv = Arvore(c.Id);
+                    if (_tudo && _busca != "" && arv.Count == 0) { continue; }
+                    @if (_tudo)
+                    {
+                        <button class="cp-cad @(_fechados.Contains(c.Id) ? "fechado" : "")" style="--c:@Cor(c.Cor)" @onclick="() => DobrarCad(c.Id)">
+                            <span class="cp-cad-ic"><Icone Nome="caderno" Tamanho="14" /></span><b>@c.Nome</b><small>@arv.Count</small><Icone Nome="direita" Tamanho="12" />
+                        </button>
+                    }
+                    @if (!_tudo || !_fechados.Contains(c.Id) || _busca != "")
+                    {
+                        @foreach (var (p, nivel) in arv)
+                        {
+                            <button class="cp-pag @(p.Id == _pag ? "on" : "")" style="--n:@(nivel + (_tudo ? 1 : 0));--c:@Cor(c.Cor)" @onclick="() => Abrir(p.Id)">
+                                @(p.Titulo == "" ? "Sem título" : p.Titulo)
+                            </button>
+                        }
+                    }
                 }
-                @if (!_carregando && _pags.Count == 0) { <p class="muted pequeno sn-pad">Este caderno ainda não tem páginas.</p> }
+                @if (!_carregando && _pags.Count == 0) { <p class="muted pequeno sn-pad">@(_tudo ? "Ainda não há páginas para mostrar." : "Este caderno ainda não tem páginas.")</p> }
             </nav>
             <main class="cp-folha">
                 @if (Pag is { } pg)
@@ -62,7 +76,14 @@
 @code {
     [Parameter] public string Token { get; set; } = "";
 
-    sealed class Pg { public string Id = ""; public string Pai = ""; public string Titulo = ""; public int Ordem; public string AtualizadoEm = ""; public string CriadoEm = ""; }
+    sealed record Cad(string Id, string Nome, string Cor);
+    readonly List<Cad> _cads = new();
+    readonly HashSet<string> _fechados = new();
+    bool _tudo;
+    static string Cor(string c) => c == "" ? "#7C3AED" : c;
+    string CorAtual => Cor(Pag is { } p ? _cads.FirstOrDefault(c => c.Id == p.Caderno)?.Cor ?? _cor : _cor);
+    void DobrarCad(string id) { if (!_fechados.Remove(id)) _fechados.Add(id); }
+    sealed class Pg { public string Caderno = ""; public string Id = ""; public string Pai = ""; public string Titulo = ""; public int Ordem; public string AtualizadoEm = ""; public string CriadoEm = ""; }
     readonly List<Pg> _pags = new();
     string _nome = "", _cor = "", _autor = "", _busca = "", _html = "";
     string? _erro, _pag, _mostrar;
@@ -80,10 +101,12 @@
         _carregando = false;
         if (!r.Ok || r.Json == null) { _erro = r.Erro; return; }
         _nome = S(r.Json, "nome"); _cor = S(r.Json, "cor"); _autor = S(r.Json, "autor");
+        _tudo = r.Json["tudo"]?.GetValue<bool>() == true;
+        foreach (var x in r.Json["cadernos"] as JsonArray ?? new()) _cads.Add(new Cad(S(x, "id"), S(x, "nome"), S(x, "cor")));
         foreach (var x in r.Json["paginas"] as JsonArray ?? new())
-            _pags.Add(new Pg { Id = S(x, "id"), Pai = S(x, "pai"), Titulo = S(x, "titulo"), Ordem = I(x, "ordem"), AtualizadoEm = S(x, "atualizadoEm"), CriadoEm = S(x, "criadoEm") });
+            _pags.Add(new Pg { Caderno = S(x, "caderno"), Id = S(x, "id"), Pai = S(x, "pai"), Titulo = S(x, "titulo"), Ordem = I(x, "ordem"), AtualizadoEm = S(x, "atualizadoEm"), CriadoEm = S(x, "criadoEm") });
         var q = new Uri(Rotas.Uri).Query.TrimStart('?').Split('&').Select(x => x.Split('=', 2)).FirstOrDefault(x => x.Length == 2 && x[0] == "p");
-        var ini = q != null && _pags.Any(p => p.Id == q[1]) ? q[1] : Arvore().Select(x => x.p.Id).FirstOrDefault();
+        var ini = q != null && _pags.Any(p => p.Id == q[1]) ? q[1] : _cads.SelectMany(c => Arvore(c.Id)).Select(x => x.p.Id).FirstOrDefault();
         if (ini != null) await Abrir(ini);
         else await E.Nav.TrocarUrl(Rotas.Uri, _nome + " · Smart Note");
     }
@@ -101,19 +124,20 @@
         _html = r.Ok ? S(r.Json, "conteudo") : $"<p>{System.Net.WebUtility.HtmlEncode(r.Erro)}</p>";
         _abrindo = false; _mostrar = id;
         var baseUrl = Rotas.Uri.Split('?')[0];
-        await E.Nav.TrocarUrl($"{baseUrl}?caderno={T}&p={Uri.EscapeDataString(id)}", $"{(Pag?.Titulo is { Length: > 0 } t ? t + " · " : "")}{_nome} · Smart Note");
+        await E.Nav.TrocarUrl($"{baseUrl}?caderno={T}&p={Uri.EscapeDataString(id)}", $"{(Pag?.Titulo is { Length: > 0 } t ? t + " · " : "")}{_nome}{(_tudo ? "" : " · Smart Note")}");
         StateHasChanged();
     }
 
-    List<(Pg p, int nivel)> Arvore()
+    List<(Pg p, int nivel)> Arvore(string cad)
     {
         var l = new List<(Pg, int)>();
-        var ids = _pags.Select(p => p.Id).ToHashSet();
+        var doCad = _pags.Where(p => p.Caderno == cad || (cad == "" )).ToList();
+        var ids = doCad.Select(p => p.Id).ToHashSet();
         var busca = QSmart.Core.Coordenacao.Ferias.Norm(_busca);
-        if (busca != "") { foreach (var p in _pags.Where(p => QSmart.Core.Coordenacao.Ferias.Norm(p.Titulo).Contains(busca)).OrderBy(p => p.Titulo)) l.Add((p, 0)); return l; }
+        if (busca != "") { foreach (var p in doCad.Where(p => QSmart.Core.Coordenacao.Ferias.Norm(p.Titulo).Contains(busca)).OrderBy(p => p.Titulo)) l.Add((p, 0)); return l; }
         void Anda(string pai, int n)
         {
-            foreach (var p in _pags.Where(p => p.Pai == pai || (pai == "" && p.Pai != "" && !ids.Contains(p.Pai))).OrderBy(p => p.Ordem).ThenBy(p => p.CriadoEm))
+            foreach (var p in doCad.Where(p => p.Pai == pai || (pai == "" && p.Pai != "" && !ids.Contains(p.Pai))).OrderBy(p => p.Ordem).ThenBy(p => p.CriadoEm))
             { l.Add((p, n)); if (n < 12) Anda(p.Id, n + 1); }
         }
         Anda("", 0);
@@ -125,7 +149,7 @@
         var l = new List<string>();
         var x = _pags.FirstOrDefault(y => y.Id == p.Pai); int g = 0;
         while (x != null && g++ < 20) { l.Insert(0, x.Titulo == "" ? "Sem título" : x.Titulo); x = _pags.FirstOrDefault(y => y.Id == x.Pai); }
-        l.Insert(0, _nome);
+        l.Insert(0, _cads.FirstOrDefault(c => c.Id == p.Caderno)?.Nome ?? _nome);
         return l;
     }
 

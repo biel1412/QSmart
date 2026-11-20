@@ -252,18 +252,27 @@ async function api(req, env, url) {
     const t = (url.searchParams.get("t") || "").slice(0, 80);
     const l = t.length >= 20 ? await env.DB.prepare("SELECT caderno_id, usuario_id FROM sn_links WHERE token = ?").bind(await sha256(t)).first() : null;
     if (!l) return erro("Este link não existe mais ou foi desativado por quem compartilhou.", 404);
-    const c = await env.DB.prepare("SELECT nome, cor FROM sn_cadernos WHERE id = ? AND usuario_id = ?").bind(l.caderno_id, l.usuario_id).first();
-    if (!c) return erro("Este caderno não existe mais.", 404);
+    const tudo = l.caderno_id === "*";   // o Smart Note inteiro de quem compartilhou
+    const cr = tudo
+      ? await env.DB.prepare("SELECT id, nome, cor FROM sn_cadernos WHERE usuario_id = ? ORDER BY ordem, criado_em").bind(l.usuario_id).all()
+      : await env.DB.prepare("SELECT id, nome, cor FROM sn_cadernos WHERE id = ? AND usuario_id = ?").bind(l.caderno_id, l.usuario_id).all();
+    const cads = cr.results || [];
+    if (!tudo && !cads.length) return erro("Este caderno não existe mais.", 404);
+    const ids = cads.map(c => c.id);
     if (rota === "publico/pagina") {
-      const x = await env.DB.prepare("SELECT conteudo FROM sn_paginas WHERE id = ? AND caderno_id = ? AND usuario_id = ?").bind(url.searchParams.get("id") || "", l.caderno_id, l.usuario_id).first();
-      if (!x) return erro("Página não encontrada.", 404);
+      const x = await env.DB.prepare("SELECT caderno_id, conteudo FROM sn_paginas WHERE id = ? AND usuario_id = ?").bind(url.searchParams.get("id") || "", l.usuario_id).first();
+      if (!x || !ids.includes(x.caderno_id)) return erro("Página não encontrada.", 404);
       return json({ conteudo: await decifrar(env, x.conteudo) });
     }
     const a = await env.DB.prepare("SELECT nome, sobrenome FROM usuarios WHERE id = ?").bind(l.usuario_id).first();
-    const p = await env.DB.prepare("SELECT id, pai_id, titulo, ordem, criado_em, atualizado_em FROM sn_paginas WHERE caderno_id = ? AND usuario_id = ? ORDER BY ordem, criado_em").bind(l.caderno_id, l.usuario_id).all();
-    const paginas = [];
-    for (const x of p.results || []) paginas.push({ id: x.id, pai: x.pai_id || "", titulo: await decifrar(env, x.titulo), ordem: x.ordem, criadoEm: x.criado_em, atualizadoEm: x.atualizado_em });
-    return json({ nome: await decifrar(env, c.nome), cor: c.cor || "", autor: a ? `${a.nome} ${a.sobrenome}`.trim() : "", paginas });
+    const cadernos = [], paginas = [];
+    for (const c of cads) cadernos.push({ id: c.id, nome: await decifrar(env, c.nome), cor: c.cor || "" });
+    if (ids.length) {
+      const p = await env.DB.prepare(`SELECT id, caderno_id, pai_id, titulo, ordem, criado_em, atualizado_em FROM sn_paginas WHERE usuario_id = ? AND caderno_id IN (${ids.map(() => "?").join(",")}) ORDER BY ordem, criado_em`).bind(l.usuario_id, ...ids).all();
+      for (const x of p.results || []) paginas.push({ id: x.id, caderno: x.caderno_id, pai: x.pai_id || "", titulo: await decifrar(env, x.titulo), ordem: x.ordem, criadoEm: x.criado_em, atualizadoEm: x.atualizado_em });
+    }
+    const autor = a ? `${a.nome} ${a.sobrenome}`.trim() : "";
+    return json({ tudo, nome: tudo ? `Smart Note de ${autor || "QSmart"}` : cadernos[0].nome, cor: tudo ? "" : cadernos[0].cor, autor, cadernos, paginas });
   }
 
   // ---------- daqui para baixo, só logado ----------
@@ -481,7 +490,8 @@ async function api(req, env, url) {
             por: x.atualizado_por && x.atualizado_por !== u.id ? nomes[x.atualizado_por] : "", tam: x.tam || 0 });
         }
       }
-      return json({ cadernos, paginas });
+      const lg = await env.DB.prepare("SELECT token_cifrado FROM sn_links WHERE caderno_id = '*' AND usuario_id = ?").bind(u.id).first();
+      return json({ cadernos, paginas, linkGeral: lg ? await decifrar(env, lg.token_cifrado) : "" });
     }
     if (rota === "sn/pagina" && m === "GET") {
       const x = await env.DB.prepare("SELECT caderno_id, conteudo, versao, atualizado_em, atualizado_por FROM sn_paginas WHERE id = ?").bind(url.searchParams.get("id") || "").first();
@@ -501,7 +511,7 @@ async function api(req, env, url) {
     if (rota === "sn/link" && m === "POST") {
       // gera um link novo (o antigo deixa de funcionar); só o hash fica no banco
       const b = await corpo(req); const cad = String(b.caderno || "");
-      const c = await env.DB.prepare("SELECT id FROM sn_cadernos WHERE id = ? AND usuario_id = ?").bind(cad, u.id).first();
+      const c = cad === "*" ? { id: "*" } : await env.DB.prepare("SELECT id FROM sn_cadernos WHERE id = ? AND usuario_id = ?").bind(cad, u.id).first();
       if (!c) return erro("Só quem criou o caderno pode gerar o link.", 403);
       const bytes = crypto.getRandomValues(new Uint8Array(24));
       const token = b64(bytes).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");

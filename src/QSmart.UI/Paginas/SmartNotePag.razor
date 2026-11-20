@@ -8,7 +8,10 @@
     <aside class="sn-cads">
         <div class="sn-cab">
             <span class="sn-marca"><Icone Nome="caderno" Tamanho="18" /> Smart Note</span>
-            <button class="sn-mais" title="Novo caderno" @onclick="NovoCaderno"><Icone Nome="mais" Tamanho="16" /></button>
+            <span class="sn-cab-bts">
+                <button class="sn-mais @(_linkGeral != "" ? "pub" : "")" title="Compartilhar todo o Smart Note por link (só leitura)" @onclick="AbrirTudo"><Icone Nome="link" Tamanho="16" /></button>
+                <button class="sn-mais" title="Novo caderno" @onclick="NovoCaderno"><Icone Nome="mais" Tamanho="16" /></button>
+            </span>
         </div>
         @if (_carregando) { <p class="muted pequeno sn-pad"><span class="ia-spin pequeno"></span> Abrindo…</p> }
         @foreach (var grupo in new[] { true, false })
@@ -263,8 +266,63 @@
     </div>
 }
 
+@if (_compTudo)
+{
+    <div class="sn-comp-fundo" @onclick="() => _compTudo = false"></div>
+    <div class="sn-comp" style="--c:#7C3AED">
+        <div class="sn-comp-cab">
+            <span class="sn-cad-ic"><Icone Nome="link" Tamanho="16" /></span>
+            <div><b>Compartilhar todo o Smart Note</b>
+                <small>Um link só, com todos os seus cadernos (@_cads.Count(c => c.Meu)). Quem tiver o link lê no navegador, sem login, e não edita. Cadernos que você criar depois entram sozinhos.</small></div>
+            <button class="oo-x" @onclick="() => _compTudo = false" title="Fechar"><Icone Nome="x" Tamanho="18" /></button>
+        </div>
+        <div class="sn-comp-corpo">
+            @if (_cads.Any(c => !c.Meu)) { <p class="muted pequeno" style="margin:0"><Icone Nome="info" Tamanho="13" /> Os cadernos que outras pessoas compartilharam com você não entram: eles são delas.</p> }
+            @if (_linkGeral == "")
+            {
+                <button class="btn btn-pri" style="align-self:flex-start" disabled="@_gerando" @onclick="GerarLinkGeral"><Icone Nome="link" Tamanho="16" /> @(_gerando ? "Gerando…" : "Gerar link do Smart Note inteiro")</button>
+            }
+            else
+            {
+                <span class="sn-comp-ativo"><i></i> Link ativo</span>
+                <div class="sn-comp-url"><input readonly value="@UrlGeral" /><button class="btn btn-pri" @onclick="CopiarGeral"><Icone Nome="@(_copiado ? "check" : "copiar")" Tamanho="15" /> @(_copiado ? "Copiado" : "Copiar")</button></div>
+                <div class="sn-comp-pe">
+                    <a class="btn btn-sec" href="@UrlGeral" target="_blank" rel="noopener"><Icone Nome="olho" Tamanho="15" /> Ver como os outros veem</a>
+                    <span class="mola"></span>
+                    <button class="btn btn-sec" disabled="@_gerando" @onclick="() => GerarLinkGeral(true)" title="O link atual para de funcionar">Gerar outro link</button>
+                    <button class="btn btn-sec sn-comp-off" @onclick="DesativarGeral">Desativar</button>
+                </div>
+            }
+        </div>
+    </div>
+}
+
 @code {
     protected override string Chave => "smartnote";
+    bool _compTudo;
+    string _linkGeral = "";
+    string UrlGeral => Rotas.BaseUri + "?caderno=" + Uri.EscapeDataString(_linkGeral);
+    void AbrirTudo() { _compTudo = true; _copiado = false; }
+    async Task GerarLinkGeral() => await GerarLinkGeral(false);
+    async Task GerarLinkGeral(bool trocar)
+    {
+        if (trocar && !await J.Pergunta("Gerar outro link", "O link atual do Smart Note inteiro vai parar de funcionar para quem já tem. Gerar um novo?")) return;
+        _gerando = true;
+        var r = await E.Conta.Chamar("POST", "sn/link", new JsonObject { ["caderno"] = "*" });
+        _gerando = false;
+        if (!r.Ok) { await J.Erro("Compartilhar", r.Erro); return; }
+        _linkGeral = S(r.Json, "token");
+        await CopiarGeral();
+        _ = E.Conta.Registrar("nota.link", true);
+    }
+    async Task CopiarGeral() { _copiado = await E.Nav.Copiar(UrlGeral); StateHasChanged(); }
+    async Task DesativarGeral()
+    {
+        if (!await J.Pergunta("Desativar link", "Quem tiver o link do seu Smart Note inteiro não vai mais conseguir abrir. Desativar?")) return;
+        var r = await E.Conta.Chamar("DELETE", "sn/link?caderno=*");
+        if (!r.Ok) { await J.Erro("Compartilhar", r.Erro); return; }
+        _linkGeral = ""; _copiado = false;
+    }
     Caderno? _comp;
     bool _gerando, _copiado, _carregandoMembros, _salvandoMembro;
     readonly Dictionary<string, int> _versoes = new();
@@ -412,6 +470,7 @@
     void LerLista(JsonNode? j)
     {
         _cads.Clear(); _pags.Clear();
+        _linkGeral = S(j, "linkGeral");
         foreach (var x in j?["cadernos"] as JsonArray ?? new())
             _cads.Add(new Caderno { Id = S(x, "id"), Nome = S(x, "nome"), Cor = S(x, "cor") is { Length: > 0 } c ? c : Cores[0], Ordem = I(x, "ordem"), Link = S(x, "link"), Papel = S(x, "papel") is { Length: > 0 } pp ? pp : "dono", Dono = S(x, "dono"), Membros = I(x, "membros") });
         foreach (var x in j?["paginas"] as JsonArray ?? new())
