@@ -206,7 +206,7 @@
 
     string _pergunta = "", _resposta = "";
     string? _erro, _filtro, _foco;
-    string? _chave => E.ChaveIA;
+    string? _chave => E.IAPronta ? "ok" : null;
     string _modelo => E.ModeloIA;
     bool _carregado, _analisando, _desatualizada;
     int _segundos;
@@ -245,16 +245,16 @@
             var agora = DateTime.Now;
             var mapa = new Dictionary<string, string>();
             var corpo = AnaliseIA.Pedido(_pergunta, resposta, agora, mapa, _modelo);
-            var r = await E.Nav.IA(AnaliseIA.Url, _chave, corpo);
+            var r = await E.ChamarIA(corpo);
             if (AnaliseIA.ErroDeFormato(r.Status, r.Texto))
-                r = await E.Nav.IA(AnaliseIA.Url, _chave, AnaliseIA.Pedido(_pergunta, resposta, agora, mapa, _modelo, comEsquema: false));
+                r = await E.ChamarIA(AnaliseIA.Pedido(_pergunta, resposta, agora, mapa, _modelo, comEsquema: false));
             if (r.Status != 200) { _erro = AnaliseIA.Erro(r.Status, r.Texto); return; }
             ResultadoIA res;
             try { res = AnaliseIA.Ler(r.Texto, resposta, mapa, _modelo); }
             catch
             {
                 // uma segunda tentativa no modo JSON simples
-                var r2 = await E.Nav.IA(AnaliseIA.Url, _chave, AnaliseIA.Pedido(_pergunta, resposta, agora, mapa, _modelo, comEsquema: false));
+                var r2 = await E.ChamarIA(AnaliseIA.Pedido(_pergunta, resposta, agora, mapa, _modelo, comEsquema: false));
                 if (r2.Status != 200) { _erro = AnaliseIA.Erro(r2.Status, r2.Texto); return; }
                 res = AnaliseIA.Ler(r2.Texto, resposta, mapa, _modelo);
             }

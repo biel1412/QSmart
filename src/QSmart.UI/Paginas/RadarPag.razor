@@ -132,7 +132,7 @@
                 </div>
             </div>
 
-            @if (E.ChaveIA != null) { @Parecer() }
+            @if (E.IAPronta) { @Parecer() }
 
             <div class="rx-g2">
                 <div class="rx-card">
@@ -267,7 +267,7 @@
                 </div>
             </div>
 
-            @if (E.ChaveIA != null) { @Parecer() }
+            @if (E.IAPronta) { @Parecer() }
 
             <div class="rx-g3">
                 <div class="rx-card">
@@ -477,7 +477,7 @@
         await Task.WhenAll(Tcu(emp, seq), PortalPJ(emp, seq), BancoCentral(emp, seq), Diarios(emp, seq), DominioRdap(emp, seq), Mapa(emp, seq), Ibge(emp, seq));
         if (seq != _seq) return;
         StateHasChanged();
-        if (E.ChaveIA != null) await GerarParecer();
+        if (E.IAPronta) await GerarParecer();
     }
 
     List<Checagem> ChecagensIniciaisPJ(Empresa e)
@@ -716,7 +716,7 @@
             await Task.WhenAll(Qgi(seq), Ligadas(seq, null));
         }
         finally { if (seq == _seq) { _buscando = false; StateHasChanged(); } }
-        if (seq == _seq && E.ChaveIA != null) await GerarParecer();
+        if (seq == _seq && E.IAPronta) await GerarParecer();
     }
 
     List<Checagem> ChecagensIniciaisPF() => new()
@@ -827,7 +827,7 @@
 
     async Task GerarParecer()
     {
-        if (E.ChaveIA == null) return;
+        if (!E.IAPronta) return;
         var seq = _seq;
         _parecerRodando = true; _parecerErro = null; StateHasChanged();
         try
@@ -835,7 +835,7 @@
             var fatos = _modo == "cnpj" && _emp != null
                 ? RadarIA.FatosPJ(_emp, _checks, DateOnly.FromDateTime(DateTime.Today))
                 : RadarIA.FatosPF(_finalidadeUsada, _checks.Concat(ExtrasPF()), _ligadas.Count);
-            var r = await E.Nav.IA(AnaliseIA.Url, E.ChaveIA, RadarIA.Pedido(fatos, E.ModeloIA));
+            var r = await E.ChamarIA(RadarIA.Pedido(fatos, E.ModeloIA));
             if (seq != _seq) return;
             if (r.Status != 200) { _parecerErro = AnaliseIA.Erro(r.Status, r.Texto); return; }
             _parecer = RadarIA.Ler(r.Texto);
@@ -897,13 +897,13 @@
             <span class="rx-ow"><MrSmartLogo /></span>
             <div class="rx-mr-txt">
                 <b>@(_modo == "cnpj" ? "Parecer 360 do Mr. Smart" : "Parecer do Mr. Smart")</b>
-                @if (E.ChaveIA == null) { <p class="muted">Para ver o parecer, coloque a sua chave do Groq em <button class="rx-link" @onclick="AbrirConfig">Configurações › Modo desenvolvedor › Central de chaves de IA</button>. O resto do Radar funciona sem ela.</p> }
+                @if (!E.IAPronta) { <p class="muted">Para ver o parecer, coloque a sua chave do Groq em <button class="rx-link" @onclick="AbrirConfig">Configurações › Modo desenvolvedor › Central de chaves de IA</button>. O resto do Radar funciona sem ela.</p> }
                 else if (_parecerRodando) { <p class="muted"><span class="ia-spin pequeno"></span> O Mr. Smart está lendo as checagens…</p> }
                 else if (_parecerErro != null) { <p class="txt-r">@_parecerErro</p> }
                 else if (_parecer != null) { <p>@_parecer</p> }
                 else { <p class="muted">O parecer sai quando as checagens terminarem.</p> }
             </div>
-            @if (E.ChaveIA != null && !_parecerRodando && (_parecer != null || _parecerErro != null))
+            @if (E.IAPronta && !_parecerRodando && (_parecer != null || _parecerErro != null))
             {
                 <button class="btn btn-sec rx-mini" @onclick="GerarParecer" title="Pede um novo parecer"><Icone Nome="faisca" Tamanho="14" /> Refazer</button>
             }
@@ -945,7 +945,7 @@
     {
         await E.Janelas.Configuracoes();
         await E.IAConfigurada();
-        if (E.ChaveIA != null && (_emp != null || _cpfFeito)) await GerarParecer();
+        if (E.IAPronta && (_emp != null || _cpfFeito)) await GerarParecer();
         else StateHasChanged();
     }
 

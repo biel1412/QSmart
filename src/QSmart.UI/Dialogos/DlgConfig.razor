@@ -100,10 +100,10 @@
                     <div class="dev-chave">
                         <span class="dev-prov">Groq</span>
                         <div>
-                            <b>Análise de respostas (Serviços 3069)</b>
-                            <small class="muted">@(E.ChaveIA != null ? $"Configurada neste navegador · modelo {E.ModeloIA}" : "Não configurada nesta máquina: a aba Serviços 3069 fica bloqueada.")</small>
+                            <b>IA do Mr. Smart (3069, Radar e Estratégia)</b>
+                            <small class="muted">@(E.ChaveIA != null ? $"Chave própria neste navegador · modelo {E.ModeloIA}" : "Usa a chave guardada no intermediário: o Mr. Smart funciona em qualquer máquina sem configurar.")</small>
                         </div>
-                        <span class="dev-st @(E.ChaveIA != null ? "ok" : "")">@(E.ChaveIA != null ? "ativa" : "sem chave")</span>
+                        <span class="dev-st ok">ativa</span>
                     </div>
                     <div class="dev-campos">
                         <label>Chave do Groq<input class="campo" type="password" autocomplete="new-password" placeholder="@(E.ChaveIA != null ? "•••••••• (salva) — cole outra para trocar" : "gsk_…")" @bind="_novaChave" /></label>
@@ -225,8 +225,21 @@
         var chave = _novaChave.Trim();
         if (chave == "") chave = E.ChaveIA ?? "";
         _msgChave = "";
-        if (chave == "") { _chaveOk = false; _msgChave = "Cole a chave do Groq (começa com gsk_)."; return; }
         var modelo = string.IsNullOrWhiteSpace(_modelo) ? QSmart.Core.Relacionamento.AnaliseIA.ModeloPadrao : _modelo.Trim();
+        if (chave == "")
+        {
+            // sem chave própria: testa a chave guardada no intermediário
+            _testando = true; StateHasChanged();
+            try
+            {
+                var ri = await E.ChamarIA(QSmart.Core.Relacionamento.AnaliseIA.PedidoTeste(modelo));
+                _chaveOk = ri.Status == 200;
+                _msgChave = ri.Status == 200 ? "Intermediário funcionando: a IA do Mr. Smart respondeu com a chave guardada no Cloudflare."
+                    : "Intermediário: " + QSmart.Core.Relacionamento.AnaliseIA.Erro(ri.Status, ri.Texto);
+            }
+            finally { _testando = false; }
+            return;
+        }
         _testando = true; StateHasChanged();
         try
         {

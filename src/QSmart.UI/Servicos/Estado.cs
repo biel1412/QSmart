@@ -269,7 +269,20 @@ public sealed class Estado
             }
             catch { }
         }
-        return !string.IsNullOrEmpty(ChaveIA);
+        return IAPronta;
+    }
+    /// <summary>IA disponível: chave própria neste navegador ou a chave guardada no intermediário (Cloudflare).</summary>
+    public bool IAPronta => !string.IsNullOrEmpty(ChaveIA) || IAPeloIntermediario;
+    /// <summary>Usa a chave do Groq guardada no intermediário quando a máquina não tem chave própria.</summary>
+    public const bool IAPeloIntermediario = true;
+    public static string UrlIAIntermediario => ProxyPadrao + "/groq/openai/v1/chat/completions";
+    /// <summary>Chama a IA: direto com a chave deste navegador, ou pelo intermediário (que põe a chave dele).</summary>
+    public async Task<Navegador.RespostaHttp> ChamarIA(string corpo)
+    {
+        await IAConfigurada();
+        return !string.IsNullOrEmpty(ChaveIA)
+            ? await Nav.IA(QSmart.Core.Relacionamento.AnaliseIA.Url, ChaveIA, corpo)
+            : await Nav.IA(UrlIAIntermediario, "", corpo);
     }
     public async Task SalvarChaveIA(string chave, string modelo)
     {

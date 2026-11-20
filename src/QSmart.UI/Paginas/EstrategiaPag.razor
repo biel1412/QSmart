@@ -281,7 +281,7 @@
         try
         {
             var fatos = QSmart.Core.Operacao.EstrategiaIA.Fatos(M, _res, DateTime.Now);
-            var r = await E.Nav.IA(QSmart.Core.Relacionamento.AnaliseIA.Url, E.ChaveIA!, QSmart.Core.Operacao.EstrategiaIA.Pedido(fatos, E.ModeloIA));
+            var r = await E.ChamarIA(QSmart.Core.Operacao.EstrategiaIA.Pedido(fatos, E.ModeloIA));
             if (r.Status != 200) { await J.Aviso("Mr. Smart", QSmart.Core.Relacionamento.AnaliseIA.Erro(r.Status, r.Texto)); return; }
             var txt = QSmart.Core.Operacao.EstrategiaIA.Ler(r.Texto);
             if (txt == null) { await J.Aviso("Mr. Smart", "A IA não devolveu a estratégia. Tente de novo."); return; }
