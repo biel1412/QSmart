@@ -310,5 +310,162 @@
     finally { clearTimeout(t); }
   };
   const rolar = id => { const el = document.getElementById(id); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); };
-  window.qsmart = { kv, cofre, rolar, ia, get, getH, req, reduzirImagem, pasta, baixar, abrir, copiar, abrirUrl, pdfPaginas, pdfJuntar, pdfLinhas, tema, aoOcultar, focar, rolarLinha, pronto };
+
+  // imagem proporcional (lado maior = max), em JPEG com fundo branco
+  const imagemDe = async (blob, max, q) => {
+    const bmp = await createImageBitmap(blob);
+    const k = Math.min(1, max / Math.max(bmp.width, bmp.height));
+    const c = document.createElement("canvas"); c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
+    const g = c.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height); g.drawImage(bmp, 0, 0, c.width, c.height);
+    return c.toDataURL("image/jpeg", q || 0.82);
+  };
+  const imagem = (bytes, max) => imagemDe(new Blob([bytes]), max);
+
+  // ---------- Smart Note: editor de texto rico ----------
+  const PERMITIDAS = new Set(["P","DIV","BR","SPAN","B","STRONG","I","EM","U","S","STRIKE","H1","H2","H3","UL","OL","LI","A","IMG","TABLE","THEAD","TBODY","TR","TD","TH","BLOCKQUOTE","PRE","CODE","HR","FONT","MARK","SUB","SUP"]);
+  const ESTILOS = ["color","background-color","text-align","font-weight","font-style","text-decoration","text-decoration-line","width","margin-left"];
+  const limpar = html => {
+    const doc = new DOMParser().parseFromString("<div>" + (html || "") + "</div>", "text/html");
+    const anda = el => {
+      for (const n of [...el.childNodes]) {
+        if (n.nodeType === 8) { n.remove(); continue; }
+        if (n.nodeType !== 1) continue;
+        if (!PERMITIDAS.has(n.tagName)) {
+          if (["SCRIPT","STYLE","IFRAME","OBJECT","EMBED","LINK","META","TITLE","svg","SVG"].includes(n.tagName)) { n.remove(); continue; }
+          anda(n); n.replaceWith(...n.childNodes); continue;
+        }
+        for (const a of [...n.attributes]) {
+          const nm = a.name.toLowerCase(), v = a.value;
+          let ok = false;
+          if (nm === "href") ok = /^(https?:|mailto:)/i.test(v.trim());
+          else if (nm === "src") ok = /^data:image\/(png|jpe?g|gif|webp);/i.test(v) || /^https:/i.test(v);
+          else if (nm === "class") ok = /^(sn-check|feito)( feito)?$/.test(v);
+          else if (nm === "data-feito" || nm === "colspan" || nm === "rowspan" || nm === "color") ok = true;
+          else if (nm === "style") {
+            const st = n.style, keep = [];
+            for (const k of ESTILOS) { const val = st.getPropertyValue(k); if (val && !/url\(|expression/i.test(val)) keep.push(k + ":" + val); }
+            if (keep.length) { n.setAttribute("style", keep.join(";")); continue; }
+          }
+          if (!ok) n.removeAttribute(a.name);
+        }
+        if (n.tagName === "A") { n.setAttribute("target", "_blank"); n.setAttribute("rel", "noopener noreferrer"); }
+        anda(n);
+      }
+    };
+    const raiz = doc.body.firstChild; anda(raiz);
+    return raiz.innerHTML;
+  };
+  const notas = new Map();
+  const nota = {
+    montar(el, barra, arq, ref, html, id) {
+      if (!el) return;
+      nota.desmontar(el);
+      el.innerHTML = limpar(html) || "<p><br></p>";
+      el.contentEditable = "true";
+      const st = { ref, id, t: null, ult: el.innerHTML };
+      const salvar = () => { clearTimeout(st.t); st.t = setTimeout(() => nota.enviar(el), 1100); if (!st.dig) { st.dig = true; ref.invokeMethodAsync("Digitando"); } };
+      const inserirImgs = async files => {
+        for (const f of files) {
+          if (!f.type.startsWith("image/")) continue;
+          const url = await imagemDe(f, 1400, 0.8);
+          el.focus();
+          const sel = window.getSelection();
+          if (nota._faixa && (!sel.rangeCount || !el.contains(sel.anchorNode))) { sel.removeAllRanges(); sel.addRange(nota._faixa); }
+          document.execCommand("insertHTML", false, `<img src="${url}"><p><br></p>`);
+        }
+        salvar();
+      };
+      st.input = () => salvar();
+      st.paste = e => {
+        const cd = e.clipboardData; if (!cd) return;
+        const imgs = [...cd.files].filter(f => f.type.startsWith("image/"));
+        if (imgs.length) { e.preventDefault(); inserirImgs(imgs); return; }
+        const h = cd.getData("text/html");
+        if (h) { e.preventDefault(); document.execCommand("insertHTML", false, limpar(h)); salvar(); }
+      };
+      st.drop = e => {
+        const imgs = [...(e.dataTransfer?.files || [])].filter(f => f.type.startsWith("image/"));
+        if (imgs.length) { e.preventDefault(); inserirImgs(imgs); }
+      };
+      st.click = e => {
+        const li = e.target.closest && e.target.closest("ul.sn-check > li");
+        if (li && e.offsetX < 26 && e.target === li) { li.classList.toggle("feito"); salvar(); e.preventDefault(); }
+        const a = e.target.closest && e.target.closest("a[href]");
+        if (a && (e.ctrlKey || e.metaKey)) window.open(a.href, "_blank", "noopener");
+      };
+      st.tecla = e => {
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") { e.preventDefault(); nota.enviar(el); }
+        if (e.key === "Tab") { e.preventDefault(); document.execCommand(e.shiftKey ? "outdent" : "indent"); salvar(); }
+      };
+      st.imgs = inserirImgs;
+      // barra de ferramentas: tudo no navegador (sem ida e volta), sem tirar o foco do texto
+      st.barra = barra; st.arq = arq;
+      st.mdown = e => { if (e.target.closest("input")) return; e.preventDefault(); };
+      st.bclick = e => {
+        const b = e.target.closest("[data-cmd]"); if (!b || !barra.contains(b)) return;
+        e.preventDefault();
+        if (b.dataset.cmd === "imagem") { nota.guardarSelecao(el); arq && arq.click(); return; }
+        nota.cmd(el, b.dataset.cmd, b.dataset.val);
+      };
+      st.arqmuda = () => { if (arq.files?.length) { const f = [...arq.files]; arq.value = ""; inserirImgs(f); } };
+      if (barra) { barra.addEventListener("mousedown", st.mdown); barra.addEventListener("click", st.bclick); }
+      if (arq) arq.addEventListener("change", st.arqmuda);
+      el.addEventListener("input", st.input); el.addEventListener("paste", st.paste); el.addEventListener("drop", st.drop);
+      el.addEventListener("click", st.click); el.addEventListener("keydown", st.tecla);
+      notas.set(el, st);
+    },
+    enviar(el) {
+      const st = notas.get(el); if (!st) return;
+      clearTimeout(st.t); st.dig = false;
+      const h = el.innerHTML;
+      if (h === st.ult) { st.ref.invokeMethodAsync("Salvo"); return; }
+      st.ult = h; st.ref.invokeMethodAsync("Mudou", st.id, h);
+    },
+    desmontar(el) {
+      const st = notas.get(el); if (!st) return;
+      if (st.ult !== el.innerHTML) { st.ult = el.innerHTML; st.ref.invokeMethodAsync("Mudou", st.id, el.innerHTML); }
+      clearTimeout(st.t);
+      el.removeEventListener("input", st.input); el.removeEventListener("paste", st.paste); el.removeEventListener("drop", st.drop);
+      el.removeEventListener("click", st.click); el.removeEventListener("keydown", st.tecla);
+      if (st.barra) { st.barra.removeEventListener("mousedown", st.mdown); st.barra.removeEventListener("click", st.bclick); }
+      if (st.arq) st.arq.removeEventListener("change", st.arqmuda);
+      notas.delete(el);
+    },
+    cmd(el, nome, valor) {
+      if (!el) return;
+      el.focus();
+      const sel = window.getSelection();
+      if (nota._faixa && (!sel.rangeCount || !el.contains(sel.anchorNode))) { sel.removeAllRanges(); sel.addRange(nota._faixa); }
+      switch (nome) {
+        case "h1": case "h2": case "h3": case "p": case "blockquote": case "pre":
+          document.execCommand("formatBlock", false, "<" + nome + ">"); break;
+        case "check": {
+          document.execCommand("insertUnorderedList");
+          const n = window.getSelection().anchorNode; const ul = (n.nodeType === 1 ? n : n.parentElement)?.closest("ul");
+          if (ul && el.contains(ul)) ul.classList.toggle("sn-check");
+          break; }
+        case "link": { const u = prompt("Endereço do link (https://…)", "https://"); if (u && /^https?:\/\//i.test(u)) document.execCommand("createLink", false, u); break; }
+        case "tabela": document.execCommand("insertHTML", false, "<table><tbody>" + "<tr><td><br></td><td><br></td><td><br></td></tr>".repeat(3) + "</tbody></table><p><br></p>"); break;
+        case "data": document.execCommand("insertText", false, new Date().toLocaleDateString("pt-BR") + " "); break;
+        default: document.execCommand(nome, false, valor ?? null);
+      }
+      const st = notas.get(el); if (st) { clearTimeout(st.t); st.t = setTimeout(() => nota.enviar(el), 900); if (!st.dig) { st.dig = true; st.ref.invokeMethodAsync("Digitando"); } }
+    },
+    guardarSelecao(el) { const s = window.getSelection(); if (s.rangeCount && el && el.contains(s.anchorNode)) nota._faixa = s.getRangeAt(0).cloneRange(); },
+    async imagens(el, input) { const st = notas.get(el); if (st && input?.files) { await st.imgs([...input.files]); input.value = ""; } },
+    estado() { const r = {}; for (const c of ["bold","italic","underline","strikeThrough","insertUnorderedList","insertOrderedList"]) { try { r[c] = document.queryCommandState(c); } catch { } } return r; },
+  };
+  // feed: colar imagem no campo de texto
+  const colarImagens = (el, ref) => {
+    if (!el || el._colar) return;
+    el._colar = async e => {
+      const imgs = [...(e.clipboardData?.files || [])].filter(f => f.type.startsWith("image/"));
+      if (!imgs.length) return;
+      e.preventDefault();
+      for (const f of imgs) ref.invokeMethodAsync("ImagemColada", await imagemDe(f, 1280, 0.8));
+    };
+    el.addEventListener("paste", el._colar);
+  };
+  const clicar = el => { if (el) el.click(); };
+  window.qsmart = { kv, cofre, rolar, ia, get, getH, req, reduzirImagem, imagem, nota, colarImagens, clicar, pasta, baixar, abrir, copiar, abrirUrl, pdfPaginas, pdfJuntar, pdfLinhas, tema, aoOcultar, focar, rolarLinha, pronto };
 })();

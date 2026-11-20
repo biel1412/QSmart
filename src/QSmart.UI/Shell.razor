@@ -72,11 +72,49 @@ else
         @if (E.Conta.Perfil is { } pf)
         {
             var res = Nivel();
-            <a class="conta-canto" href="perfil" title="Meu perfil · @pf.NomeCompleto · nível @res.Nivel" @onclick="FecharMovel">
-                <span class="cc-anel" style="--p:@((int)(res.ProgressoNivel * 100))"></span>
-                <span class="cc-av">@if (pf.Foto != "") { <img src="@pf.Foto" alt="" /> } else { @pf.Iniciais }</span>
-                <span class="cc-nv">@res.Nivel</span>
-            </a>
+            <div class="topo-dir">
+                <a class="td-bt @(NaRota("feed") ? "on" : "")" href="feed" title="Feed do QSmart" @onclick="FecharMovel"><Icone Nome="feed" Tamanho="20" /></a>
+                <button class="td-bt @(_sino ? "on" : "")" title="Notificações" @onclick="AbrirSino">
+                    <span class="@(E.Sino.Total > 0 ? "td-sino-bal" : "")"><Icone Nome="sino" Tamanho="20" /></span>
+                    @if (E.Sino.Total > 0) { <em class="td-num">@(E.Sino.Total > 9 ? "9+" : E.Sino.Total.ToString())</em> }
+                </button>
+                <a class="conta-canto" href="perfil" title="Meu perfil · @pf.NomeCompleto · nível @res.Nivel" @onclick="FecharMovel">
+                    <span class="cc-anel" style="--p:@((int)(res.ProgressoNivel * 100))"></span>
+                    <span class="cc-av">@if (pf.Foto != "") { <img src="@pf.Foto" alt="" /> } else { @pf.Iniciais }</span>
+                    <span class="cc-nv">@res.Nivel</span>
+                </a>
+            </div>
+            @if (_sino)
+            {
+                <div class="sino-fundo" @onclick="() => _sino = false"></div>
+                <div class="sino-painel">
+                    <div class="sino-cab"><b>Notificações</b><a href="feed" @onclick="() => _sino = false">Abrir o Feed</a></div>
+                    <div class="sino-lista">
+                        @{ var fer = E.Sino.FeriadosProximos; var hoje = DateOnly.FromDateTime(DateTime.Today); }
+                        @foreach (var f in fer)
+                        {
+                            int faltam = f.Data.DayNumber - hoje.DayNumber;
+                            <div class="sino-it feriado @(_novosFeriados.Contains(f.Data) ? "nova" : "")">
+                                <span class="sino-ic"><Icone Nome="calendario" Tamanho="18" /></span>
+                                <div><b>@(faltam == 0 ? "Hoje é feriado" : faltam == 1 ? "Amanhã é feriado" : $"Feriado em {faltam} dias")</b>
+                                    <span>@f.Nome · @QSmart.Core.Feriados.DiaCurto(f.Data) @f.Data.ToString("dd/MM")</span></div>
+                            </div>
+                        }
+                        @foreach (var n in E.Sino.Itens)
+                        {
+                            <a class="sino-it @(n.Lida ? "" : "nova")" href="@($"feed?post={n.PostId}")" @onclick="() => _sino = false">
+                                <span class="sino-av" style="background:@CorNome(n.Nome)">@if (n.Foto != "") { <img src="@n.Foto" alt="" /> } else { @IniciaisDe(n.Nome) }
+                                    <i class="t-@n.Tipo"><Icone Nome="@(n.Tipo == "curtida" ? "coracao-cheio" : n.Tipo == "post" ? "feed" : "conversa")" Tamanho="10" /></i></span>
+                                <div><b>@n.Texto</b>@if (n.Trecho != "") { <span>“@n.Trecho”</span> }<small>@QSmart.UI.Paginas.FeedPag.Quando(n.CriadoEm)</small></div>
+                            </a>
+                        }
+                        @if (fer.Count == 0 && E.Sino.Itens.Count == 0)
+                        {
+                            <div class="sino-vazio"><Icone Nome="sino" Tamanho="28" /><p>Nada por aqui. Avisamos quando alguém publicar, curtir ou comentar no Feed, e quando tiver feriado chegando.</p></div>
+                        }
+                    </div>
+                </div>
+            }
         }
         <main class="conteudo">
             @if (E.Iniciado) { @Body }
@@ -103,7 +141,8 @@ else
     protected override async Task OnInitializedAsync()
     {
         E.Mudou += Atualizar;
-        E.Conta.Mudou += Atualizar;
+        E.Conta.Mudou += AoMudarConta;
+        E.Sino.Mudou += Atualizar;
         Rotas.LocationChanged += AoNavegar;
         await E.Iniciar();
         Proteger();
@@ -140,6 +179,31 @@ else
     }
 
     void Atualizar() { InvokeAsync(() => { Proteger(); StateHasChanged(); }); }
+
+    // ---- sininho: busca as notificações a cada minuto enquanto estiver logado ----
+    bool _sino;
+    HashSet<DateOnly> _novosFeriados = new();
+    System.Threading.Timer? _timerSino;
+    bool _logadoAntes;
+    void AoMudarConta()
+    {
+        if (E.Conta.Logado && !_logadoAntes) { _logadoAntes = true; _ = E.Sino.Carregar(); _timerSino ??= new System.Threading.Timer(_ => InvokeAsync(E.Sino.Carregar), null, 60000, 60000); }
+        else if (!E.Conta.Logado) { _logadoAntes = false; _sino = false; _timerSino?.Dispose(); _timerSino = null; }
+        Atualizar();
+    }
+    async Task AbrirSino()
+    {
+        _sino = !_sino;
+        if (!_sino) return;
+        var hoje = DateOnly.FromDateTime(DateTime.Today);
+        _novosFeriados = E.Sino.FeriadosNovos > 0 ? E.Sino.FeriadosProximos.Select(f => f.Data).ToHashSet() : new();
+        await E.Sino.Carregar();
+        await E.Sino.MarcarLidas();
+    }
+    bool NaRota(string r) => Rotas.ToBaseRelativePath(Rotas.Uri).Split('?', '#')[0].Trim('/') == r;
+    static readonly string[] PaletaAv = { "#0EA5E9", "#8B5CF6", "#EC4899", "#F59E0B", "#10B981", "#6366F1", "#14B8A6", "#F97316" };
+    static string CorNome(string n) { int h = 0; foreach (var ch in n) h = unchecked(h * 31 + ch); return PaletaAv[(int)((uint)h % PaletaAv.Length)]; }
+    static string IniciaisDe(string n) { var p = n.Split(' ', StringSplitOptions.RemoveEmptyEntries); return (p.Length == 0 ? "?" : p.Length == 1 ? p[0][..1] : $"{p[0][0]}{p[^1][0]}").ToUpperInvariant(); }
     void FecharMovel() => _menuMovel = false;
     static readonly HashSet<string> PrecisaIA = new() { "servicos3069" };
     async Task AbrirComIA(string rota)
@@ -177,7 +241,7 @@ else
     public void Dispose()
     {
         E.Mudou -= Atualizar;
-        E.Conta.Mudou -= Atualizar;
+        E.Conta.Mudou -= AoMudarConta; E.Sino.Mudou -= Atualizar; _timerSino?.Dispose();
         Rotas.LocationChanged -= AoNavegar;
         _ref?.Dispose();
     }

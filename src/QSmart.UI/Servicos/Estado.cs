@@ -12,8 +12,9 @@ public sealed class Estado
     public Navegador Nav { get; }
     public Dados Dados { get; }
     public Janelas Janelas { get; }
-    public Estado(Navegador nav, Dados dados, Janelas janelas) { Nav = nav; Dados = dados; Janelas = janelas; Conta = new Conta(this); }
+    public Estado(Navegador nav, Dados dados, Janelas janelas) { Nav = nav; Dados = dados; Janelas = janelas; Conta = new Conta(this); Sino = new Sininho(this); }
     public Conta Conta { get; }
+    public Sininho Sino { get; }
 
     public event Action? Mudou;
     public void Notificar() => Mudou?.Invoke();

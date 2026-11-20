@@ -42,6 +42,15 @@ public sealed class Navegador
     public ValueTask<RespostaHttp> IA(string url, string chave, string corpo) => _js.InvokeAsync<RespostaHttp>("qsmart.ia", url, chave, corpo);
     public ValueTask<RespostaHttp> Get(string url) => _js.InvokeAsync<RespostaHttp>("qsmart.get", url);
     public ValueTask<RespostaHttp> Req(string url, string metodo, Dictionary<string, string>? cab, string? corpo, int ms = 30000) => _js.InvokeAsync<RespostaHttp>("qsmart.req", url, metodo, cab ?? new(), corpo, ms);
+    public ValueTask<string> Imagem(byte[] dados, int max) => _js.InvokeAsync<string>("qsmart.imagem", dados, max);
+    public ValueTask NotaMontar(Microsoft.AspNetCore.Components.ElementReference el, Microsoft.AspNetCore.Components.ElementReference barra, Microsoft.AspNetCore.Components.ElementReference arq, object refNet, string html, string id) => _js.InvokeVoidAsync("qsmart.nota.montar", el, barra, arq, refNet, html, id);
+    public ValueTask NotaDesmontar(Microsoft.AspNetCore.Components.ElementReference el) => _js.InvokeVoidAsync("qsmart.nota.desmontar", el);
+    public ValueTask NotaEnviar(Microsoft.AspNetCore.Components.ElementReference el) => _js.InvokeVoidAsync("qsmart.nota.enviar", el);
+    public ValueTask NotaCmd(Microsoft.AspNetCore.Components.ElementReference el, string nome, string? valor = null) => _js.InvokeVoidAsync("qsmart.nota.cmd", el, nome, valor);
+    public ValueTask NotaGuardarSelecao(Microsoft.AspNetCore.Components.ElementReference el) => _js.InvokeVoidAsync("qsmart.nota.guardarSelecao", el);
+    public ValueTask NotaImagens(Microsoft.AspNetCore.Components.ElementReference el, Microsoft.AspNetCore.Components.ElementReference input) => _js.InvokeVoidAsync("qsmart.nota.imagens", el, input);
+    public ValueTask ColarImagens(Microsoft.AspNetCore.Components.ElementReference el, object refNet) => _js.InvokeVoidAsync("qsmart.colarImagens", el, refNet);
+    public ValueTask Clicar(Microsoft.AspNetCore.Components.ElementReference el) => _js.InvokeVoidAsync("qsmart.clicar", el);
     public ValueTask<string> ReduzirImagem(byte[] dados, int max) => _js.InvokeAsync<string>("qsmart.reduzirImagem", dados, max);
     public ValueTask<RespostaHttp> GetH(string url, Dictionary<string, string>? cabecalhos = null, int ms = 25000) => _js.InvokeAsync<RespostaHttp>("qsmart.getH", url, cabecalhos ?? new(), ms);
     public ValueTask Rolar(string id) => _js.InvokeVoidAsync("qsmart.rolar", id);

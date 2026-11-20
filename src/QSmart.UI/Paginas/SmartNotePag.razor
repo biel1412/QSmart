@@ -1,0 +1,457 @@
+@page "/smart-note"
+@inherits PaginaBase
+@using System.Text.Json.Nodes
+@using Microsoft.JSInterop
+
+<div class="sn">
+    @* ---------- cadernos ---------- *@
+    <aside class="sn-cads">
+        <div class="sn-cab">
+            <span class="sn-marca"><Icone Nome="caderno" Tamanho="18" /> Smart Note</span>
+            <button class="sn-mais" title="Novo caderno" @onclick="NovoCaderno"><Icone Nome="mais" Tamanho="16" /></button>
+        </div>
+        @if (_carregando) { <p class="muted pequeno sn-pad"><span class="ia-spin pequeno"></span> Abrindo…</p> }
+        @foreach (var c in _cads.OrderBy(c => c.Ordem))
+        {
+            int n = _pags.Count(p => p.Caderno == c.Id);
+            <div class="sn-cad @(c.Id == _cad ? "on" : "")" style="--c:@c.Cor" @onclick="() => AbrirCaderno(c.Id)">
+                <span class="sn-cad-ic"><Icone Nome="caderno" Tamanho="16" /></span>
+                <span class="sn-cad-nome"><b>@c.Nome</b><small>@(n == 1 ? "1 página" : $"{n} páginas")</small></span>
+                <span class="sn-cad-ac">
+                    <button title="Renomear" @onclick:stopPropagation="true" @onclick="() => RenomearCaderno(c)"><Icone Nome="editar" Tamanho="14" /></button>
+                    <button title="Mudar a cor" @onclick:stopPropagation="true" @onclick="() => MudarCor(c)"><span class="sn-bolinha"></span></button>
+                    <button title="Excluir caderno" @onclick:stopPropagation="true" @onclick="() => ExcluirCaderno(c)"><Icone Nome="lixo" Tamanho="14" /></button>
+                </span>
+            </div>
+        }
+        <div class="sn-cads-pe"><Icone Nome="cadeado" Tamanho="13" /> Só você vê · salvo na sua conta, criptografado</div>
+    </aside>
+
+    @* ---------- páginas ---------- *@
+    <section class="sn-pags" style="--c:@(Cad?.Cor ?? "#7C3AED")">
+        @if (Cad is { } cad)
+        {
+            <div class="sn-cab">
+                <b class="sn-pags-tit">@cad.Nome</b>
+                <button class="sn-mais" title="Nova página" @onclick="() => NovaPagina(null)"><Icone Nome="mais" Tamanho="16" /></button>
+            </div>
+            <div class="sn-busca"><Icone Nome="busca" Tamanho="14" /><input placeholder="Buscar páginas…" @bind="_busca" @bind:event="oninput" /></div>
+            <div class="sn-lista">
+                @{ var arv = Arvore(cad.Id); }
+                @if (arv.Count == 0) { <p class="muted pequeno sn-pad">Nenhuma página. Clique em + para criar.</p> }
+                @foreach (var (p, nivel, filhos) in arv)
+                {
+                    <div class="sn-pag @(p.Id == _pag ? "on" : "")" style="--n:@nivel" @onclick="() => AbrirPagina(p.Id)">
+                        @if (filhos > 0)
+                        {
+                            <button class="sn-seta @(_fechadas.Contains(p.Id) ? "" : "aberta")" @onclick:stopPropagation="true" @onclick="() => Dobrar(p.Id)"><Icone Nome="direita" Tamanho="12" /></button>
+                        }
+                        else { <span class="sn-seta"></span> }
+                        <span class="sn-pag-txt"><b>@(p.Titulo == "" ? "Sem título" : p.Titulo)</b><small>@Quando(p.AtualizadoEm)</small></span>
+                        <span class="sn-pag-ac">
+                            <button title="Nova subpágina" @onclick:stopPropagation="true" @onclick="() => NovaPagina(p.Id)"><Icone Nome="subpagina" Tamanho="14" /></button>
+                            <button title="Mais opções" @onclick:stopPropagation="true" @onclick="() => Opcoes(p)"><Icone Nome="menu" Tamanho="14" /></button>
+                        </span>
+                    </div>
+                }
+            </div>
+        }
+        else if (!_carregando)
+        {
+            <div class="sn-vazio-col"><p class="muted">Crie um caderno para começar.</p></div>
+        }
+    </section>
+
+    @* ---------- editor ---------- *@
+    <section class="sn-ed">
+        @if (Pag is { } pg)
+        {
+            <div class="sn-topo">
+                <div class="sn-trilha">@foreach (var t in Caminho(pg)) { <span>@t</span><Icone Nome="direita" Tamanho="11" /> }<b>@(pg.Titulo == "" ? "Sem título" : pg.Titulo)</b></div>
+                <span class="sn-status @_statusCls">@_status</span>
+            </div>
+            <div class="sn-barra" @ref="_barra">
+                <button title="Desfazer (Ctrl+Z)" data-cmd="undo"><Icone Nome="desfazer" Tamanho="16" /></button>
+                <button title="Refazer (Ctrl+Y)" data-cmd="redo"><Icone Nome="refazer" Tamanho="16" /></button>
+                <i></i>
+                <button class="tx" title="Título" data-cmd="h1">T1</button>
+                <button class="tx" title="Subtítulo" data-cmd="h2">T2</button>
+                <button class="tx" title="Tópico" data-cmd="h3">T3</button>
+                <button class="tx" title="Texto normal" data-cmd="p">¶</button>
+                <i></i>
+                <button class="tx b" title="Negrito (Ctrl+B)" data-cmd="bold">B</button>
+                <button class="tx it" title="Itálico (Ctrl+I)" data-cmd="italic">I</button>
+                <button class="tx u" title="Sublinhado (Ctrl+U)" data-cmd="underline">U</button>
+                <button class="tx s" title="Tachado" data-cmd="strikeThrough">S</button>
+                <span class="sn-cores" title="Cor do texto">
+                    <Icone Nome="cor-texto" Tamanho="16" />
+                    <span class="sn-paleta">@foreach (var c in CoresTexto) { <button style="background:@c" data-cmd="foreColor" data-val="@c"></button> }</span>
+                </span>
+                <span class="sn-cores" title="Marca-texto">
+                    <Icone Nome="marca-texto" Tamanho="16" />
+                    <span class="sn-paleta">@foreach (var c in CoresMarca) { <button style="background:@c" data-cmd="hiliteColor" data-val="@c"></button> }</span>
+                </span>
+                <i></i>
+                <button title="Lista" data-cmd="insertUnorderedList"><Icone Nome="lista" Tamanho="16" /></button>
+                <button title="Lista numerada" data-cmd="insertOrderedList"><Icone Nome="lista-num" Tamanho="16" /></button>
+                <button title="Lista de tarefas (clique na caixinha para marcar)" data-cmd="check"><Icone Nome="lista-check" Tamanho="16" /></button>
+                <button title="Diminuir recuo (Shift+Tab)" data-cmd="outdent"><Icone Nome="desrecuo" Tamanho="16" /></button>
+                <button title="Aumentar recuo (Tab)" data-cmd="indent"><Icone Nome="recuo" Tamanho="16" /></button>
+                <i></i>
+                <span class="sn-cores" title="Alinhamento">
+                    <Icone Nome="alinhar-esq" Tamanho="16" />
+                    <span class="sn-paleta sn-menu">
+                        <button title="Alinhar à esquerda" data-cmd="justifyLeft"><Icone Nome="alinhar-esq" Tamanho="16" /></button>
+                        <button title="Centralizar" data-cmd="justifyCenter"><Icone Nome="alinhar-centro" Tamanho="16" /></button>
+                        <button title="Alinhar à direita" data-cmd="justifyRight"><Icone Nome="alinhar-dir" Tamanho="16" /></button>
+                    </span>
+                </span>
+                <i></i>
+                <button title="Imagem (ou cole com Ctrl+V)" data-cmd="imagem"><Icone Nome="imagem" Tamanho="16" /></button>
+                <button title="Link" data-cmd="link"><Icone Nome="link" Tamanho="16" /></button>
+                <span class="sn-cores" title="Inserir">
+                    <Icone Nome="mais" Tamanho="16" />
+                    <span class="sn-paleta sn-menu dir">
+                        <button data-cmd="tabela"><Icone Nome="tabela" Tamanho="16" /> Tabela</button>
+                        <button data-cmd="insertHorizontalRule"><Icone Nome="linha" Tamanho="16" /> Linha divisória</button>
+                        <button data-cmd="data"><Icone Nome="calendario" Tamanho="16" /> Data de hoje</button>
+                        <button data-cmd="blockquote"><Icone Nome="conversa" Tamanho="16" /> Citação</button>
+                        <button data-cmd="removeFormat"><Icone Nome="borracha" Tamanho="16" /> Limpar formatação</button>
+                    </span>
+                </span>
+            </div>
+            <input type="file" accept="image/*" multiple hidden @ref="_arq" />
+            <div class="sn-folha" style="--c:@(Cad?.Cor ?? "#7C3AED")">
+                <input class="sn-titulo" placeholder="Título da página" value="@pg.Titulo" @onchange="e => MudarTitulo(pg, e)" id="sn-titulo" />
+                <div class="sn-meta">@DataLonga(pg.CriadoEm) · editada @Quando(pg.AtualizadoEm).ToLowerInvariant()</div>
+                @if (_abrindo) { <p class="muted"><span class="ia-spin pequeno"></span> Abrindo a página…</p> }
+                <div @key="pg.Id" class="sn-texto @(_abrindo ? "oculto" : "")" @ref="_ed" data-placeholder="Escreva aqui. Cole imagens com Ctrl+V ou arraste para cá."></div>
+            </div>
+        }
+        else
+        {
+            <div class="sn-boas">
+                <span class="sn-boas-ic"><Icone Nome="caderno" Tamanho="40" /></span>
+                <h2>@(_cads.Count == 0 ? "Seu primeiro caderno" : "Escolha ou crie uma página")</h2>
+                <p class="muted">Organize as anotações em <b>cadernos</b>, <b>páginas</b> e <b>subpáginas</b>. Formate o texto, faça listas de tarefas e tabelas e cole prints direto com Ctrl+V. Tudo fica salvo sozinho na sua conta e só você vê.</p>
+                @if (_cads.Count == 0) { <button class="btn btn-pri" @onclick="NovoCaderno"><Icone Nome="mais" Tamanho="16" /> Criar caderno</button> }
+                else if (Cad != null) { <button class="btn btn-pri" @onclick="() => NovaPagina(null)"><Icone Nome="mais" Tamanho="16" /> Nova página</button> }
+            </div>
+        }
+    </section>
+</div>
+
+@code {
+    protected override string Chave => "smartnote";
+
+    sealed class Caderno { public string Id = ""; public string Nome = ""; public string Cor = ""; public int Ordem; }
+    sealed class Pagina { public string Id = ""; public string Caderno = ""; public string Pai = ""; public string Titulo = ""; public int Ordem; public string CriadoEm = ""; public string AtualizadoEm = ""; }
+
+    static readonly string[] Cores = { "#7C3AED", "#0EA5E9", "#10B981", "#F59E0B", "#EC4899", "#EF4444", "#14B8A6", "#6366F1" };
+    static readonly string[] CoresTexto = { "#111827", "#EF4444", "#F97316", "#CA8A04", "#16A34A", "#0EA5E9", "#7C3AED", "#DB2777", "#64748B" };
+    static readonly string[] CoresMarca = { "#FEF08A", "#BBF7D0", "#BAE6FD", "#FBCFE8", "#FED7AA", "#DDD6FE", "transparent" };
+
+    readonly List<Caderno> _cads = new();
+    readonly List<Pagina> _pags = new();
+    readonly HashSet<string> _fechadas = new();
+    string? _cad, _pag, _montar;
+    string _conteudo = "", _busca = "", _status = "", _statusCls = "";
+    bool _carregando = true, _abrindo;
+    ElementReference _ed, _arq, _barra;
+    DotNetObjectReference<SmartNotePag>? _ref;
+    readonly SemaphoreSlim _fila = new(1, 1);
+
+    Caderno? Cad => _cads.FirstOrDefault(c => c.Id == _cad);
+    Pagina? Pag => _pags.FirstOrDefault(p => p.Id == _pag);
+    static string NovoId() => Guid.NewGuid().ToString("N")[..16];
+    static string S(JsonNode? n, string k) => n?[k] is JsonValue v && v.TryGetValue<string>(out var s) ? s : "";
+    static int I(JsonNode? n, string k) => n?[k] is JsonValue v && v.TryGetValue<int>(out var i) ? i : 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _ref = DotNetObjectReference.Create(this);
+        var r = await E.Conta.Chamar("GET", "sn");
+        _carregando = false;
+        if (!r.Ok) { await J.Erro("Smart Note", "Não consegui abrir os seus cadernos: " + r.Erro); return; }
+        foreach (var x in r.Json?["cadernos"] as JsonArray ?? new())
+            _cads.Add(new Caderno { Id = S(x, "id"), Nome = S(x, "nome"), Cor = S(x, "cor") is { Length: > 0 } c ? c : Cores[0], Ordem = I(x, "ordem") });
+        foreach (var x in r.Json?["paginas"] as JsonArray ?? new())
+            _pags.Add(new Pagina { Id = S(x, "id"), Caderno = S(x, "caderno"), Pai = S(x, "pai"), Titulo = S(x, "titulo"), Ordem = I(x, "ordem"), CriadoEm = S(x, "criadoEm"), AtualizadoEm = S(x, "atualizadoEm") });
+        var ult = await E.Nav.Ler("sn_ultima");
+        var up = _pags.FirstOrDefault(p => p.Id == ult);
+        if (up != null) { _cad = up.Caderno; await AbrirPagina(up.Id); }
+        else if (_cads.Count > 0) AbrirCaderno(_cads.OrderBy(c => c.Ordem).First().Id);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool primeira)
+    {
+        if (_montar != null && !_abrindo && Pag?.Id == _montar)
+        {
+            var id = _montar; _montar = null;
+            await E.Nav.NotaMontar(_ed, _barra, _arq, _ref!, _conteudo, id);
+        }
+    }
+
+    // ---------------- árvore ----------------
+    List<(Pagina p, int nivel, int filhos)> Arvore(string cad)
+    {
+        var l = new List<(Pagina, int, int)>();
+        var todos = _pags.Where(p => p.Caderno == cad).ToList();
+        var ids = todos.Select(p => p.Id).ToHashSet();
+        var busca = QSmart.Core.Coordenacao.Ferias.Norm(_busca);
+        if (busca != "")
+        {
+            foreach (var p in todos.Where(p => QSmart.Core.Coordenacao.Ferias.Norm(p.Titulo).Contains(busca)).OrderBy(p => p.Titulo)) l.Add((p, 0, 0));
+            return l;
+        }
+        void Anda(string pai, int nivel)
+        {
+            foreach (var p in todos.Where(p => (p.Pai == pai || (pai == "" && p.Pai != "" && !ids.Contains(p.Pai)))).OrderBy(p => p.Ordem).ThenBy(p => p.CriadoEm))
+            {
+                int f = todos.Count(x => x.Pai == p.Id);
+                l.Add((p, nivel, f));
+                if (!_fechadas.Contains(p.Id)) Anda(p.Id, nivel + 1);
+            }
+        }
+        Anda("", 0);
+        return l;
+    }
+
+    IEnumerable<string> Caminho(Pagina p)
+    {
+        var l = new List<string>();
+        var x = _pags.FirstOrDefault(y => y.Id == p.Pai);
+        int guarda = 0;
+        while (x != null && guarda++ < 20) { l.Insert(0, x.Titulo == "" ? "Sem título" : x.Titulo); x = _pags.FirstOrDefault(y => y.Id == x.Pai); }
+        l.Insert(0, Cad?.Nome ?? "");
+        return l;
+    }
+
+    List<Pagina> Descendentes(string id)
+    {
+        var l = new List<Pagina>();
+        foreach (var f in _pags.Where(p => p.Pai == id).ToList()) { l.Add(f); l.AddRange(Descendentes(f.Id)); }
+        return l;
+    }
+
+    void Dobrar(string id) { if (!_fechadas.Remove(id)) _fechadas.Add(id); }
+
+    // ---------------- cadernos ----------------
+    void AbrirCaderno(string id)
+    {
+        if (_cad == id) return;
+        _cad = id; _busca = "";
+        var primeira = Arvore(id).Select(x => x.p).FirstOrDefault();
+        if (primeira != null) _ = AbrirPagina(primeira.Id); else { _ = Fechar(); }
+    }
+
+    async Task NovoCaderno()
+    {
+        var nome = (await J.Entrada("Novo caderno", "Nome do caderno", ""))?.Trim();
+        if (string.IsNullOrEmpty(nome)) return;
+        var c = new Caderno { Id = NovoId(), Nome = nome, Cor = Cores[_cads.Count % Cores.Length], Ordem = _cads.Count == 0 ? 0 : _cads.Max(x => x.Ordem) + 1 };
+        if (!await SalvarCaderno(c)) return;
+        _cads.Add(c);
+        _cad = c.Id;
+        await Fechar();
+        await NovaPagina(null);
+        _ = E.Conta.Registrar("nota.caderno", true);
+    }
+
+    async Task<bool> SalvarCaderno(Caderno c)
+    {
+        var r = await E.Conta.Chamar("PUT", "sn/caderno", new JsonObject { ["id"] = c.Id, ["nome"] = c.Nome, ["cor"] = c.Cor, ["ordem"] = c.Ordem });
+        if (!r.Ok) await J.Erro("Smart Note", "Não consegui salvar o caderno: " + r.Erro);
+        return r.Ok;
+    }
+
+    async Task RenomearCaderno(Caderno c)
+    {
+        var nome = (await J.Entrada("Renomear caderno", "Nome do caderno", c.Nome))?.Trim();
+        if (string.IsNullOrEmpty(nome) || nome == c.Nome) return;
+        c.Nome = nome; await SalvarCaderno(c);
+    }
+
+    async Task MudarCor(Caderno c)
+    {
+        c.Cor = Cores[(Array.IndexOf(Cores, c.Cor) + 1) % Cores.Length];
+        await SalvarCaderno(c);
+    }
+
+    async Task ExcluirCaderno(Caderno c)
+    {
+        int n = _pags.Count(p => p.Caderno == c.Id);
+        if (!await J.Pergunta("Excluir caderno", $"Excluir o caderno “{c.Nome}”{(n > 0 ? $" e as {n} página(s) dele" : "")}? Não dá para desfazer.")) return;
+        if (Pag?.Caderno == c.Id) await Fechar(false);
+        var r = await E.Conta.Chamar("DELETE", "sn/caderno?id=" + Uri.EscapeDataString(c.Id));
+        if (!r.Ok) { await J.Erro("Smart Note", r.Erro); return; }
+        _cads.Remove(c); _pags.RemoveAll(p => p.Caderno == c.Id);
+        if (_cad == c.Id) { _cad = null; if (_cads.Count > 0) AbrirCaderno(_cads.OrderBy(x => x.Ordem).First().Id); }
+    }
+
+    // ---------------- páginas ----------------
+    async Task Fechar(bool salvar = true)
+    {
+        if (_pag != null && salvar && !_abrindo) { try { await E.Nav.NotaDesmontar(_ed); } catch { } }
+        _pag = null; _montar = null;
+    }
+
+    async Task AbrirPagina(string id)
+    {
+        if (_pag == id) return;
+        await Fechar();
+        var p = _pags.FirstOrDefault(x => x.Id == id);
+        if (p == null) return;
+        _cad = p.Caderno; _pag = id; _abrindo = true; _status = ""; StateHasChanged();
+        // abre os pais dobrados
+        var x2 = _pags.FirstOrDefault(y => y.Id == p.Pai); while (x2 != null) { _fechadas.Remove(x2.Id); x2 = _pags.FirstOrDefault(y => y.Id == x2.Pai); }
+        var r = await E.Conta.Chamar("GET", "sn/pagina?id=" + Uri.EscapeDataString(id));
+        if (_pag != id) return;
+        _conteudo = r.Ok ? S(r.Json, "conteudo") : "";
+        _abrindo = false; _montar = id;
+        _ = E.Nav.Gravar("sn_ultima", id);
+        if (!r.Ok) { _status = "Não consegui abrir: " + r.Erro; _statusCls = "erro"; }
+        StateHasChanged();
+    }
+
+    async Task NovaPagina(string? pai)
+    {
+        if (Cad is not { } cad) return;
+        var irmas = _pags.Where(p => p.Caderno == cad.Id && p.Pai == (pai ?? "")).ToList();
+        var agora = DateTime.UtcNow.ToString("o");
+        var p = new Pagina { Id = NovoId(), Caderno = cad.Id, Pai = pai ?? "", Titulo = "", Ordem = irmas.Count == 0 ? 0 : irmas.Max(x => x.Ordem) + 1, CriadoEm = agora, AtualizadoEm = agora };
+        var r = await E.Conta.Chamar("PUT", "sn/pagina", Meta(p, ""));
+        if (!r.Ok) { await J.Erro("Smart Note", "Não consegui criar a página: " + r.Erro); return; }
+        _pags.Add(p);
+        if (pai != null) _fechadas.Remove(pai);
+        _busca = "";
+        await AbrirPagina(p.Id);
+        await Task.Delay(50);
+        await E.Nav.Focar("sn-titulo");
+        _ = E.Conta.Registrar("nota.pagina", true);
+    }
+
+    JsonObject Meta(Pagina p, string? conteudo)
+    {
+        var o = new JsonObject { ["id"] = p.Id, ["caderno"] = p.Caderno, ["pai"] = p.Pai, ["titulo"] = p.Titulo, ["ordem"] = p.Ordem };
+        if (conteudo != null) o["conteudo"] = conteudo;
+        return o;
+    }
+
+    async Task<bool> SalvarMeta(Pagina p)
+    {
+        var r = await E.Conta.Chamar("PUT", "sn/pagina", Meta(p, null));
+        if (!r.Ok) await J.Erro("Smart Note", "Não consegui salvar: " + r.Erro);
+        return r.Ok;
+    }
+
+    async Task MudarTitulo(Pagina p, ChangeEventArgs e)
+    {
+        p.Titulo = (e.Value?.ToString() ?? "").Trim();
+        _status = "Salvando…"; _statusCls = "";
+        if (await SalvarMeta(p)) { p.AtualizadoEm = DateTime.UtcNow.ToString("o"); _status = "Salvo"; _statusCls = "ok"; }
+    }
+
+    async Task Opcoes(Pagina p)
+    {
+        var irmas = _pags.Where(x => x.Caderno == p.Caderno && x.Pai == p.Pai).OrderBy(x => x.Ordem).ThenBy(x => x.CriadoEm).ToList();
+        int i = irmas.IndexOf(p);
+        var ops = new List<(string, string)>();
+        if (i > 0) ops.Add(("cima", "Mover para cima"));
+        if (i < irmas.Count - 1) ops.Add(("baixo", "Mover para baixo"));
+        if (i > 0) ops.Add(("dentro", $"Virar subpágina de “{(irmas[i - 1].Titulo == "" ? "Sem título" : irmas[i - 1].Titulo)}”"));
+        if (p.Pai != "") ops.Add(("fora", "Subir um nível (deixar de ser subpágina)"));
+        foreach (var c in _cads.Where(c => c.Id != p.Caderno)) ops.Add(("cad:" + c.Id, $"Mover para o caderno “{c.Nome}”"));
+        ops.Add(("excluir", "Excluir página"));
+        var op = await J.Um(p.Titulo == "" ? "Página sem título" : p.Titulo, ops, "", "O que fazer com esta página?", "");
+        if (string.IsNullOrEmpty(op)) return;
+        if (op == "excluir") { await ExcluirPagina(p); return; }
+        var mexidas = new List<Pagina>();
+        void Renumerar(IEnumerable<Pagina> l) { int k = 0; foreach (var x in l) { if (x.Ordem != k) { x.Ordem = k; mexidas.Add(x); } k++; } }
+        if (op is "cima" or "baixo")
+        {
+            irmas.RemoveAt(i); irmas.Insert(op == "cima" ? i - 1 : i + 1, p);
+            Renumerar(irmas);
+        }
+        else if (op == "dentro")
+        {
+            var novoPai = irmas[i - 1];
+            p.Pai = novoPai.Id; _fechadas.Remove(novoPai.Id);
+            var filhas = _pags.Where(x => x.Pai == novoPai.Id && x != p).ToList();
+            p.Ordem = filhas.Count == 0 ? 0 : filhas.Max(x => x.Ordem) + 1; mexidas.Add(p);
+        }
+        else if (op == "fora")
+        {
+            var pai = _pags.First(x => x.Id == p.Pai);
+            p.Pai = pai.Pai;
+            var novas = _pags.Where(x => x.Caderno == p.Caderno && x.Pai == pai.Pai && x != p).OrderBy(x => x.Ordem).ThenBy(x => x.CriadoEm).ToList();
+            novas.Insert(novas.IndexOf(pai) + 1, p);
+            mexidas.Add(p); Renumerar(novas);
+        }
+        else if (op.StartsWith("cad:"))
+        {
+            var cad = op[4..];
+            var tudo = Descendentes(p.Id); tudo.Insert(0, p);
+            foreach (var x in tudo) x.Caderno = cad;
+            p.Pai = "";
+            var raiz = _pags.Where(x => x.Caderno == cad && x.Pai == "" && x != p).ToList();
+            p.Ordem = raiz.Count == 0 ? 0 : raiz.Max(x => x.Ordem) + 1;
+            mexidas.AddRange(tudo);
+            if (_pag != null && tudo.Any(x => x.Id == _pag)) _cad = cad;
+        }
+        foreach (var x in mexidas.Distinct()) if (!await SalvarMeta(x)) break;
+    }
+
+    async Task ExcluirPagina(Pagina p)
+    {
+        var desc = Descendentes(p.Id);
+        if (!await J.Pergunta("Excluir página", $"Excluir “{(p.Titulo == "" ? "Sem título" : p.Titulo)}”{(desc.Count > 0 ? $" e as {desc.Count} subpágina(s)" : "")}? Não dá para desfazer.")) return;
+        bool aberta = _pag == p.Id || desc.Any(d => d.Id == _pag);
+        if (aberta) await Fechar(false);
+        var r = await E.Conta.Chamar("DELETE", "sn/pagina?id=" + Uri.EscapeDataString(p.Id));
+        if (!r.Ok) { await J.Erro("Smart Note", r.Erro); return; }
+        _pags.Remove(p); foreach (var d in desc) _pags.Remove(d);
+        if (aberta && Cad != null && Arvore(Cad.Id).FirstOrDefault() is { } prox) await AbrirPagina(prox.p.Id);
+    }
+
+    // ---------------- editor ----------------
+
+    [JSInvokable] public void Digitando() { if (_status != "Editando…") { _status = "Editando…"; _statusCls = ""; InvokeAsync(StateHasChanged); } }
+    [JSInvokable] public void Salvo() { _status = "Salvo"; _statusCls = "ok"; InvokeAsync(StateHasChanged); }
+
+    [JSInvokable]
+    public async Task Mudou(string id, string html)
+    {
+        var p = _pags.FirstOrDefault(x => x.Id == id);
+        if (p == null) return;
+        await _fila.WaitAsync();
+        try
+        {
+            if (id == _pag) { _status = "Salvando…"; _statusCls = ""; await InvokeAsync(StateHasChanged); }
+            var r = await E.Conta.Chamar("PUT", "sn/pagina", Meta(p, html));
+            if (r.Ok) { p.AtualizadoEm = DateTime.UtcNow.ToString("o"); if (id == _pag) { _status = $"Salvo às {DateTime.Now:HH:mm}"; _statusCls = "ok"; } }
+            else { _status = r.Status == 413 ? r.Erro : "Não salvou: " + r.Erro; _statusCls = "erro"; if (r.Status == 413) await J.Aviso("Smart Note", r.Erro); }
+        }
+        finally { _fila.Release(); await InvokeAsync(StateHasChanged); }
+    }
+
+    static DateTime? Dt(string iso) => DateTime.TryParse(iso, null, System.Globalization.DateTimeStyles.RoundtripKind, out var d) ? d.ToLocalTime() : null;
+    static string Quando(string iso)
+    {
+        if (Dt(iso) is not { } d) return "";
+        var s = DateTime.Now - d;
+        if (s.TotalMinutes < 1) return "Agora";
+        if (s.TotalMinutes < 60) return $"Há {(int)s.TotalMinutes} min";
+        if (d.Date == DateTime.Today) return $"Hoje, {d:HH:mm}";
+        if (d.Date == DateTime.Today.AddDays(-1)) return $"Ontem, {d:HH:mm}";
+        return d.ToString("dd/MM/yyyy");
+    }
+    static string DataLonga(string iso) => Dt(iso) is { } d ? $"{d.Day} de {QSmart.Core.Texto.MesesPt[d.Month - 1].ToLowerInvariant()} de {d.Year}, {d:HH:mm}" : "";
+
+    public override void Dispose()
+    {
+        base.Dispose();
+        if (_pag != null && !_abrindo) { try { _ = E.Nav.NotaDesmontar(_ed); } catch { } }
+        _ = Task.Delay(3000).ContinueWith(_ => _ref?.Dispose());
+    }
+}

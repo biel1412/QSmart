@@ -1,7 +1,7 @@
 // Intermediário do QSmart (Cloudflare Worker, plano gratuito).
 // 1) Portal da Transparência: o Portal não aceita consultas direto do navegador (CORS).
 // 2) IA do Mr. Smart (Groq): a chave fica guardada aqui, sem configurar cada máquina.
-// 3) Contas, One a One e Férias: banco D1 (ligação "DB"); senhas com PBKDF2 e dados do 1:1 cifrados (AES-GCM).
+// 3) Contas, One a One, Férias, Smart Note, Feed e notificações: banco D1 (ligação "DB"); senhas com PBKDF2 e dados do 1:1 cifrados (AES-GCM).
 // Segredos do worker: CHAVE_PORTAL, CHAVE_GROQ e CHAVE_DADOS.
 
 const ORIGENS = ["https://biel1412.github.io", "http://127.0.0.1:5199", "http://localhost:5199"];
@@ -61,8 +61,8 @@ const agora = () => new Date().toISOString();
 const hojeBR = () => new Date(Date.now() - 3 * 3600e3).toISOString().slice(0, 10);   // dia no horário de Brasília
 const enc = new TextEncoder(), dec = new TextDecoder();
 
-const b64 = buf => { let s = ""; const b = new Uint8Array(buf); for (let i = 0; i < b.length; i++) s += String.fromCharCode(b[i]); return btoa(s); };
-const deB64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+const b64 = buf => { const b = new Uint8Array(buf); let s = ""; for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000)); return btoa(s); };
+const deB64 = s => { const t = atob(s), b = new Uint8Array(t.length); for (let i = 0; i < t.length; i++) b[i] = t.charCodeAt(i); return b; };
 const aleatorio = n => crypto.getRandomValues(new Uint8Array(n));
 
 async function sha256(texto) { return b64(await crypto.subtle.digest("SHA-256", enc.encode(texto))); }
@@ -281,6 +281,11 @@ async function api(req, env, url) {
         env.DB.prepare("DELETE FROM sessoes WHERE usuario_id = ?").bind(b.id),
         env.DB.prepare("DELETE FROM uso WHERE usuario_id = ?").bind(b.id),
         env.DB.prepare("DELETE FROM dias WHERE usuario_id = ?").bind(b.id),
+        env.DB.prepare("DELETE FROM sn_paginas WHERE usuario_id = ?").bind(b.id),
+        env.DB.prepare("DELETE FROM sn_cadernos WHERE usuario_id = ?").bind(b.id),
+        env.DB.prepare("DELETE FROM notificacoes WHERE usuario_id = ? OR de_id = ?").bind(b.id, b.id),
+        env.DB.prepare("DELETE FROM feed_curtidas WHERE usuario_id = ?").bind(b.id),
+        env.DB.prepare("DELETE FROM feed_comentarios WHERE usuario_id = ?").bind(b.id),
         env.DB.prepare("DELETE FROM usuarios WHERE id = ?").bind(b.id),
       ]);
       return json({ ok: true });
@@ -370,6 +375,194 @@ async function api(req, env, url) {
       await env.DB.prepare("DELETE FROM fe_pessoas WHERE id = ?").bind(id).run();
       return json({ ok: true });
     }
+  }
+
+  // ---------- Smart Note: cadernos e páginas de cada usuário (só o dono vê) ----------
+  if (rota.startsWith("sn")) {
+    const MAX_PAG = 1450000;
+    if (rota === "sn" && m === "GET") {
+      const c = await env.DB.prepare("SELECT id, nome, cor, ordem FROM sn_cadernos WHERE usuario_id = ? ORDER BY ordem, criado_em").bind(u.id).all();
+      const p = await env.DB.prepare("SELECT id, caderno_id, pai_id, titulo, ordem, criado_em, atualizado_em, length(conteudo) AS tam FROM sn_paginas WHERE usuario_id = ? ORDER BY ordem, criado_em").bind(u.id).all();
+      const cadernos = [], paginas = [];
+      for (const x of c.results || []) cadernos.push({ id: x.id, nome: await decifrar(env, x.nome), cor: x.cor || "", ordem: x.ordem });
+      for (const x of p.results || []) paginas.push({ id: x.id, caderno: x.caderno_id, pai: x.pai_id || "", titulo: await decifrar(env, x.titulo), ordem: x.ordem, criadoEm: x.criado_em, atualizadoEm: x.atualizado_em, tam: x.tam || 0 });
+      return json({ cadernos, paginas });
+    }
+    if (rota === "sn/pagina" && m === "GET") {
+      const x = await env.DB.prepare("SELECT conteudo FROM sn_paginas WHERE id = ? AND usuario_id = ?").bind(url.searchParams.get("id") || "", u.id).first();
+      if (!x) return erro("Página não encontrada.", 404);
+      return json({ conteudo: await decifrar(env, x.conteudo) });
+    }
+    if (rota === "sn/caderno" && m === "PUT") {
+      const b = await corpo(req);
+      const id = String(b.id || "").slice(0, 40), nome = String(b.nome || "").trim().slice(0, 120);
+      if (!id || !nome) return erro("Caderno inválido.");
+      const dono = await env.DB.prepare("SELECT usuario_id FROM sn_cadernos WHERE id = ?").bind(id).first();
+      if (dono && dono.usuario_id !== u.id) return erro("Caderno inválido.", 403);
+      await env.DB.prepare("INSERT INTO sn_cadernos (id, usuario_id, nome, cor, ordem, criado_em) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET nome = excluded.nome, cor = excluded.cor, ordem = excluded.ordem")
+        .bind(id, u.id, await cifrar(env, nome), String(b.cor || "").slice(0, 20), Number(b.ordem) || 0, agora()).run();
+      return json({ ok: true });
+    }
+    if (rota === "sn/caderno" && m === "DELETE") {
+      const id = url.searchParams.get("id") || "";
+      await env.DB.batch([
+        env.DB.prepare("DELETE FROM sn_paginas WHERE caderno_id = ? AND usuario_id = ?").bind(id, u.id),
+        env.DB.prepare("DELETE FROM sn_cadernos WHERE id = ? AND usuario_id = ?").bind(id, u.id),
+      ]);
+      return json({ ok: true });
+    }
+    if (rota === "sn/pagina" && m === "PUT") {
+      const b = await corpo(req);
+      const id = String(b.id || "").slice(0, 40), cad = String(b.caderno || "").slice(0, 40), pai = String(b.pai || "").slice(0, 40);
+      if (!id || !cad) return erro("Página inválida.");
+      if (typeof b.conteudo === "string" && b.conteudo.length > MAX_PAG) return erro("A página ficou grande demais (muitas imagens). Crie uma subpágina para continuar.", 413);
+      const c = await env.DB.prepare("SELECT id FROM sn_cadernos WHERE id = ? AND usuario_id = ?").bind(cad, u.id).first();
+      if (!c) return erro("Caderno não encontrado.", 404);
+      const ex = await env.DB.prepare("SELECT usuario_id FROM sn_paginas WHERE id = ?").bind(id).first();
+      if (ex && ex.usuario_id !== u.id) return erro("Página inválida.", 403);
+      const titulo = await cifrar(env, String(b.titulo || "").slice(0, 200));
+      const em = agora();
+      if (!ex) {
+        await env.DB.prepare("INSERT INTO sn_paginas (id, usuario_id, caderno_id, pai_id, titulo, conteudo, ordem, criado_em, atualizado_em) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
+          .bind(id, u.id, cad, pai, titulo, await cifrar(env, typeof b.conteudo === "string" ? b.conteudo : ""), Number(b.ordem) || 0, em, em).run();
+      } else if (typeof b.conteudo === "string") {
+        await env.DB.prepare("UPDATE sn_paginas SET caderno_id = ?, pai_id = ?, titulo = ?, conteudo = ?, ordem = ?, atualizado_em = ? WHERE id = ? AND usuario_id = ?")
+          .bind(cad, pai, titulo, await cifrar(env, b.conteudo), Number(b.ordem) || 0, em, id, u.id).run();
+      } else {
+        await env.DB.prepare("UPDATE sn_paginas SET caderno_id = ?, pai_id = ?, titulo = ?, ordem = ?, atualizado_em = ? WHERE id = ? AND usuario_id = ?")
+          .bind(cad, pai, titulo, Number(b.ordem) || 0, em, id, u.id).run();
+      }
+      return json({ ok: true, em });
+    }
+    if (rota === "sn/pagina" && m === "DELETE") {
+      const id = url.searchParams.get("id") || "";
+      await env.DB.prepare("DELETE FROM sn_paginas WHERE usuario_id = ?1 AND id IN (WITH RECURSIVE d(id) AS (SELECT ?2 UNION SELECT p.id FROM sn_paginas p JOIN d ON p.pai_id = d.id WHERE p.usuario_id = ?1) SELECT id FROM d)")
+        .bind(u.id, id).run();
+      return json({ ok: true });
+    }
+  }
+
+  // ---------- Feed: todos postam, todos veem, curtem e comentam ----------
+  if (rota.startsWith("feed")) {
+    const autores = async ids => {
+      const r = {};
+      for (const id of [...new Set(ids)]) {
+        const a = await env.DB.prepare("SELECT id, usuario, nome, sobrenome, papel, foto FROM usuarios WHERE id = ?").bind(id).first();
+        r[id] = a ? { id: a.id, usuario: a.usuario, nome: `${a.nome} ${a.sobrenome}`.trim(), papel: a.papel, foto: a.foto ? await decifrar(env, a.foto) : "" }
+                  : { id, usuario: "", nome: "Usuário removido", papel: "", foto: "" };
+      }
+      return r;
+    };
+    const podeApagar = dono => dono === u.id || u.papel === "admin";
+
+    if (rota === "feed" && m === "GET") {
+      const antes = Number(url.searchParams.get("antes")) || 1e15, so = Number(url.searchParams.get("post")) || 0;
+      const r = so
+        ? await env.DB.prepare("SELECT * FROM feed_posts WHERE id = ?").bind(so).all()
+        : await env.DB.prepare("SELECT * FROM feed_posts WHERE id < ? ORDER BY id DESC LIMIT 10").bind(antes).all();
+      const posts = [], ids = [];
+      for (const p of r.results || []) {
+        const cur = await env.DB.prepare("SELECT usuario_id FROM feed_curtidas WHERE post_id = ? ORDER BY criado_em").bind(p.id).all();
+        const com = await env.DB.prepare("SELECT id, usuario_id, texto, criado_em FROM feed_comentarios WHERE post_id = ? ORDER BY id").bind(p.id).all();
+        const comentarios = [];
+        for (const c of com.results || []) { comentarios.push({ id: c.id, autor: c.usuario_id, texto: await decifrar(env, c.texto), criadoEm: c.criado_em }); ids.push(c.usuario_id); }
+        const curt = (cur.results || []).map(x => x.usuario_id);
+        let imagens = [];
+        try { imagens = JSON.parse(await decifrar(env, p.imagens) || "[]"); } catch { }
+        posts.push({ id: p.id, autor: p.usuario_id, texto: await decifrar(env, p.texto), imagens, criadoEm: p.criado_em, curtidas: curt.length, euCurti: curt.includes(u.id), quemCurtiu: curt.slice(0, 30), comentarios });
+        ids.push(p.usuario_id, ...curt.slice(0, 30));
+      }
+      return json({ posts, autores: await autores(ids), fim: !so && (r.results || []).length < 10 });
+    }
+    if (rota === "feed" && m === "POST") {
+      const b = await corpo(req);
+      const texto = String(b.texto || "").trim().slice(0, 5000);
+      const imagens = Array.isArray(b.imagens) ? b.imagens.filter(x => typeof x === "string" && x.startsWith("data:image/")).slice(0, 4) : [];
+      if (!texto && imagens.length === 0) return erro("Escreva algo ou escolha uma imagem.");
+      if (imagens.reduce((t, x) => t + x.length, 0) > 1400000) return erro("As imagens ficaram grandes demais. Tente com menos imagens.", 413);
+      const em = agora();
+      const r = await env.DB.prepare("INSERT INTO feed_posts (usuario_id, texto, imagens, criado_em) VALUES (?, ?, ?, ?)")
+        .bind(u.id, await cifrar(env, texto), imagens.length ? await cifrar(env, JSON.stringify(imagens)) : "", em).run();
+      const id = r.meta.last_row_id;
+      await env.DB.prepare("INSERT INTO notificacoes (usuario_id, tipo, de_id, post_id, criado_em) SELECT id, 'post', ?, ?, ? FROM usuarios WHERE status = 'ativo' AND id != ?")
+        .bind(u.id, id, em, u.id).run();
+      return json({ ok: true, id });
+    }
+    if (rota === "feed" && m === "DELETE") {
+      const id = Number(url.searchParams.get("id")) || 0;
+      const p = await env.DB.prepare("SELECT usuario_id FROM feed_posts WHERE id = ?").bind(id).first();
+      if (!p) return json({ ok: true });
+      if (!podeApagar(p.usuario_id)) return erro("Só quem publicou pode apagar.", 403);
+      await env.DB.batch([
+        env.DB.prepare("DELETE FROM feed_curtidas WHERE post_id = ?").bind(id),
+        env.DB.prepare("DELETE FROM feed_comentarios WHERE post_id = ?").bind(id),
+        env.DB.prepare("DELETE FROM notificacoes WHERE post_id = ?").bind(id),
+        env.DB.prepare("DELETE FROM feed_posts WHERE id = ?").bind(id),
+      ]);
+      return json({ ok: true });
+    }
+    if (rota === "feed/curtir" && m === "POST") {
+      const b = await corpo(req); const id = Number(b.id) || 0;
+      const p = await env.DB.prepare("SELECT usuario_id FROM feed_posts WHERE id = ?").bind(id).first();
+      if (!p) return erro("Publicação não encontrada.", 404);
+      const ja = await env.DB.prepare("SELECT 1 AS x FROM feed_curtidas WHERE post_id = ? AND usuario_id = ?").bind(id, u.id).first();
+      if (ja) {
+        await env.DB.batch([
+          env.DB.prepare("DELETE FROM feed_curtidas WHERE post_id = ? AND usuario_id = ?").bind(id, u.id),
+          env.DB.prepare("DELETE FROM notificacoes WHERE post_id = ? AND de_id = ? AND tipo = 'curtida'").bind(id, u.id),
+        ]);
+      } else {
+        const em = agora();
+        const q = [env.DB.prepare("INSERT OR IGNORE INTO feed_curtidas (post_id, usuario_id, criado_em) VALUES (?, ?, ?)").bind(id, u.id, em)];
+        if (p.usuario_id !== u.id) q.push(env.DB.prepare("INSERT INTO notificacoes (usuario_id, tipo, de_id, post_id, criado_em) VALUES (?, 'curtida', ?, ?, ?)").bind(p.usuario_id, u.id, id, em));
+        await env.DB.batch(q);
+      }
+      const n = await env.DB.prepare("SELECT COUNT(*) AS n FROM feed_curtidas WHERE post_id = ?").bind(id).first();
+      return json({ ok: true, curtiu: !ja, curtidas: n.n });
+    }
+    if (rota === "feed/comentar" && m === "POST") {
+      const b = await corpo(req); const id = Number(b.id) || 0;
+      const texto = String(b.texto || "").trim().slice(0, 2000);
+      if (!texto) return erro("Escreva o comentário.");
+      const p = await env.DB.prepare("SELECT usuario_id FROM feed_posts WHERE id = ?").bind(id).first();
+      if (!p) return erro("Publicação não encontrada.", 404);
+      const em = agora();
+      const r = await env.DB.prepare("INSERT INTO feed_comentarios (post_id, usuario_id, texto, criado_em) VALUES (?, ?, ?, ?)").bind(id, u.id, await cifrar(env, texto), em).run();
+      // avisa quem publicou e quem já comentou (menos eu)
+      const outros = await env.DB.prepare("SELECT DISTINCT usuario_id FROM feed_comentarios WHERE post_id = ? AND usuario_id NOT IN (?, ?)").bind(id, u.id, p.usuario_id).all();
+      const q = [];
+      if (p.usuario_id !== u.id) q.push(env.DB.prepare("INSERT INTO notificacoes (usuario_id, tipo, de_id, post_id, criado_em) VALUES (?, 'comentario', ?, ?, ?)").bind(p.usuario_id, u.id, id, em));
+      for (const o of outros.results || []) q.push(env.DB.prepare("INSERT INTO notificacoes (usuario_id, tipo, de_id, post_id, criado_em) VALUES (?, 'resposta', ?, ?, ?)").bind(o.usuario_id, u.id, id, em));
+      if (q.length) await env.DB.batch(q);
+      return json({ ok: true, id: r.meta.last_row_id, criadoEm: em });
+    }
+    if (rota === "feed/comentario" && m === "DELETE") {
+      const id = Number(url.searchParams.get("id")) || 0;
+      const c = await env.DB.prepare("SELECT usuario_id FROM feed_comentarios WHERE id = ?").bind(id).first();
+      if (c && !podeApagar(c.usuario_id)) return erro("Só quem comentou pode apagar.", 403);
+      await env.DB.prepare("DELETE FROM feed_comentarios WHERE id = ?").bind(id).run();
+      return json({ ok: true });
+    }
+  }
+
+  // ---------- Notificações (sininho) ----------
+  if (rota === "notif" && m === "GET") {
+    await env.DB.prepare("DELETE FROM notificacoes WHERE usuario_id = ? AND criado_em < ?").bind(u.id, new Date(Date.now() - 60 * 864e5).toISOString()).run();
+    const r = await env.DB.prepare(
+      "SELECT n.id, n.tipo, n.post_id, n.criado_em, n.lida, n.de_id, d.nome, d.sobrenome, d.foto, p.texto AS ptexto FROM notificacoes n LEFT JOIN usuarios d ON d.id = n.de_id LEFT JOIN feed_posts p ON p.id = n.post_id WHERE n.usuario_id = ? ORDER BY n.id DESC LIMIT 30"
+    ).bind(u.id).all();
+    const itens = [], fotos = {};
+    for (const x of r.results || []) {
+      if (x.de_id && !(x.de_id in fotos)) fotos[x.de_id] = x.foto ? await decifrar(env, x.foto) : "";
+      const t = x.ptexto ? (await decifrar(env, x.ptexto)).replace(/\s+/g, " ").trim() : "";
+      itens.push({ id: x.id, tipo: x.tipo, postId: x.post_id, criadoEm: x.criado_em, lida: !!x.lida, de: x.de_id, nome: x.nome ? `${x.nome} ${x.sobrenome}`.trim() : "Alguém", trecho: t.length > 70 ? t.slice(0, 70) + "…" : t });
+    }
+    const n = await env.DB.prepare("SELECT COUNT(*) AS n FROM notificacoes WHERE usuario_id = ? AND lida = 0").bind(u.id).first();
+    return json({ itens, fotos, naoLidas: n.n });
+  }
+  if (rota === "notif/lidas" && m === "POST") {
+    await env.DB.prepare("UPDATE notificacoes SET lida = 1 WHERE usuario_id = ? AND lida = 0").bind(u.id).run();
+    return json({ ok: true });
   }
 
   return erro("Caminho inválido", 404);

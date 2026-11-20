@@ -41,6 +41,8 @@ public static class Abas
             "Analisa a nossa resposta para a 3069 antes de ir pelo Teams: se responde a pergunta, objetividade, discordância, pontos que podem ser contestados e tom.", "servicos-3069"),
         new("radar360", "Radar Smart360", "Radar Smart360", "radar", "Relacionamento e cooperativas",
             "Ficha 360 de um CNPJ (cadastro, sócios, linha do tempo, Junta Comercial e checagens públicas) e análise de CPF com finalidade, sem salvar nada.", "radar-smart360"),
+        new("smartnote", "Smart Note", "Smart Note", "caderno", "Relacionamento e cooperativas",
+            "Seus cadernos de anotações, como no OneNote: cadernos, páginas e subpáginas, texto formatado, listas de tarefas, tabelas e imagens coladas. Só você vê.", "smart-note"),
         new("depurador", "Depurador de leitura", "Depurador", "depurador", "Ferramentas",
             "Mostra, linha a linha, o que o sistema lê de uma planilha e o que fica de fora.", "depurador"),
         new("insitalent", "InsiTalent", "InsiTalent", "talento", "Ferramentas",
@@ -50,7 +52,7 @@ public static class Abas
     };
 
     /// <summary>Ordem da lista de abas nas Configurações (igual ao original).</summary>
-    public static readonly string[] OrdemConfig = { "resumo", "usuarios", "evolucao", "inspecao", "volume", "monitor", "corredor", "estrategia", "historico", "pareceres", "ferias", "pontos", "oneaone", "servicos3069", "radar360", "depurador", "insitalent", "mesa" };
+    public static readonly string[] OrdemConfig = { "resumo", "usuarios", "evolucao", "inspecao", "volume", "monitor", "corredor", "estrategia", "historico", "pareceres", "ferias", "pontos", "oneaone", "servicos3069", "radar360", "smartnote", "depurador", "insitalent", "mesa" };
 
     public static readonly string[] Grupos = { "Decisões", "Inspeção", "Conformidade", "Operação", "Coordenação", "Relacionamento e cooperativas", "Ferramentas" };
 

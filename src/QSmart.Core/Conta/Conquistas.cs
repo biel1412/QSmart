@@ -116,6 +116,10 @@ public static class Conquistas
             new("organizador", "Organizador", "Usar o Corredor 5 vezes", "corredor", "#D97706", U("corredor"), 5),
             new("planejador", "Planejador", "Abrir as Férias 5 vezes", "ferias", "#0EA5E9", U("ferias"), 5),
             new("pontual", "Pontual", "Abrir os Pontos de ação 5 vezes", "pontos", "#0D9488", U("pontos"), 5),
+            new("anotador", "Anotador", "Criar 10 páginas no Smart Note", "caderno", "#7C3AED", U("nota.pagina"), 10),
+            new("biblioteca", "Biblioteca", "Ter 3 cadernos no Smart Note", "caderno", "#6D28D9", U("nota.caderno"), 3),
+            new("voz", "Voz da equipe", "Publicar 5 vezes no Feed", "feed", "#EC4899", U("feed.post"), 5),
+            new("sociavel", "Sociável", "20 curtidas ou comentários no Feed", "coracao", "#E11D48", U("feed.curtida") + U("feed.comentario"), 20),
         };
 
         r.Trofeus = new()

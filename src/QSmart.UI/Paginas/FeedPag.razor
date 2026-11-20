@@ -1,0 +1,353 @@
+@page "/feed"
+@implements IDisposable
+@inject Estado E
+@inject NavigationManager Rotas
+@using System.Text.Json.Nodes
+@using Microsoft.JSInterop
+@using Microsoft.AspNetCore.Components.Forms
+
+<div class="fd">
+    <div class="fd-col">
+        <header class="fd-topo">
+            <div>
+                <span class="fd-sobre">QSmart</span>
+                <h1>Feed</h1>
+                <p class="muted">O mural de todo mundo do QSmart: compartilhe novidades, conquistas e avisos com a equipe.</p>
+            </div>
+            <button class="btn btn-sec" @onclick="Recarregar" title="Buscar publicações novas"><Icone Nome="atualizar" Tamanho="16" /> Atualizar</button>
+        </header>
+
+        @* ---------- nova publicação ---------- *@
+        @if (E.Conta.Perfil is { } eu)
+        {
+            <div class="fd-novo @(_foco || _texto != "" || _imgs.Count > 0 ? "aberto" : "")">
+                <div class="fd-novo-lin">
+                    @Avatar(eu.Foto, eu.NomeCompleto, "")
+                    <textarea @ref="_caixa" class="fd-caixa" rows="@(_foco || _texto != "" ? 4 : 1)" maxlength="5000"
+                              placeholder="@($"No que você está pensando, {eu.Nome}?")" value="@_texto"
+                              @oninput="@(e => _texto = e.Value?.ToString() ?? "")" @onfocus="@(() => _foco = true)"></textarea>
+                </div>
+                @if (_imgs.Count > 0)
+                {
+                    <div class="fd-prev">
+                        @for (int i = 0; i < _imgs.Count; i++)
+                        {
+                            var k = i;
+                            <span><img src="@_imgs[k]" alt="" /><button title="Tirar" @onclick="() => _imgs.RemoveAt(k)"><Icone Nome="x" Tamanho="13" /></button></span>
+                        }
+                    </div>
+                }
+                <div class="fd-novo-pe">
+                    <label class="fd-img-bt @(_imgs.Count >= 4 ? "off" : "")" title="Até 4 imagens (ou cole com Ctrl+V)">
+                        <Icone Nome="imagem" Tamanho="18" /> Imagem
+                        <InputFile OnChange="EscolherImagens" accept="image/*" multiple disabled="@(_imgs.Count >= 4)" />
+                    </label>
+                    <span class="mola"></span>
+                    @if (_texto.Length > 4500) { <span class="muted pequeno">@(5000 - _texto.Length) caracteres</span> }
+                    <button class="btn btn-pri" disabled="@(_postando || (_texto.Trim() == "" && _imgs.Count == 0))" @onclick="Publicar">
+                        @if (_postando) { <span class="ia-spin pequeno"></span> } else { <Icone Nome="enviar" Tamanho="16" /> } Publicar
+                    </button>
+                </div>
+            </div>
+        }
+
+        @* ---------- publicações ---------- *@
+        @if (_erro != null) { <div class="oo-bloqueio"><Icone Nome="alerta" Tamanho="22" /><div><b>@_erro</b></div></div> }
+        @if (_carregando && _posts.Count == 0)
+        {
+            @for (int i = 0; i < 2; i++) { <div class="fd-post fd-esqueleto"><span></span><i></i><i></i><i class="curto"></i></div> }
+        }
+        else if (_posts.Count == 0 && _erro == null)
+        {
+            <div class="fd-vazio">
+                <span class="fd-vazio-ic"><Icone Nome="feed" Tamanho="34" /></span>
+                <h3>Nenhuma publicação ainda</h3>
+                <p class="muted">Que tal ser o primeiro? Escreva um recado para a equipe ou compartilhe uma foto.</p>
+            </div>
+        }
+        @foreach (var p in _posts)
+        {
+            var a = Autor(p.Autor);
+            <article class="fd-post @(p.Id == _destaque ? "destaque" : "")" id="post-@p.Id">
+                <div class="fd-post-cab">
+                    @Avatar(a.Foto, a.Nome, "")
+                    <div class="fd-quem">
+                        <b>@a.Nome</b>
+                        <span class="muted pequeno">@Papel(a.Papel) · <span title="@DataLonga(p.CriadoEm)">@Quando(p.CriadoEm)</span></span>
+                    </div>
+                    @if (PodeApagar(p.Autor))
+                    {
+                        <button class="fd-menu" title="Excluir publicação" @onclick="() => Excluir(p)"><Icone Nome="lixo" Tamanho="16" /></button>
+                    }
+                </div>
+                @if (p.Texto != "") { <div class="fd-texto @(p.Texto.Length < 90 && p.Imagens.Count == 0 ? "grande" : "")">@p.Texto</div> }
+                @if (p.Imagens.Count > 0)
+                {
+                    <div class="fd-fotos n@(Math.Min(p.Imagens.Count, 4))">
+                        @foreach (var img in p.Imagens) { <img src="@img" alt="" loading="lazy" @onclick="() => _foto = img" /> }
+                    </div>
+                }
+                <div class="fd-contas">
+                    @if (p.Curtidas > 0)
+                    {
+                        <span title="@string.Join(", ", p.QuemCurtiu.Select(x => Autor(x).Nome))"><span class="fd-cor-mini"><Icone Nome="coracao-cheio" Tamanho="11" /></span> @NomesCurtidas(p)</span>
+                    }
+                    <span class="mola"></span>
+                    @if (p.Comentarios.Count > 0) { <button class="fd-link" @onclick="() => Alternar(p.Id)">@(p.Comentarios.Count == 1 ? "1 comentário" : $"{p.Comentarios.Count} comentários")</button> }
+                </div>
+                <div class="fd-acoes">
+                    <button class="@(p.EuCurti ? "curti" : "")" @onclick="() => Curtir(p)"><Icone Nome="@(p.EuCurti ? "coracao-cheio" : "coracao")" Tamanho="18" /> Curtir</button>
+                    <button @onclick="() => Comentar(p)"><Icone Nome="conversa" Tamanho="18" /> Comentar</button>
+                </div>
+                @{ var mostrar = _abertos.Contains(p.Id) ? p.Comentarios : p.Comentarios.TakeLast(2).ToList(); }
+                @if (p.Comentarios.Count > 2 && !_abertos.Contains(p.Id))
+                {
+                    <button class="fd-link fd-mais-com" @onclick="() => Alternar(p.Id)">Ver os @(p.Comentarios.Count - 2) comentários anteriores</button>
+                }
+                @foreach (var c in mostrar)
+                {
+                    var ca = Autor(c.Autor);
+                    <div class="fd-com">
+                        @Avatar(ca.Foto, ca.Nome, "mini")
+                        <div class="fd-com-bolha">
+                            <b>@ca.Nome</b>
+                            <span>@c.Texto</span>
+                        </div>
+                        <span class="fd-com-pe">@Quando(c.CriadoEm)@if (PodeApagar(c.Autor)) { <button class="fd-link" @onclick="() => ExcluirComentario(p, c)">Excluir</button> }</span>
+                    </div>
+                }
+                @if (_comentando.Contains(p.Id) || p.Comentarios.Count > 0)
+                {
+                    <div class="fd-com novo">
+                        @Avatar(E.Conta.Perfil?.Foto ?? "", E.Conta.Perfil?.NomeCompleto ?? "", "mini")
+                        <input class="fd-com-caixa" id="com-@p.Id" placeholder="Escreva um comentário…" maxlength="2000"
+                               value="@(_rasc.GetValueOrDefault(p.Id) ?? "")" @oninput="@(e => _rasc[p.Id] = e.Value?.ToString() ?? "")"
+                               @onkeydown="@(e => TeclaComentario(e, p))" />
+                        <button class="fd-enviar" title="Enviar" disabled="@(string.IsNullOrWhiteSpace(_rasc.GetValueOrDefault(p.Id)))" @onclick="() => EnviarComentario(p)"><Icone Nome="enviar" Tamanho="16" /></button>
+                    </div>
+                }
+            </article>
+        }
+        @if (_posts.Count > 0 && !_fim)
+        {
+            <button class="btn btn-sec fd-mais" disabled="@_carregando" @onclick="Mais">@(_carregando ? "Carregando…" : "Ver publicações mais antigas")</button>
+        }
+        @if (_posts.Count > 0 && _fim) { <p class="muted pequeno fd-fim">Você chegou ao começo do Feed.</p> }
+    </div>
+</div>
+
+@if (_foto != null)
+{
+    <div class="fd-luz" @onclick="() => _foto = null"><img src="@_foto" alt="" /><button title="Fechar"><Icone Nome="x" Tamanho="22" /></button></div>
+}
+
+@code {
+    sealed class Comentario { public int Id; public int Autor; public string Texto = ""; public string CriadoEm = ""; }
+    sealed class Post
+    {
+        public int Id; public int Autor; public string Texto = ""; public List<string> Imagens = new(); public string CriadoEm = "";
+        public int Curtidas; public bool EuCurti; public List<int> QuemCurtiu = new(); public List<Comentario> Comentarios = new();
+    }
+    sealed record AutorF(int Id, string Nome, string Papel, string Foto);
+
+    readonly List<Post> _posts = new();
+    readonly Dictionary<int, AutorF> _autores = new();
+    readonly HashSet<int> _abertos = new(), _comentando = new();
+    readonly Dictionary<int, string> _rasc = new();
+    readonly List<string> _imgs = new();
+    string _texto = "";
+    string? _erro, _foto;
+    bool _carregando = true, _fim, _postando, _foco;
+    int _destaque;
+    ElementReference _caixa;
+    DotNetObjectReference<FeedPag>? _ref;
+
+    static string S(JsonNode? n, string k) => n?[k] is JsonValue v && v.TryGetValue<string>(out var s) ? s : "";
+    static int I(JsonNode? n, string k) => n?[k] is JsonValue v && v.TryGetValue<int>(out var i) ? i : 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _ref = DotNetObjectReference.Create(this);
+        Rotas.LocationChanged += AoNavegar;
+        _ = E.Conta.Registrar("feed");
+        await Carregar(true);
+    }
+
+    async void AoNavegar(object? s, LocationChangedEventArgs e)
+    {
+        if (!e.Location.Contains("/feed")) return;
+        await InvokeAsync(async () => { await Carregar(true); StateHasChanged(); });
+    }
+
+    protected override async Task OnAfterRenderAsync(bool primeira)
+    {
+        if (primeira && E.Conta.Perfil != null) await E.Nav.ColarImagens(_caixa, _ref!);
+        if (_rolarPara > 0) { var id = _rolarPara; _rolarPara = 0; await E.Nav.Rolar("post-" + id); }
+    }
+    int _rolarPara;
+
+    int? PostDaUrl()
+    {
+        var q = new Uri(Rotas.Uri).Query.TrimStart('?').Split('&').Select(x => x.Split('=')).FirstOrDefault(x => x.Length == 2 && x[0] == "post");
+        return q != null && int.TryParse(q[1], out var id) ? id : null;
+    }
+
+    async Task Recarregar() => await Carregar(true);
+
+    async Task Carregar(bool doZero)
+    {
+        _carregando = true;
+        var antes = doZero || _posts.Count == 0 ? "" : "?antes=" + _posts[^1].Id;
+        var r = await E.Conta.Chamar("GET", "feed" + antes);
+        _carregando = false;
+        if (!r.Ok || r.Json == null) { _erro = "Não consegui abrir o Feed: " + r.Erro; return; }
+        _erro = null;
+        if (doZero) _posts.Clear();
+        LerAutores(r.Json["autores"] as JsonObject);
+        foreach (var x in r.Json["posts"] as JsonArray ?? new()) _posts.Add(LerPost(x));
+        _fim = r.Json["fim"]?.GetValue<bool>() ?? true;
+        if (doZero && PostDaUrl() is int alvo)
+        {
+            _destaque = alvo;
+            if (!_posts.Any(p => p.Id == alvo))
+            {
+                var r2 = await E.Conta.Chamar("GET", "feed?post=" + alvo);
+                if (r2.Ok && r2.Json?["posts"] is JsonArray a2 && a2.Count > 0) { LerAutores(r2.Json["autores"] as JsonObject); _posts.Insert(0, LerPost(a2[0])); }
+            }
+            _abertos.Add(alvo);
+            _rolarPara = alvo;
+        }
+        E.Sino.MarcarItensLidos();
+    }
+
+    void LerAutores(JsonObject? o)
+    {
+        if (o == null) return;
+        foreach (var (k, v) in o) if (int.TryParse(k, out var id)) _autores[id] = new AutorF(id, S(v, "nome"), S(v, "papel"), S(v, "foto"));
+    }
+
+    static Post LerPost(JsonNode? x)
+    {
+        var p = new Post { Id = I(x, "id"), Autor = I(x, "autor"), Texto = S(x, "texto"), CriadoEm = S(x, "criadoEm"), Curtidas = I(x, "curtidas"), EuCurti = x?["euCurti"]?.GetValue<bool>() ?? false };
+        foreach (var i in x?["imagens"] as JsonArray ?? new()) if (i is JsonValue v && v.TryGetValue<string>(out var s)) p.Imagens.Add(s);
+        foreach (var q in x?["quemCurtiu"] as JsonArray ?? new()) if (q is JsonValue v && v.TryGetValue<int>(out var id)) p.QuemCurtiu.Add(id);
+        foreach (var c in x?["comentarios"] as JsonArray ?? new()) p.Comentarios.Add(new Comentario { Id = I(c, "id"), Autor = I(c, "autor"), Texto = S(c, "texto"), CriadoEm = S(c, "criadoEm") });
+        return p;
+    }
+
+    async Task Mais() => await Carregar(false);
+
+    AutorF Autor(int id) => _autores.TryGetValue(id, out var a) ? a : new AutorF(id, "Usuário", "", "");
+    bool PodeApagar(int autor) => E.Conta.Perfil is { } eu && (eu.Id == autor || eu.Admin);
+
+    // ---------- publicar ----------
+    async Task EscolherImagens(InputFileChangeEventArgs e)
+    {
+        foreach (var f in e.GetMultipleFiles(4))
+        {
+            if (_imgs.Count >= 4) break;
+            try
+            {
+                using var ms = new MemoryStream();
+                await f.OpenReadStream(25_000_000).CopyToAsync(ms);
+                _imgs.Add(await E.Nav.Imagem(ms.ToArray(), 1280));
+            }
+            catch { await E.Janelas.Aviso("Feed", $"Não consegui abrir a imagem {f.Name}."); }
+        }
+        _foco = true;
+    }
+
+    [JSInvokable] public void ImagemColada(string url) { if (_imgs.Count < 4) { _imgs.Add(url); _foco = true; InvokeAsync(StateHasChanged); } }
+
+    async Task Publicar()
+    {
+        if (_texto.Trim() == "" && _imgs.Count == 0) return;
+        _postando = true;
+        var imgs = new JsonArray(); foreach (var i in _imgs) imgs.Add(i);
+        var r = await E.Conta.Chamar("POST", "feed", new JsonObject { ["texto"] = _texto.Trim(), ["imagens"] = imgs });
+        _postando = false;
+        if (!r.Ok) { await E.Janelas.Aviso("Feed", r.Erro); return; }
+        _texto = ""; _imgs.Clear(); _foco = false;
+        _ = E.Conta.Registrar("feed.post", true);
+        await Carregar(true);
+    }
+
+    async Task Excluir(Post p)
+    {
+        if (!await E.Janelas.Pergunta("Excluir publicação", "Excluir esta publicação, com as curtidas e os comentários? Não dá para desfazer.")) return;
+        var r = await E.Conta.Chamar("DELETE", "feed?id=" + p.Id);
+        if (!r.Ok) { await E.Janelas.Aviso("Feed", r.Erro); return; }
+        _posts.Remove(p);
+    }
+
+    // ---------- curtir e comentar ----------
+    async Task Curtir(Post p)
+    {
+        var eu = E.Conta.Perfil!.Id;
+        p.EuCurti = !p.EuCurti; p.Curtidas += p.EuCurti ? 1 : -1;
+        if (p.EuCurti) p.QuemCurtiu.Insert(0, eu); else p.QuemCurtiu.Remove(eu);
+        if (!_autores.ContainsKey(eu)) _autores[eu] = new AutorF(eu, E.Conta.Perfil.NomeCompleto, E.Conta.Perfil.Papel, E.Conta.Perfil.Foto);
+        var r = await E.Conta.Chamar("POST", "feed/curtir", new JsonObject { ["id"] = p.Id });
+        if (r.Ok) { p.Curtidas = I(r.Json, "curtidas"); p.EuCurti = r.Json?["curtiu"]?.GetValue<bool>() ?? p.EuCurti; if (p.EuCurti) _ = E.Conta.Registrar("feed.curtida", true); }
+        else { await E.Janelas.Aviso("Feed", r.Erro); }
+    }
+
+    async Task Comentar(Post p) { _comentando.Add(p.Id); StateHasChanged(); await Task.Delay(30); await E.Nav.Focar("com-" + p.Id); }
+    void Alternar(int id) { if (!_abertos.Remove(id)) _abertos.Add(id); }
+
+    async Task TeclaComentario(KeyboardEventArgs e, Post p) { if (e.Key == "Enter" && !e.ShiftKey) await EnviarComentario(p); }
+
+    async Task EnviarComentario(Post p)
+    {
+        var t = (_rasc.GetValueOrDefault(p.Id) ?? "").Trim();
+        if (t == "") return;
+        _rasc[p.Id] = "";
+        var eu = E.Conta.Perfil!;
+        var r = await E.Conta.Chamar("POST", "feed/comentar", new JsonObject { ["id"] = p.Id, ["texto"] = t });
+        if (!r.Ok) { _rasc[p.Id] = t; await E.Janelas.Aviso("Feed", r.Erro); return; }
+        if (!_autores.ContainsKey(eu.Id)) _autores[eu.Id] = new AutorF(eu.Id, eu.NomeCompleto, eu.Papel, eu.Foto);
+        p.Comentarios.Add(new Comentario { Id = I(r.Json, "id"), Autor = eu.Id, Texto = t, CriadoEm = S(r.Json, "criadoEm") });
+        _abertos.Add(p.Id);
+        _ = E.Conta.Registrar("feed.comentario", true);
+    }
+
+    async Task ExcluirComentario(Post p, Comentario c)
+    {
+        if (!await E.Janelas.Pergunta("Excluir comentário", "Excluir este comentário?")) return;
+        var r = await E.Conta.Chamar("DELETE", "feed/comentario?id=" + c.Id);
+        if (r.Ok) p.Comentarios.Remove(c); else await E.Janelas.Aviso("Feed", r.Erro);
+    }
+
+    string NomesCurtidas(Post p)
+    {
+        var eu = E.Conta.Perfil?.Id ?? 0;
+        var nomes = p.QuemCurtiu.Select(x => x == eu ? "Você" : Autor(x).Nome.Split(' ')[0]).Take(2).ToList();
+        int resto = p.Curtidas - nomes.Count;
+        return resto > 0 ? $"{string.Join(", ", nomes)} e mais {resto}" : string.Join(" e ", nomes);
+    }
+
+    // ---------- visual ----------
+    static readonly string[] Paleta = { "#0EA5E9", "#8B5CF6", "#EC4899", "#F59E0B", "#10B981", "#6366F1", "#14B8A6", "#F97316" };
+    static string CorNome(string n) { int h = 0; foreach (var ch in n) h = unchecked(h * 31 + ch); return Paleta[(int)((uint)h % Paleta.Length)]; }
+    static string Iniciais(string n) { var p = n.Split(' ', StringSplitOptions.RemoveEmptyEntries); return (p.Length == 0 ? "?" : p.Length == 1 ? p[0][..1] : $"{p[0][0]}{p[^1][0]}").ToUpperInvariant(); }
+
+    RenderFragment Avatar(string foto, string nome, string cls) => @<span class="fd-av @cls" style="background:@CorNome(nome)">@if (foto != "") { <img src="@foto" alt="" /> } else { @Iniciais(nome) }</span>;
+
+    static string Papel(string p) => p switch { "admin" => "Administrador", "coordenador" => "Coordenação", "lideranca" => "Liderança", _ => "QSmart" };
+
+    static DateTime? Dt(string iso) => DateTime.TryParse(iso, null, System.Globalization.DateTimeStyles.RoundtripKind, out var d) ? d.ToLocalTime() : null;
+    public static string Quando(string iso)
+    {
+        if (Dt(iso) is not { } d) return "";
+        var s = DateTime.Now - d;
+        if (s.TotalMinutes < 1) return "agora";
+        if (s.TotalMinutes < 60) return $"há {(int)s.TotalMinutes} min";
+        if (s.TotalHours < 24 && d.Date == DateTime.Today) return $"há {(int)s.TotalHours} h";
+        if (d.Date == DateTime.Today.AddDays(-1)) return $"ontem às {d:HH:mm}";
+        if (s.TotalDays < 7) return $"há {(int)Math.Ceiling(s.TotalDays)} dias";
+        return d.ToString("dd/MM/yyyy");
+    }
+    static string DataLonga(string iso) => Dt(iso) is { } d ? d.ToString("dd/MM/yyyy HH:mm") : "";
+
+    public void Dispose() { Rotas.LocationChanged -= AoNavegar; _ = Task.Delay(3000).ContinueWith(_ => _ref?.Dispose()); }
+}
