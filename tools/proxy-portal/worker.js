@@ -1,7 +1,7 @@
 // Intermediário do QSmart (Cloudflare Worker, plano gratuito).
 // 1) Portal da Transparência: o Portal não aceita consultas direto do navegador (CORS).
 // 2) IA do Mr. Smart (Groq): a chave fica guardada aqui, sem configurar cada máquina.
-// 3) Contas e One a One: banco D1 (ligação "DB"); senhas com PBKDF2 e dados do 1:1 cifrados (AES-GCM).
+// 3) Contas, One a One e Férias: banco D1 (ligação "DB"); senhas com PBKDF2 e dados do 1:1 cifrados (AES-GCM).
 // Segredos do worker: CHAVE_PORTAL, CHAVE_GROQ e CHAVE_DADOS.
 
 const ORIGENS = ["https://biel1412.github.io", "http://127.0.0.1:5199", "http://localhost:5199"];
@@ -331,6 +331,43 @@ async function api(req, env, url) {
       if (!antes) return json({ ok: true });
       if (!minha(antes.lideranca)) return erro("Essa pessoa é de outra equipe.", 403);
       await env.DB.prepare("DELETE FROM oo_pessoas WHERE id = ?").bind(id).run();
+      return json({ ok: true });
+    }
+  }
+
+  // ---------- Férias (mesmas pessoas do One a One; a equipe vem da pessoa no One a One) ----------
+  if (rota === "fe") {
+    if (!podeVerTudo(u) && !(u.papel === "lideranca" && u.lideranca)) return erro("Seu acesso não inclui as Férias. Fale com o administrador.", 403);
+    const equipeDe = async id => {
+      const p = await env.DB.prepare("SELECT lideranca FROM oo_pessoas WHERE id = ?").bind(id).first();
+      return p ? (p.lideranca || "") : null;
+    };
+    const pode = l => podeVerTudo(u) || (l || "") === u.lideranca;
+
+    if (m === "GET") {
+      const r = podeVerTudo(u)
+        ? await env.DB.prepare("SELECT f.id, f.dados, f.atualizado_em FROM fe_pessoas f").all()
+        : await env.DB.prepare("SELECT f.id, f.dados, f.atualizado_em FROM fe_pessoas f JOIN oo_pessoas o ON o.id = f.id WHERE o.lideranca = ?").bind(u.lideranca).all();
+      const pessoas = [];
+      for (const p of r.results || []) pessoas.push({ id: p.id, dados: await decifrar(env, p.dados), atualizadoEm: p.atualizado_em });
+      return json({ pessoas, veTudo: podeVerTudo(u), lideranca: u.lideranca });
+    }
+    if (m === "PUT") {
+      const b = await corpo(req);
+      const id = String(b.id || "").slice(0, 64);
+      if (!id || typeof b.dados !== "string" || b.dados.length > 200000) return erro("Registro inválido.");
+      const l = await equipeDe(id);
+      if (l === null) return erro("Pessoa não encontrada no One a One.", 404);
+      if (!pode(l)) return erro("Essa pessoa é de outra equipe.", 403);
+      await env.DB.prepare("INSERT INTO fe_pessoas (id, dados, atualizado_em, atualizado_por) VALUES (?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET dados = excluded.dados, atualizado_em = excluded.atualizado_em, atualizado_por = excluded.atualizado_por")
+        .bind(id, await cifrar(env, b.dados), agora(), u.id).run();
+      return json({ ok: true, em: agora() });
+    }
+    if (m === "DELETE") {
+      const id = url.searchParams.get("id") || "";
+      const l = await equipeDe(id);
+      if (l !== null && !pode(l)) return erro("Essa pessoa é de outra equipe.", 403);
+      await env.DB.prepare("DELETE FROM fe_pessoas WHERE id = ?").bind(id).run();
       return json({ ok: true });
     }
   }

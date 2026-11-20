@@ -32,7 +32,7 @@ public static class Abas
         new("estrategia", "Estratégia do dia", "Estratégia", "estrategia", "Operação",
             "Resumo dos serviços, SLA e volume do dia a partir do compilado, com a mensagem da estratégia pronta para o Teams.", "estrategia"),
         new("ferias", "Férias", "Férias", "ferias", "Coordenação",
-            "Gera o modelo de planilha para a equipe pedir férias e compara os pedidos: choques, datas próximas, quem vende e quem sai em breve.", "ferias"),
+            "Férias de cada pessoa do One a One, por liderança: choques de datas, sugestões de novas datas e quanto o impacto diminuiu.", "ferias"),
         new("pontos", "Pontos de ação mensal", "Pontos de ação", "pontos", "Coordenação",
             "Média diária de ações por usuário no mês e painel só com quem fica abaixo de 150.", "pontos"),
         new("oneaone", "One a One", "One a One", "conversa", "Coordenação",

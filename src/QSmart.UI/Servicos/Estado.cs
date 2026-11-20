@@ -450,6 +450,47 @@ public sealed class Estado
         }
     }
 
+    // ---- Férias no banco (mesmas pessoas do One a One) ----
+    public Dictionary<string, QSmart.Core.Coordenacao.FeriasPessoa>? FeDados;
+    public string? FeErro;
+    readonly Dictionary<string, string> _feSinc = new();
+
+    public async Task CarregarFe(bool forcar = false)
+    {
+        if (!Conta.Logado) return;
+        await CarregarOne(forcar);
+        if (OneErro != null) { FeErro = OneErro; return; }
+        if (FeDados != null && !forcar) return;
+        var r = await Conta.Chamar("GET", "fe");
+        if (!r.Ok || r.Json == null) { FeErro = r.Erro; FeDados = null; Notificar(); return; }
+        FeErro = null;
+        var d = new Dictionary<string, QSmart.Core.Coordenacao.FeriasPessoa>();
+        _feSinc.Clear();
+        if (r.Json["pessoas"] is System.Text.Json.Nodes.JsonArray a)
+            foreach (var x in a)
+            {
+                var id = x?["id"]?.GetValue<string>() ?? ""; var json = x?["dados"]?.GetValue<string>() ?? "";
+                if (id == "") continue;
+                d[id] = QSmart.Core.Coordenacao.FeriasBanco.DeJson(json);
+                _feSinc[id] = QSmart.Core.Coordenacao.FeriasBanco.ParaJson(d[id]);
+            }
+        FeDados = d;
+        Notificar();
+    }
+
+    /// <summary>Grava as férias de uma pessoa (só se mudou).</summary>
+    public async Task<bool> SalvarFe(string pessoaId)
+    {
+        if (FeDados == null || !FeDados.TryGetValue(pessoaId, out var f)) return false;
+        var json = QSmart.Core.Coordenacao.FeriasBanco.ParaJson(f);
+        if (_feSinc.TryGetValue(pessoaId, out var ant) && ant == json) return true;
+        var r = await Conta.Chamar("PUT", "fe", new System.Text.Json.Nodes.JsonObject { ["id"] = pessoaId, ["dados"] = json });
+        if (r.Ok) { _feSinc[pessoaId] = json; return true; }
+        await Janelas.Aviso("Férias", "Não consegui salvar no banco: " + r.Erro + "\n\nVou recarregar as férias do banco.");
+        FeDados = null; await CarregarFe(true);
+        return false;
+    }
+
     /// <summary>Carteira antiga, guardada só neste navegador (antes do banco), para enviar uma vez.</summary>
     public async Task<QSmart.Core.Coordenacao.BaseOO?> OneLocalAntigo()
     {
@@ -522,10 +563,11 @@ public sealed class Estado
     {
         get
         {
-            if (Ferias.Periodos.Count == 0) return null;
-            var al = Core.Coordenacao.Ferias.Alertas(Ferias);
-            int ch = al.Count(a => a.Nivel == NivelFerias.Choque), pr = al.Count(a => a.Nivel is NivelFerias.Proximo or NivelFerias.MuitoProximo);
-            return $"{Ferias.Periodos.Count} pedido(s)" + (ch > 0 ? $" · {ch} choque(s)" : "") + (pr > 0 ? $" · {pr} data(s) próxima(s)" : "");
+            if (FeDados == null || OneBase == null) return null;
+            var (b, _, _) = QSmart.Core.Coordenacao.FeriasBanco.Montar(OneBase.Pessoas, FeDados);
+            if (b.Periodos.Count == 0) return null;
+            int at = QSmart.Core.Coordenacao.FeriasAuto.ChoqueTotal(b), ini = QSmart.Core.Coordenacao.FeriasBanco.ChoquePedido(b);
+            return $"{b.Periodos.Count} período(s)" + (at > 0 ? $" · {at} dia(s) de choque" : " · sem choque") + (at < ini ? $" · −{Math.Round((ini - at) * 100.0 / ini):0}% de impacto" : "");
         }
     }
 
