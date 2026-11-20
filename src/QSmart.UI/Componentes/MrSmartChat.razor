@@ -1,23 +1,25 @@
 @using QSmart.Core
+@using System.Text.Json.Nodes
 @inject NavigationManager Rotas
+@inject Estado E
 @implements IDisposable
 
 <div class="mr-fab @(_aberto ? "aberto" : "")">
     @if (!_aberto && _dica)
     {
-        <button class="mr-dica" @onclick="Abrir"><b>Precisa de ajuda?</b><span>Fale com o Mr Smart</span><i @onclick="FecharDica" @onclick:stopPropagation="true" title="Fechar">✕</i></button>
+        <button class="mr-dica" @onclick="Abrir"><b>Precisa de ajuda?</b><span>Fale com o Mr. Smart IA</span><i @onclick="FecharDica" @onclick:stopPropagation="true" title="Fechar">✕</i></button>
     }
-    <button class="mr-btn" @onclick="Alternar" title="@(_aberto ? "Fechar o Mr Smart" : "Mr Smart · suporte do QSmart")" aria-label="Mr Smart">
+    <button class="mr-btn" @onclick="Alternar" title="@(_aberto ? "Fechar o Mr. Smart IA" : "Mr. Smart IA · assistente do QSmart")" aria-label="Mr. Smart IA">
         @if (_aberto) { <span class="mr-x">✕</span> } else { <MrSmartLogo Tamanho="46" /> <span class="mr-on"></span> }
     </button>
 </div>
 
 @if (_aberto)
 {
-    <div class="mr-jan" role="dialog" aria-label="Mr Smart">
+    <div class="mr-jan" role="dialog" aria-label="Mr. Smart IA">
         <div class="mr-cab">
             <MrSmartLogo Tamanho="42" />
-            <div><b>Mr Smart</b><span><i></i>Suporte do QSmart · online</span></div>
+            <div><b>Mr. Smart <em class="mr-ia">IA</em></b><span><i></i>Online · lê seus cadernos</span></div>
             <button class="mr-cab-bt" @onclick="Limpar" title="Nova conversa">↺</button>
             <button class="mr-cab-bt" @onclick="Alternar" title="Fechar">✕</button>
         </div>
@@ -26,23 +28,40 @@
                 @for (int i = _msgs.Count - 1; i >= 0; i--)
                 {
                     var m = _msgs[i];
-                    if (m.eu)
+                    if (m.Eu)
                     {
-                        <div class="mr-msg eu">@m.texto</div>
+                        <div class="mr-msg eu">@m.Texto</div>
+                    }
+                    else if (m.Pensando)
+                    {
+                        <div class="mr-linha">
+                            <MrSmartLogo Tamanho="26" />
+                            <div class="mr-msg bot mr-pensando"><span></span><span></span><span></span><small>procurando nos seus cadernos…</small></div>
+                        </div>
                     }
                     else
                     {
                         <div class="mr-linha">
                             <MrSmartLogo Tamanho="26" />
-                            <div class="mr-msg bot">
-                                @((MarkupString)m.texto)
-                                @if (m.aba is string ch && Abas.Por(ch) is Aba a)
+                            <div class="mr-msg bot @(m.DosCadernos ? "ia" : "")">
+                                @if (m.DosCadernos) { <span class="mr-selo"><Icone Nome="caderno" Tamanho="12" /> Resposta dos cadernos</span> }
+                                @((MarkupString)m.Texto)
+                                @if (m.Fontes.Count > 0)
+                                {
+                                    <div class="mr-fontes"><small>Fontes</small>
+                                        @foreach (var f in m.Fontes)
+                                        {
+                                            <button class="mr-fonte" @onclick="() => AbrirFonte(f)" title="Abrir a página"><Icone Nome="caderno" Tamanho="13" /> <span>@f.CadernoNome</span> › <b>@f.Titulo</b></button>
+                                        }
+                                    </div>
+                                }
+                                @if (m.Aba is string ch && Abas.Por(ch) is Aba a)
                                 {
                                     <button class="mr-atalho" @onclick="() => Ir(a)"><Icone Nome="@a.Icone" Tamanho="15" /> Abrir @a.Nome <Icone Nome="seta" Tamanho="14" /></button>
                                 }
-                                @if (m.sugestoes != null)
+                                @if (m.Sugestoes != null)
                                 {
-                                    <div class="mr-chips">@foreach (var s in m.sugestoes) { <button class="mr-chip" @onclick="() => Perguntar(s)">@s</button> }</div>
+                                    <div class="mr-chips">@foreach (var s in m.Sugestoes) { <button class="mr-chip" @onclick="() => Perguntar(s)">@s</button> }</div>
                                 }
                             </div>
                         </div>
@@ -51,17 +70,28 @@
             </div>
         </div>
         <div class="mr-pe">
-            <input class="mr-campo" placeholder="Escreva sua dúvida…" @bind="_texto" @bind:event="oninput" @onkeydown="Tecla" id="mr-campo" autocomplete="off" />
-            <button class="mr-enviar" @onclick="Enviar" disabled="@string.IsNullOrWhiteSpace(_texto)" title="Enviar">➤</button>
+            <input class="mr-campo" placeholder="Pergunte sobre o QSmart ou seus cadernos…" @bind="_texto" @bind:event="oninput" @onkeydown="Tecla" id="mr-campo" autocomplete="off" disabled="@_ocupado" />
+            <button class="mr-enviar" @onclick="Enviar" disabled="@(string.IsNullOrWhiteSpace(_texto) || _ocupado)" title="Enviar">➤</button>
         </div>
+        <div class="mr-aviso-ia">Para responder, trechos dos cadernos que você pode ver são enviados à IA. Confira as fontes.</div>
     </div>
 }
 
 @code {
-    bool _aberto, _dica = true;
+    sealed record Fonte(string Caderno, string Pagina, string Titulo, string CadernoNome);
+    sealed class Msg
+    {
+        public bool Eu; public string Texto = ""; public string? Aba; public string[]? Sugestoes;
+        public List<Fonte> Fontes = new(); public bool Pensando, DosCadernos;
+        public string Plano = "";   // texto simples (vai no histórico da conversa)
+    }
+
+    bool _aberto, _dica = true, _ocupado;
     string _texto = "";
-    readonly List<(bool eu, string texto, string? aba, string[]? sugestoes)> _msgs = new();
+    readonly List<Msg> _msgs = new();
     System.Threading.Timer? _t;
+
+    const string Suporte = "Contate o suporte para configurar sua máquina para habilitar todos os recursos.";
 
     protected override void OnInitialized()
     {
@@ -72,7 +102,11 @@
     void Inicio()
     {
         _msgs.Clear();
-        _msgs.Add((false, "Olá! Eu sou o <b>Mr Smart</b> 👋<br>Posso te ajudar a encontrar uma ferramenta, explicar um cálculo ou tirar dúvidas sobre as planilhas.", null, MrSmart.Sugestoes));
+        _msgs.Add(new Msg
+        {
+            Texto = "Olá! Eu sou o <b>Mr. Smart IA</b> 👋<br>Tiro dúvidas sobre o QSmart e também respondo com base nos seus cadernos do <b>Smart Note</b> (os seus e os compartilhados com você). É só perguntar!",
+            Sugestoes = MrSmart.Sugestoes,
+        });
     }
 
     void Alternar() { _aberto = !_aberto; _dica = false; }
@@ -80,24 +114,86 @@
     void FecharDica() => _dica = false;
     void Limpar() { Inicio(); _texto = ""; }
 
-    void Tecla(KeyboardEventArgs e) { if (e.Key == "Enter") Enviar(); else if (e.Key == "Escape") _aberto = false; }
+    async Task Tecla(KeyboardEventArgs e) { if (e.Key == "Enter") await Enviar(); else if (e.Key == "Escape") _aberto = false; }
 
-    void Enviar()
+    async Task Enviar()
     {
         var t = _texto.Trim();
-        if (t == "") return;
+        if (t == "" || _ocupado) return;
         _texto = "";
-        Perguntar(t);
+        await Perguntar(t);
     }
 
-    void Perguntar(string t)
+    static string Html(string s) => System.Net.WebUtility.HtmlEncode(s);
+
+    /// <summary>Texto da IA → HTML simples (negrito, listas, quebras de linha).</summary>
+    static string Formatar(string s)
     {
-        _msgs.Add((true, t, null, null));
-        if (MrSmart.Conversa(t) is string c) { _msgs.Add((false, c, null, null)); return; }
-        var r = MrSmart.Responder(t);
-        if (r != null) _msgs.Add((false, System.Net.WebUtility.HtmlEncode(r.Texto), r.Aba, null));
-        else _msgs.Add((false, "Hmm, ainda não sei responder isso. 🤔 Tente com outras palavras ou escolha um dos assuntos abaixo. Se for algo específico, fale com a coordenação.", null,
-            MrSmart.Base.OrderBy(_ => Random.Shared.Next()).Take(4).Select(x => x.Pergunta).ToArray()));
+        var linhas = Html(s).Replace("\r", "").Split('\n');
+        var sb = new System.Text.StringBuilder();
+        foreach (var l0 in linhas)
+        {
+            var l = System.Text.RegularExpressions.Regex.Replace(l0, @"\*\*(.+?)\*\*", "<b>$1</b>");
+            l = System.Text.RegularExpressions.Regex.Replace(l, @"^\s*[-*•]\s+", "• ");
+            l = System.Text.RegularExpressions.Regex.Replace(l, @"^#{1,4}\s*(.+)$", "<b>$1</b>");
+            sb.Append(l).Append("<br>");
+        }
+        return System.Text.RegularExpressions.Regex.Replace(sb.ToString(), @"(<br>){3,}", "<br><br>").TrimEnd('<', 'b', 'r', '>');
+    }
+
+    void Responder(RespostaMr r) => _msgs.Add(new Msg { Texto = Html(r.Texto), Plano = r.Texto, Aba = r.Aba });
+
+    void NaoSei()
+    {
+        const string t = "Não encontrei nada sobre isso nos seus cadernos nem na ajuda do QSmart. 🤔 Talvez eu não tenha entendido a pergunta, ou a informação ainda não foi registrada e precisa ser verificada com a coordenação. Tente com outras palavras.";
+        _msgs.Add(new Msg { Texto = t, Plano = t, Sugestoes = MrSmart.Base.OrderBy(_ => Random.Shared.Next()).Take(3).Select(x => x.Pergunta).ToArray() });
+    }
+
+    async Task Perguntar(string t)
+    {
+        // histórico (antes desta pergunta), em texto simples
+        var hist = new JsonArray();
+        foreach (var m in _msgs.Skip(1).Where(m => !m.Pensando).TakeLast(6)) hist.Add(new JsonObject { ["eu"] = m.Eu, ["texto"] = m.Eu ? m.Texto : m.Plano });
+
+        _msgs.Add(new Msg { Eu = true, Texto = t, Plano = t });
+        if (MrSmart.Conversa(t) is string c) { _msgs.Add(new Msg { Texto = c, Plano = c }); return; }
+
+        var faq = MrSmart.Responder(t);
+        // sugestão clicada (pergunta exata da ajuda): responde direto, sem gastar IA
+        if (faq != null && MrSmart.Sugestoes.Concat(MrSmart.Base.Select(b => b.Pergunta)).Contains(t)) { Responder(faq); return; }
+
+        var pensando = new Msg { Pensando = true };
+        _msgs.Add(pensando); _ocupado = true; StateHasChanged();
+        try
+        {
+            var corpo = new JsonObject { ["pergunta"] = t, ["historico"] = hist, ["modelo"] = E.ModeloIA };
+            if (faq != null) corpo["ajuda"] = faq.Pergunta + "\n" + faq.Texto;
+            var r = await E.Conta.Chamar("POST", "mr/perguntar", corpo);
+            _msgs.Remove(pensando);
+            if (r.Ok && r.Json?["encontrou"]?.GetValue<bool>() == true)
+            {
+                var txt = r.Json["resposta"]?.GetValue<string>() ?? "";
+                var m = new Msg { Texto = Formatar(txt), Plano = txt, DosCadernos = true };
+                foreach (var f in r.Json["fontes"] as JsonArray ?? new())
+                    m.Fontes.Add(new Fonte(f?["caderno"]?.GetValue<string>() ?? "", f?["pagina"]?.GetValue<string>() ?? "", f?["titulo"]?.GetValue<string>() ?? "", f?["cadernoNome"]?.GetValue<string>() ?? ""));
+                m.DosCadernos = m.Fontes.Count > 0;
+                if (r.Json["usouAjuda"]?.GetValue<bool>() == true && faq != null) m.Aba = faq.Aba;
+                _msgs.Add(m);
+                _ = E.Conta.Registrar("mr.ia", true);
+            }
+            else if (r.Ok) { if (faq != null) Responder(faq); else NaoSei(); }
+            else if (faq != null) Responder(faq);
+            else if (r.Json?["motivo"]?.GetValue<string>() == "sem_ia") _msgs.Add(new Msg { Texto = Html(Suporte), Plano = Suporte });
+            else { var e = r.Erro ?? "Não consegui falar com a IA agora."; _msgs.Add(new Msg { Texto = Html(e) + " Tente de novo daqui a pouco.", Plano = e }); }
+        }
+        catch { _msgs.Remove(pensando); if (faq != null) Responder(faq); else NaoSei(); }
+        finally { _ocupado = false; StateHasChanged(); }
+    }
+
+    void AbrirFonte(Fonte f)
+    {
+        Rotas.NavigateTo($"smart-note?c={Uri.EscapeDataString(f.Caderno)}&p={Uri.EscapeDataString(f.Pagina)}");
+        _aberto = false;
     }
 
     void Ir(Aba a)

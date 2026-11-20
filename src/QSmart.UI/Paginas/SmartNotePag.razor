@@ -400,9 +400,9 @@
         if (!r.Ok) { await J.Erro("Smart Note", "Não consegui abrir os seus cadernos: " + r.Erro); return; }
         LerLista(r.Json);
         _timer = new System.Threading.Timer(_ => InvokeAsync(Sincronizar), null, 40000, 40000);
-        // veio do sininho: smart-note?c=caderno
-        var q = new Uri(Rotas.Uri).Query.TrimStart('?').Split('&').Select(x => x.Split('=', 2)).FirstOrDefault(x => x.Length == 2 && x[0] == "c");
-        if (q != null && _cads.Any(c => c.Id == q[1])) { AbrirCaderno(Uri.UnescapeDataString(q[1])); return; }
+        // veio do sininho ou de uma fonte do Mr. Smart IA: smart-note?c=caderno&p=pagina
+        Rotas.LocationChanged += AoNavegar;
+        if (await AbrirDaUrl()) return;
         var ult = await E.Nav.Ler("sn_ultima");
         var up = _pags.FirstOrDefault(p => p.Id == ult);
         if (up != null) { _cad = up.Caderno; await AbrirPagina(up.Id); }
@@ -416,6 +416,22 @@
             _cads.Add(new Caderno { Id = S(x, "id"), Nome = S(x, "nome"), Cor = S(x, "cor") is { Length: > 0 } c ? c : Cores[0], Ordem = I(x, "ordem"), Link = S(x, "link"), Papel = S(x, "papel") is { Length: > 0 } pp ? pp : "dono", Dono = S(x, "dono"), Membros = I(x, "membros") });
         foreach (var x in j?["paginas"] as JsonArray ?? new())
             _pags.Add(new Pagina { Id = S(x, "id"), Caderno = S(x, "caderno"), Pai = S(x, "pai"), Titulo = S(x, "titulo"), Ordem = I(x, "ordem"), CriadoEm = S(x, "criadoEm"), AtualizadoEm = S(x, "atualizadoEm"), Por = S(x, "por") });
+    }
+
+    string? _urlTratada;
+    async Task<bool> AbrirDaUrl()
+    {
+        if (_urlTratada == Rotas.Uri) return false;
+        _urlTratada = Rotas.Uri;
+        var q = new Uri(Rotas.Uri).Query.TrimStart('?').Split('&').Select(x => x.Split('=', 2)).Where(x => x.Length == 2).ToDictionary(x => x[0], x => Uri.UnescapeDataString(x[1]));
+        if (q.TryGetValue("p", out var pid) && _pags.FirstOrDefault(x => x.Id == pid) is { } pg) { _cad = pg.Caderno; _busca = ""; await AbrirPagina(pg.Id); return true; }
+        if (q.TryGetValue("c", out var cid) && _cads.Any(c => c.Id == cid)) { AbrirCaderno(cid); return true; }
+        return false;
+    }
+    async void AoNavegar(object? s, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+    {
+        if (!e.Location.Contains("smart-note") || _carregando) return;
+        await InvokeAsync(async () => { if (await AbrirDaUrl()) StateHasChanged(); });
     }
 
     // ---- cadernos compartilhados: busca as mudanças dos outros de tempos em tempos ----
@@ -743,6 +759,7 @@
     {
         base.Dispose();
         _timer?.Dispose();
+        Rotas.LocationChanged -= AoNavegar;
         if (_montado) { try { _ = E.Nav.NotaDesmontar(_ed); } catch { } }
         _ = Task.Delay(3000).ContinueWith(_ => _ref?.Dispose());
     }
