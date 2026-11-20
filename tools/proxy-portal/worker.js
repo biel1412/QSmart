@@ -301,6 +301,7 @@ async function api(req, env, url) {
         env.DB.prepare("DELETE FROM sessoes WHERE usuario_id = ?").bind(b.id),
         env.DB.prepare("DELETE FROM uso WHERE usuario_id = ?").bind(b.id),
         env.DB.prepare("DELETE FROM dias WHERE usuario_id = ?").bind(b.id),
+        env.DB.prepare("DELETE FROM sn_membros WHERE usuario_id = ? OR caderno_id IN (SELECT id FROM sn_cadernos WHERE usuario_id = ?)").bind(b.id, b.id),
         env.DB.prepare("DELETE FROM sn_paginas WHERE usuario_id = ?").bind(b.id),
         env.DB.prepare("DELETE FROM sn_cadernos WHERE usuario_id = ?").bind(b.id),
         env.DB.prepare("DELETE FROM sn_links WHERE usuario_id = ?").bind(b.id),
@@ -401,25 +402,53 @@ async function api(req, env, url) {
   // ---------- Smart Note: cadernos e páginas de cada usuário (só o dono vê) ----------
   if (rota.startsWith("sn")) {
     const MAX_PAG = 1450000;
+    // acesso ao caderno: dono, editor (cria e edita páginas) ou leitor (só vê)
+    const acesso = async cad => {
+      const c = await env.DB.prepare("SELECT id, usuario_id FROM sn_cadernos WHERE id = ?").bind(cad).first();
+      if (!c) return null;
+      if (c.usuario_id === u.id) return { dono: c.usuario_id, papel: "dono" };
+      const mb = await env.DB.prepare("SELECT papel FROM sn_membros WHERE caderno_id = ? AND usuario_id = ?").bind(cad, u.id).first();
+      return mb ? { dono: c.usuario_id, papel: mb.papel === "editor" ? "editor" : "leitor" } : null;
+    };
+    const edita = a => a && (a.papel === "dono" || a.papel === "editor");
+    const nomeDe = async id => { const x = id ? await env.DB.prepare("SELECT nome, sobrenome FROM usuarios WHERE id = ?").bind(id).first() : null; return x ? `${x.nome} ${x.sobrenome}`.trim() : ""; };
+
     if (rota === "sn" && m === "GET") {
-      const c = await env.DB.prepare("SELECT c.id, c.nome, c.cor, c.ordem, (SELECT l.token_cifrado FROM sn_links l WHERE l.caderno_id = c.id LIMIT 1) AS link FROM sn_cadernos c WHERE c.usuario_id = ? ORDER BY c.ordem, c.criado_em").bind(u.id).all();
-      const p = await env.DB.prepare("SELECT id, caderno_id, pai_id, titulo, ordem, criado_em, atualizado_em, length(conteudo) AS tam FROM sn_paginas WHERE usuario_id = ? ORDER BY ordem, criado_em").bind(u.id).all();
-      const cadernos = [], paginas = [];
-      for (const x of c.results || []) cadernos.push({ id: x.id, nome: await decifrar(env, x.nome), cor: x.cor || "", ordem: x.ordem, link: x.link ? await decifrar(env, x.link) : "" });
-      for (const x of p.results || []) paginas.push({ id: x.id, caderno: x.caderno_id, pai: x.pai_id || "", titulo: await decifrar(env, x.titulo), ordem: x.ordem, criadoEm: x.criado_em, atualizadoEm: x.atualizado_em, tam: x.tam || 0 });
+      const c = await env.DB.prepare(
+        "SELECT c.id, c.usuario_id, c.nome, c.cor, c.ordem, c.criado_em, CASE WHEN c.usuario_id = ?1 THEN 'dono' ELSE mb.papel END AS papel, " +
+        "(SELECT l.token_cifrado FROM sn_links l WHERE l.caderno_id = c.id LIMIT 1) AS link, (SELECT COUNT(*) FROM sn_membros x WHERE x.caderno_id = c.id) AS membros, " +
+        "d.nome AS dnome, d.sobrenome AS dsobre FROM sn_cadernos c LEFT JOIN sn_membros mb ON mb.caderno_id = c.id AND mb.usuario_id = ?1 LEFT JOIN usuarios d ON d.id = c.usuario_id " +
+        "WHERE c.usuario_id = ?1 OR mb.usuario_id = ?1 ORDER BY c.ordem, c.criado_em").bind(u.id).all();
+      const cadernos = [], paginas = [], ids = [];
+      for (const x of c.results || []) {
+        const dono = x.papel === "dono";
+        cadernos.push({ id: x.id, nome: await decifrar(env, x.nome), cor: x.cor || "", ordem: x.ordem, papel: x.papel === "editor" ? "editor" : dono ? "dono" : "leitor",
+          dono: dono ? "" : `${x.dnome || ""} ${x.dsobre || ""}`.trim(), membros: x.membros, link: dono && x.link ? await decifrar(env, x.link) : "" });
+        ids.push(x.id);
+      }
+      if (ids.length) {
+        const ph = ids.map(() => "?").join(",");
+        const p = await env.DB.prepare(`SELECT p.id, p.caderno_id, p.pai_id, p.titulo, p.ordem, p.criado_em, p.atualizado_em, p.atualizado_por, length(p.conteudo) AS tam FROM sn_paginas p WHERE p.caderno_id IN (${ph}) ORDER BY p.ordem, p.criado_em`).bind(...ids).all();
+        const nomes = {};
+        for (const x of p.results || []) {
+          if (x.atualizado_por && !(x.atualizado_por in nomes)) nomes[x.atualizado_por] = await nomeDe(x.atualizado_por);
+          paginas.push({ id: x.id, caderno: x.caderno_id, pai: x.pai_id || "", titulo: await decifrar(env, x.titulo), ordem: x.ordem, criadoEm: x.criado_em, atualizadoEm: x.atualizado_em,
+            por: x.atualizado_por && x.atualizado_por !== u.id ? nomes[x.atualizado_por] : "", tam: x.tam || 0 });
+        }
+      }
       return json({ cadernos, paginas });
     }
     if (rota === "sn/pagina" && m === "GET") {
-      const x = await env.DB.prepare("SELECT conteudo FROM sn_paginas WHERE id = ? AND usuario_id = ?").bind(url.searchParams.get("id") || "", u.id).first();
-      if (!x) return erro("Página não encontrada.", 404);
-      return json({ conteudo: await decifrar(env, x.conteudo) });
+      const x = await env.DB.prepare("SELECT caderno_id, conteudo, versao, atualizado_em, atualizado_por FROM sn_paginas WHERE id = ?").bind(url.searchParams.get("id") || "").first();
+      if (!x || !(await acesso(x.caderno_id))) return erro("Página não encontrada.", 404);
+      return json({ conteudo: await decifrar(env, x.conteudo), versao: x.versao || 0, atualizadoEm: x.atualizado_em, por: x.atualizado_por && x.atualizado_por !== u.id ? await nomeDe(x.atualizado_por) : "" });
     }
     if (rota === "sn/caderno" && m === "PUT") {
       const b = await corpo(req);
       const id = String(b.id || "").slice(0, 40), nome = String(b.nome || "").trim().slice(0, 120);
       if (!id || !nome) return erro("Caderno inválido.");
       const dono = await env.DB.prepare("SELECT usuario_id FROM sn_cadernos WHERE id = ?").bind(id).first();
-      if (dono && dono.usuario_id !== u.id) return erro("Caderno inválido.", 403);
+      if (dono && dono.usuario_id !== u.id) return erro("Só quem criou o caderno pode renomear ou mudar a cor.", 403);
       await env.DB.prepare("INSERT INTO sn_cadernos (id, usuario_id, nome, cor, ordem, criado_em) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET nome = excluded.nome, cor = excluded.cor, ordem = excluded.ordem")
         .bind(id, u.id, await cifrar(env, nome), String(b.cor || "").slice(0, 20), Number(b.ordem) || 0, agora()).run();
       return json({ ok: true });
@@ -428,7 +457,7 @@ async function api(req, env, url) {
       // gera um link novo (o antigo deixa de funcionar); só o hash fica no banco
       const b = await corpo(req); const cad = String(b.caderno || "");
       const c = await env.DB.prepare("SELECT id FROM sn_cadernos WHERE id = ? AND usuario_id = ?").bind(cad, u.id).first();
-      if (!c) return erro("Caderno não encontrado.", 404);
+      if (!c) return erro("Só quem criou o caderno pode gerar o link.", 403);
       const bytes = crypto.getRandomValues(new Uint8Array(24));
       const token = b64(bytes).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
       await env.DB.batch([
@@ -443,40 +472,98 @@ async function api(req, env, url) {
     }
     if (rota === "sn/caderno" && m === "DELETE") {
       const id = url.searchParams.get("id") || "";
+      const c = await env.DB.prepare("SELECT id FROM sn_cadernos WHERE id = ? AND usuario_id = ?").bind(id, u.id).first();
+      if (!c) return erro("Só quem criou o caderno pode excluir.", 403);
       await env.DB.batch([
-        env.DB.prepare("DELETE FROM sn_paginas WHERE caderno_id = ? AND usuario_id = ?").bind(id, u.id),
-        env.DB.prepare("DELETE FROM sn_links WHERE caderno_id = ? AND usuario_id = ?").bind(id, u.id),
-        env.DB.prepare("DELETE FROM sn_cadernos WHERE id = ? AND usuario_id = ?").bind(id, u.id),
+        env.DB.prepare("DELETE FROM sn_paginas WHERE caderno_id = ?").bind(id),
+        env.DB.prepare("DELETE FROM sn_links WHERE caderno_id = ?").bind(id),
+        env.DB.prepare("DELETE FROM sn_membros WHERE caderno_id = ?").bind(id),
+        env.DB.prepare("DELETE FROM notificacoes WHERE tipo = 'caderno' AND ref = ?").bind(id),
+        env.DB.prepare("DELETE FROM sn_cadernos WHERE id = ?").bind(id),
       ]);
       return json({ ok: true });
     }
+
+    // ----- pessoas com acesso ao caderno -----
+    if (rota === "sn/membros" && m === "GET") {
+      const cad = url.searchParams.get("caderno") || "";
+      const a = await acesso(cad);
+      if (!a) return erro("Caderno não encontrado.", 404);
+      const r = await env.DB.prepare("SELECT u.id, u.usuario, u.nome, u.sobrenome, u.foto, m.papel FROM sn_membros m JOIN usuarios u ON u.id = m.usuario_id WHERE m.caderno_id = ? ORDER BY u.nome").bind(cad).all();
+      const d = await env.DB.prepare("SELECT id, usuario, nome, sobrenome, foto FROM usuarios WHERE id = ?").bind(a.dono).first();
+      const pessoa = async (x, papel) => ({ id: x.id, usuario: x.usuario, nome: `${x.nome} ${x.sobrenome}`.trim(), foto: x.foto ? await decifrar(env, x.foto) : "", papel });
+      const membros = [];
+      if (d) membros.push(await pessoa(d, "dono"));
+      for (const x of r.results || []) membros.push(await pessoa(x, x.papel === "editor" ? "editor" : "leitor"));
+      return json({ membros, meuPapel: a.papel });
+    }
+    if (rota === "sn/membro" && m === "POST") {
+      const b = await corpo(req); const cad = String(b.caderno || "");
+      const c = await env.DB.prepare("SELECT id, nome FROM sn_cadernos WHERE id = ? AND usuario_id = ?").bind(cad, u.id).first();
+      if (!c) return erro("Só quem criou o caderno pode dar acesso.", 403);
+      const alvo = await env.DB.prepare("SELECT id, status FROM usuarios WHERE id = ?").bind(Number(b.usuario) || 0).first();
+      if (!alvo || alvo.status !== "ativo") return erro("Usuário não encontrado ou sem acesso ao QSmart.", 404);
+      if (alvo.id === u.id) return erro("Você já é o dono deste caderno.");
+      const papel = b.papel === "leitor" ? "leitor" : "editor";
+      const ja = await env.DB.prepare("SELECT papel FROM sn_membros WHERE caderno_id = ? AND usuario_id = ?").bind(cad, alvo.id).first();
+      const q = [env.DB.prepare("INSERT INTO sn_membros (caderno_id, usuario_id, papel, adicionado_em) VALUES (?, ?, ?, ?) ON CONFLICT(caderno_id, usuario_id) DO UPDATE SET papel = excluded.papel").bind(cad, alvo.id, papel, agora())];
+      if (!ja) q.push(env.DB.prepare("INSERT INTO notificacoes (usuario_id, tipo, de_id, post_id, ref, criado_em) VALUES (?, 'caderno', ?, NULL, ?, ?)").bind(alvo.id, u.id, cad, agora()));
+      await env.DB.batch(q);
+      return json({ ok: true });
+    }
+    if (rota === "sn/membro" && m === "DELETE") {
+      const cad = url.searchParams.get("caderno") || "", quem = Number(url.searchParams.get("usuario")) || 0;
+      const c = await env.DB.prepare("SELECT usuario_id FROM sn_cadernos WHERE id = ?").bind(cad).first();
+      if (!c) return json({ ok: true });
+      if (c.usuario_id !== u.id && quem !== u.id) return erro("Só quem criou o caderno pode tirar o acesso de outra pessoa.", 403);
+      await env.DB.batch([
+        env.DB.prepare("DELETE FROM sn_membros WHERE caderno_id = ? AND usuario_id = ?").bind(cad, quem),
+        env.DB.prepare("DELETE FROM notificacoes WHERE tipo = 'caderno' AND ref = ? AND usuario_id = ?").bind(cad, quem),
+      ]);
+      return json({ ok: true });
+    }
+    if (rota === "sn/pessoas" && m === "GET") {
+      const r = await env.DB.prepare("SELECT id, usuario, nome, sobrenome FROM usuarios WHERE status = 'ativo' AND id != ? ORDER BY nome, sobrenome").bind(u.id).all();
+      return json({ pessoas: (r.results || []).map(x => ({ id: x.id, usuario: x.usuario, nome: `${x.nome} ${x.sobrenome}`.trim() })) });
+    }
+
+    // ----- páginas -----
     if (rota === "sn/pagina" && m === "PUT") {
       const b = await corpo(req);
       const id = String(b.id || "").slice(0, 40), cad = String(b.caderno || "").slice(0, 40), pai = String(b.pai || "").slice(0, 40);
       if (!id || !cad) return erro("Página inválida.");
       if (typeof b.conteudo === "string" && b.conteudo.length > MAX_PAG) return erro("A página ficou grande demais (muitas imagens). Crie uma subpágina para continuar.", 413);
-      const c = await env.DB.prepare("SELECT id FROM sn_cadernos WHERE id = ? AND usuario_id = ?").bind(cad, u.id).first();
-      if (!c) return erro("Caderno não encontrado.", 404);
-      const ex = await env.DB.prepare("SELECT usuario_id FROM sn_paginas WHERE id = ?").bind(id).first();
-      if (ex && ex.usuario_id !== u.id) return erro("Página inválida.", 403);
+      const a = await acesso(cad);
+      if (!a) return erro("Caderno não encontrado.", 404);
+      if (!edita(a)) return erro("Você só tem acesso de leitura neste caderno.", 403);
+      const ex = await env.DB.prepare("SELECT caderno_id, versao, atualizado_por, atualizado_em FROM sn_paginas WHERE id = ?").bind(id).first();
+      if (ex && ex.caderno_id !== cad && !edita(await acesso(ex.caderno_id))) return erro("Página inválida.", 403);
+      // outra pessoa salvou o texto depois que você abriu a página
+      if (ex && typeof b.conteudo === "string" && typeof b.base === "number" && !b.forcar && (ex.versao || 0) !== b.base && ex.atualizado_por !== u.id)
+        return erro("Esta página foi alterada por outra pessoa enquanto você editava.", 409, { quem: await nomeDe(ex.atualizado_por), em: ex.atualizado_em });
       const titulo = await cifrar(env, String(b.titulo || "").slice(0, 200));
       const em = agora();
+      let versao = ex ? (ex.versao || 0) : 0;
       if (!ex) {
-        await env.DB.prepare("INSERT INTO sn_paginas (id, usuario_id, caderno_id, pai_id, titulo, conteudo, ordem, criado_em, atualizado_em) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
-          .bind(id, u.id, cad, pai, titulo, await cifrar(env, typeof b.conteudo === "string" ? b.conteudo : ""), Number(b.ordem) || 0, em, em).run();
+        await env.DB.prepare("INSERT INTO sn_paginas (id, usuario_id, caderno_id, pai_id, titulo, conteudo, ordem, criado_em, atualizado_em, atualizado_por, versao) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)")
+          .bind(id, a.dono, cad, pai, titulo, await cifrar(env, typeof b.conteudo === "string" ? b.conteudo : ""), Number(b.ordem) || 0, em, em, u.id).run();
       } else if (typeof b.conteudo === "string") {
-        await env.DB.prepare("UPDATE sn_paginas SET caderno_id = ?, pai_id = ?, titulo = ?, conteudo = ?, ordem = ?, atualizado_em = ? WHERE id = ? AND usuario_id = ?")
-          .bind(cad, pai, titulo, await cifrar(env, b.conteudo), Number(b.ordem) || 0, em, id, u.id).run();
+        versao++;
+        await env.DB.prepare("UPDATE sn_paginas SET usuario_id = ?, caderno_id = ?, pai_id = ?, titulo = ?, conteudo = ?, ordem = ?, atualizado_em = ?, atualizado_por = ?, versao = ? WHERE id = ?")
+          .bind(a.dono, cad, pai, titulo, await cifrar(env, b.conteudo), Number(b.ordem) || 0, em, u.id, versao, id).run();
       } else {
-        await env.DB.prepare("UPDATE sn_paginas SET caderno_id = ?, pai_id = ?, titulo = ?, ordem = ?, atualizado_em = ? WHERE id = ? AND usuario_id = ?")
-          .bind(cad, pai, titulo, Number(b.ordem) || 0, em, id, u.id).run();
+        await env.DB.prepare("UPDATE sn_paginas SET usuario_id = ?, caderno_id = ?, pai_id = ?, titulo = ?, ordem = ?, atualizado_em = ?, atualizado_por = ? WHERE id = ?")
+          .bind(a.dono, cad, pai, titulo, Number(b.ordem) || 0, em, u.id, id).run();
       }
-      return json({ ok: true, em });
+      return json({ ok: true, em, versao });
     }
     if (rota === "sn/pagina" && m === "DELETE") {
       const id = url.searchParams.get("id") || "";
-      await env.DB.prepare("DELETE FROM sn_paginas WHERE usuario_id = ?1 AND id IN (WITH RECURSIVE d(id) AS (SELECT ?2 UNION SELECT p.id FROM sn_paginas p JOIN d ON p.pai_id = d.id WHERE p.usuario_id = ?1) SELECT id FROM d)")
-        .bind(u.id, id).run();
+      const x = await env.DB.prepare("SELECT caderno_id FROM sn_paginas WHERE id = ?").bind(id).first();
+      if (!x) return json({ ok: true });
+      if (!edita(await acesso(x.caderno_id))) return erro("Você só tem acesso de leitura neste caderno.", 403);
+      await env.DB.prepare("DELETE FROM sn_paginas WHERE caderno_id = ?1 AND id IN (WITH RECURSIVE d(id) AS (SELECT ?2 UNION SELECT p.id FROM sn_paginas p JOIN d ON p.pai_id = d.id WHERE p.caderno_id = ?1) SELECT id FROM d)")
+        .bind(x.caderno_id, id).run();
       return json({ ok: true });
     }
   }
@@ -588,13 +675,14 @@ async function api(req, env, url) {
   if (rota === "notif" && m === "GET") {
     await env.DB.prepare("DELETE FROM notificacoes WHERE usuario_id = ? AND criado_em < ?").bind(u.id, new Date(Date.now() - 60 * 864e5).toISOString()).run();
     const r = await env.DB.prepare(
-      "SELECT n.id, n.tipo, n.post_id, n.criado_em, n.lida, n.de_id, d.nome, d.sobrenome, d.foto, p.texto AS ptexto FROM notificacoes n LEFT JOIN usuarios d ON d.id = n.de_id LEFT JOIN feed_posts p ON p.id = n.post_id WHERE n.usuario_id = ? ORDER BY n.id DESC LIMIT 30"
+      "SELECT n.id, n.tipo, n.post_id, n.ref, n.criado_em, n.lida, n.de_id, d.nome, d.sobrenome, d.foto, p.texto AS ptexto, c.nome AS cnome FROM notificacoes n LEFT JOIN usuarios d ON d.id = n.de_id LEFT JOIN feed_posts p ON p.id = n.post_id LEFT JOIN sn_cadernos c ON c.id = n.ref AND n.tipo = 'caderno' WHERE n.usuario_id = ? ORDER BY n.id DESC LIMIT 30"
     ).bind(u.id).all();
     const itens = [], fotos = {};
     for (const x of r.results || []) {
       if (x.de_id && !(x.de_id in fotos)) fotos[x.de_id] = x.foto ? await decifrar(env, x.foto) : "";
-      const t = x.ptexto ? (await decifrar(env, x.ptexto)).replace(/\s+/g, " ").trim() : "";
-      itens.push({ id: x.id, tipo: x.tipo, postId: x.post_id, criadoEm: x.criado_em, lida: !!x.lida, de: x.de_id, nome: x.nome ? `${x.nome} ${x.sobrenome}`.trim() : "Alguém", trecho: t.length > 70 ? t.slice(0, 70) + "…" : t });
+      if (x.tipo === "caderno" && !x.cnome) continue;
+      const t = x.ptexto ? (await decifrar(env, x.ptexto)).replace(/\s+/g, " ").trim() : x.cnome ? await decifrar(env, x.cnome) : "";
+      itens.push({ id: x.id, tipo: x.tipo, postId: x.post_id || 0, ref: x.ref || "", criadoEm: x.criado_em, lida: !!x.lida, de: x.de_id, nome: x.nome ? `${x.nome} ${x.sobrenome}`.trim() : "Alguém", trecho: t.length > 70 ? t.slice(0, 70) + "…" : t });
     }
     const n = await env.DB.prepare("SELECT COUNT(*) AS n FROM notificacoes WHERE usuario_id = ? AND lida = 0").bind(u.id).first();
     return json({ itens, fotos, naoLidas: n.n });

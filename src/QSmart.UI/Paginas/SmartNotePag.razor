@@ -11,21 +11,42 @@
             <button class="sn-mais" title="Novo caderno" @onclick="NovoCaderno"><Icone Nome="mais" Tamanho="16" /></button>
         </div>
         @if (_carregando) { <p class="muted pequeno sn-pad"><span class="ia-spin pequeno"></span> Abrindo…</p> }
-        @foreach (var c in _cads.OrderBy(c => c.Ordem))
+        @foreach (var grupo in new[] { true, false })
         {
-            int n = _pags.Count(p => p.Caderno == c.Id);
-            <div class="sn-cad @(c.Id == _cad ? "on" : "")" style="--c:@c.Cor" @onclick="() => AbrirCaderno(c.Id)">
-                <span class="sn-cad-ic"><Icone Nome="caderno" Tamanho="16" /></span>
-                <span class="sn-cad-nome"><b>@c.Nome</b><small>@(n == 1 ? "1 página" : $"{n} páginas")@if (c.Link != "") { <em class="sn-cad-pub" title="Tem link de leitura ativo"><Icone Nome="link" Tamanho="11" /> compartilhado</em> }</small></span>
-                <span class="sn-cad-ac">
-                    <button title="Compartilhar por link" @onclick:stopPropagation="true" @onclick="() => _comp = c"><Icone Nome="link" Tamanho="14" /></button>
-                    <button title="Renomear" @onclick:stopPropagation="true" @onclick="() => RenomearCaderno(c)"><Icone Nome="editar" Tamanho="14" /></button>
-                    <button title="Mudar a cor" @onclick:stopPropagation="true" @onclick="() => MudarCor(c)"><span class="sn-bolinha"></span></button>
-                    <button title="Excluir caderno" @onclick:stopPropagation="true" @onclick="() => ExcluirCaderno(c)"><Icone Nome="lixo" Tamanho="14" /></button>
-                </span>
-            </div>
+            var lista = _cads.Where(c => c.Meu == grupo).OrderBy(c => grupo ? c.Ordem.ToString("D6") : c.Nome).ToList();
+            if (lista.Count == 0) { continue; }
+            @if (!grupo || _cads.Any(c => !c.Meu)) { <div class="sn-grupo">@(grupo ? "Meus cadernos" : "Compartilhados comigo")</div> }
+            @foreach (var c in lista)
+            {
+                int n = _pags.Count(p => p.Caderno == c.Id);
+                <div class="sn-cad @(c.Id == _cad ? "on" : "")" style="--c:@c.Cor" @onclick="() => AbrirCaderno(c.Id)">
+                    <span class="sn-cad-ic">@if (c.Meu && c.Membros == 0) { <Icone Nome="caderno" Tamanho="16" /> } else { <Icone Nome="pessoa" Tamanho="16" /> }</span>
+                    <span class="sn-cad-nome"><b>@c.Nome</b>
+                        <small>@if (c.Meu)
+                            {
+                                @(n == 1 ? "1 página" : $"{n} páginas")
+                                @if (c.Membros > 0) { <em class="sn-cad-pub" title="Pessoas com acesso"> · @(c.Membros + 1) pessoas</em> }
+                                @if (c.Link != "") { <em class="sn-cad-pub" title="Tem link de leitura ativo"><Icone Nome="link" Tamanho="11" /></em> }
+                            }
+                            else { <span>de @PrimeiroNome(c.Dono) · @(c.Edita ? "pode editar" : "só leitura")</span> }</small></span>
+                    <span class="sn-cad-ac">
+                        @if (c.Meu)
+                        {
+                            <button title="Compartilhar" @onclick:stopPropagation="true" @onclick="() => AbrirComp(c)"><Icone Nome="pessoa" Tamanho="14" /></button>
+                            <button title="Renomear" @onclick:stopPropagation="true" @onclick="() => RenomearCaderno(c)"><Icone Nome="editar" Tamanho="14" /></button>
+                            <button title="Mudar a cor" @onclick:stopPropagation="true" @onclick="() => MudarCor(c)"><span class="sn-bolinha"></span></button>
+                            <button title="Excluir caderno" @onclick:stopPropagation="true" @onclick="() => ExcluirCaderno(c)"><Icone Nome="lixo" Tamanho="14" /></button>
+                        }
+                        else
+                        {
+                            <button title="Ver quem tem acesso" @onclick:stopPropagation="true" @onclick="() => AbrirComp(c)"><Icone Nome="pessoa" Tamanho="14" /></button>
+                            <button title="Sair deste caderno" @onclick:stopPropagation="true" @onclick="() => SairCaderno(c)"><Icone Nome="sair" Tamanho="14" /></button>
+                        }
+                    </span>
+                </div>
+            }
         }
-        <div class="sn-cads-pe"><Icone Nome="cadeado" Tamanho="13" /> Só você vê · salvo na sua conta, criptografado</div>
+        <div class="sn-cads-pe"><Icone Nome="cadeado" Tamanho="13" /> Salvo criptografado · só vê quem você der acesso</div>
     </aside>
 
     @* ---------- páginas ---------- *@
@@ -35,14 +56,15 @@
             <div class="sn-cab">
                 <b class="sn-pags-tit">@cad.Nome</b>
                 <span class="sn-cab-bts">
-                    <button class="sn-mais @(cad.Link != "" ? "pub" : "")" title="@(cad.Link != "" ? "Compartilhado por link" : "Compartilhar por link (só leitura)")" @onclick="() => _comp = cad"><Icone Nome="link" Tamanho="16" /></button>
-                    <button class="sn-mais" title="Nova página" @onclick="() => NovaPagina(null)"><Icone Nome="mais" Tamanho="16" /></button>
+                    <button class="sn-mais @(cad.Link != "" || cad.Membros > 0 ? "pub" : "")" title="@(cad.Meu ? "Compartilhar com pessoas ou por link" : "Quem tem acesso")" @onclick="() => AbrirComp(cad)"><Icone Nome="pessoa" Tamanho="16" /></button>
+                    @if (cad.Edita) { <button class="sn-mais" title="Nova página" @onclick="() => NovaPagina(null)"><Icone Nome="mais" Tamanho="16" /></button> }
                 </span>
             </div>
+            @if (!cad.Meu) { <div class="sn-de"><Icone Nome="pessoa" Tamanho="13" /> Caderno de <b>@cad.Dono</b> · @(cad.Edita ? "você pode editar" : "somente leitura")</div> }
             <div class="sn-busca"><Icone Nome="busca" Tamanho="14" /><input placeholder="Buscar páginas…" @bind="_busca" @bind:event="oninput" /></div>
             <div class="sn-lista">
                 @{ var arv = Arvore(cad.Id); }
-                @if (arv.Count == 0) { <p class="muted pequeno sn-pad">Nenhuma página. Clique em + para criar.</p> }
+                @if (arv.Count == 0) { <p class="muted pequeno sn-pad">@(cad.Edita ? "Nenhuma página. Clique em + para criar." : "Este caderno ainda não tem páginas.")</p> }
                 @foreach (var (p, nivel, filhos) in arv)
                 {
                     <div class="sn-pag @(p.Id == _pag ? "on" : "")" style="--n:@nivel" @onclick="() => AbrirPagina(p.Id)">
@@ -51,11 +73,14 @@
                             <button class="sn-seta @(_fechadas.Contains(p.Id) ? "" : "aberta")" @onclick:stopPropagation="true" @onclick="() => Dobrar(p.Id)"><Icone Nome="direita" Tamanho="12" /></button>
                         }
                         else { <span class="sn-seta"></span> }
-                        <span class="sn-pag-txt"><b>@(p.Titulo == "" ? "Sem título" : p.Titulo)</b><small>@Quando(p.AtualizadoEm)</small></span>
+                        <span class="sn-pag-txt"><b>@(p.Titulo == "" ? "Sem título" : p.Titulo)</b><small>@Quando(p.AtualizadoEm)@(p.Por != "" ? " · " + PrimeiroNome(p.Por) : "")</small></span>
+                        @if (cad.Edita)
+                        {
                         <span class="sn-pag-ac">
                             <button title="Nova subpágina" @onclick:stopPropagation="true" @onclick="() => NovaPagina(p.Id)"><Icone Nome="subpagina" Tamanho="14" /></button>
                             <button title="Mais opções" @onclick:stopPropagation="true" @onclick="() => Opcoes(p)"><Icone Nome="menu" Tamanho="14" /></button>
                         </span>
+                        }
                     </div>
                 }
             </div>
@@ -74,6 +99,22 @@
                 <div class="sn-trilha">@foreach (var t in Caminho(pg)) { <span>@t</span><Icone Nome="direita" Tamanho="11" /> }<b>@(pg.Titulo == "" ? "Sem título" : pg.Titulo)</b></div>
                 <span class="sn-status @_statusCls">@_status</span>
             </div>
+            @if (_conflito is { } cf && cf.id == pg.Id)
+            {
+                <div class="sn-aviso conflito"><Icone Nome="alerta" Tamanho="16" /> <span><b>@cf.quem</b> salvou esta página enquanto você editava. Suas mudanças ainda não foram salvas.</span>
+                    <button class="btn btn-sec btn-peq" @onclick="VerDela">Ver a versão de @PrimeiroNome(cf.quem)</button>
+                    <button class="btn btn-pri btn-peq" @onclick="ManterMinha">Manter a minha</button></div>
+            }
+            else if (_mudouFora != null)
+            {
+                <div class="sn-aviso"><Icone Nome="atualizar" Tamanho="15" /> <span><b>@_mudouFora</b> alterou esta página agora há pouco.</span><button class="btn btn-sec btn-peq" @onclick="RecarregarPagina">Ver a versão nova</button></div>
+            }
+            @if (Cad?.Edita == false)
+            {
+                <div class="sn-so-ler"><Icone Nome="olho" Tamanho="15" /> Somente leitura · caderno de @Cad.Dono</div>
+            }
+            else
+            {
             <div class="sn-barra" @ref="_barra">
                 <button title="Desfazer (Ctrl+Z)" data-cmd="undo"><Icone Nome="desfazer" Tamanho="16" /></button>
                 <button title="Refazer (Ctrl+Y)" data-cmd="redo"><Icone Nome="refazer" Tamanho="16" /></button>
@@ -124,10 +165,11 @@
                     </span>
                 </span>
             </div>
+            }
             <input type="file" accept="image/*" multiple hidden @ref="_arq" />
             <div class="sn-folha" style="--c:@(Cad?.Cor ?? "#7C3AED")">
-                <input class="sn-titulo" placeholder="Título da página" value="@pg.Titulo" @onchange="e => MudarTitulo(pg, e)" id="sn-titulo" />
-                <div class="sn-meta">@DataLonga(pg.CriadoEm) · editada @Quando(pg.AtualizadoEm).ToLowerInvariant()</div>
+                <input class="sn-titulo" placeholder="Título da página" value="@pg.Titulo" @onchange="e => MudarTitulo(pg, e)" id="sn-titulo" readonly="@(Cad?.Edita == false)" />
+                <div class="sn-meta">@DataLonga(pg.CriadoEm) · editada @Quando(pg.AtualizadoEm).ToLowerInvariant()@(pg.Por != "" ? " por " + pg.Por : "")</div>
                 @if (_abrindo) { <p class="muted"><span class="ia-spin pequeno"></span> Abrindo a página…</p> }
                 <div @key="pg.Id" class="sn-texto @(_abrindo ? "oculto" : "")" @ref="_ed" data-placeholder="Escreva aqui. Cole imagens com Ctrl+V ou arraste para cá."></div>
             </div>
@@ -150,41 +192,149 @@
     <div class="sn-comp-fundo" @onclick="() => _comp = null"></div>
     <div class="sn-comp" style="--c:@cc.Cor">
         <div class="sn-comp-cab">
-            <span class="sn-cad-ic"><Icone Nome="caderno" Tamanho="16" /></span>
-            <div><b>Compartilhar “@cc.Nome”</b><small>Quem tiver o link vê o caderno inteiro no navegador, sem login, e não consegue editar.</small></div>
+            <span class="sn-cad-ic"><Icone Nome="pessoa" Tamanho="16" /></span>
+            <div><b>@(cc.Meu ? $"Compartilhar “{cc.Nome}”" : $"Quem tem acesso a “{cc.Nome}”")</b>
+                <small>@(cc.Meu ? "Dê acesso a pessoas do QSmart para editar ou só ler. Elas veem o caderno em “Compartilhados comigo”." : $"Este caderno é de {cc.Dono}. Só quem criou pode mudar os acessos.")</small></div>
             <button class="oo-x" @onclick="() => _comp = null" title="Fechar"><Icone Nome="x" Tamanho="18" /></button>
         </div>
-        @if (cc.Link == "")
-        {
-            <div class="sn-comp-corpo">
-                <ul class="sn-comp-lista">
-                    <li><Icone Nome="olho" Tamanho="15" /> Somente leitura: ninguém edita pelo link.</li>
-                    <li><Icone Nome="estrela" Tamanho="15" /> Dá para salvar nos favoritos e voltar quando quiser; o que você mudar aparece lá.</li>
-                    <li><Icone Nome="cadeado" Tamanho="15" /> Você pode desativar o link a qualquer momento.</li>
-                </ul>
-                <button class="btn btn-pri" disabled="@_gerando" @onclick="() => GerarLink(cc)"><Icone Nome="link" Tamanho="16" /> @(_gerando ? "Gerando…" : "Gerar link de leitura")</button>
-            </div>
-        }
-        else
-        {
-            <div class="sn-comp-corpo">
-                <span class="sn-comp-ativo"><i></i> Link ativo</span>
-                <div class="sn-comp-url"><input readonly value="@Url(cc)" @onfocus="@(e => { })" /><button class="btn btn-pri" @onclick="() => CopiarLink(cc)"><Icone Nome="@(_copiado ? "check" : "copiar")" Tamanho="15" /> @(_copiado ? "Copiado" : "Copiar")</button></div>
-                <div class="sn-comp-pe">
-                    <a class="btn btn-sec" href="@Url(cc)" target="_blank" rel="noopener"><Icone Nome="olho" Tamanho="15" /> Ver como os outros veem</a>
-                    <span class="mola"></span>
-                    <button class="btn btn-sec" disabled="@_gerando" @onclick="() => GerarLink(cc, true)" title="O link atual para de funcionar">Gerar outro link</button>
-                    <button class="btn btn-sec sn-comp-off" @onclick="() => DesativarLink(cc)">Desativar</button>
+        <div class="sn-comp-corpo">
+            @if (cc.Meu)
+            {
+                <div class="sn-comp-add">
+                    <select class="campo" value="@_novaPessoa" @onchange="@(e => _novaPessoa = e.Value?.ToString() ?? "")">
+                        <option value="">Escolha uma pessoa do QSmart…</option>
+                        @foreach (var x in _pessoas.Where(x => !_membros.Any(m => m.Id == x.Id))) { <option value="@x.Id">@x.Nome (@x.Usuario)</option> }
+                    </select>
+                    <select class="campo sn-comp-papel" value="@_novoPapel" @onchange="@(e => _novoPapel = e.Value?.ToString() ?? "editor")">
+                        <option value="editor">Pode editar</option>
+                        <option value="leitor">Só ler</option>
+                    </select>
+                    <button class="btn btn-pri" disabled="@(_novaPessoa == "" || _salvandoMembro)" @onclick="() => AdicionarMembro(cc)"><Icone Nome="mais" Tamanho="15" /> Dar acesso</button>
                 </div>
-            </div>
-        }
+            }
+            <div class="sn-comp-tit">Pessoas com acesso</div>
+            @if (_carregandoMembros) { <p class="muted pequeno"><span class="ia-spin pequeno"></span> Carregando…</p> }
+            <ul class="sn-membros">
+                @foreach (var mb in _membros)
+                {
+                    <li>
+                        <span class="sn-mb-av" style="background:@CorNome(mb.Nome)">@if (mb.Foto != "") { <img src="@mb.Foto" alt="" /> } else { @IniciaisDe(mb.Nome) }</span>
+                        <div><b>@mb.Nome@(mb.Id == E.Conta.Perfil?.Id ? " (você)" : "")</b><small>@mb.Usuario</small></div>
+                        @if (mb.Papel == "dono") { <span class="sn-mb-papel dono">Dono</span> }
+                        else if (cc.Meu)
+                        {
+                            <select class="campo sn-comp-papel" value="@mb.Papel" @onchange="e => MudarPapel(cc, mb, e)">
+                                <option value="editor">Pode editar</option>
+                                <option value="leitor">Só ler</option>
+                            </select>
+                            <button class="sn-mb-x" title="Tirar o acesso" @onclick="() => TirarMembro(cc, mb)"><Icone Nome="x" Tamanho="15" /></button>
+                        }
+                        else { <span class="sn-mb-papel">@(mb.Papel == "editor" ? "Pode editar" : "Só ler")</span> }
+                    </li>
+                }
+            </ul>
+
+            @if (cc.Meu)
+            {
+                <div class="sn-comp-sep"></div>
+                <div class="sn-comp-tit">Link de leitura <small>para quem não tem acesso ao QSmart</small></div>
+                @if (cc.Link == "")
+                {
+                    <p class="muted pequeno" style="margin:0">Quem tiver o link vê o caderno no navegador, sem login, e não consegue editar. Dá para salvar nos favoritos e desativar quando quiser.</p>
+                    <button class="btn btn-sec" style="align-self:flex-start" disabled="@_gerando" @onclick="() => GerarLink(cc)"><Icone Nome="link" Tamanho="16" /> @(_gerando ? "Gerando…" : "Gerar link de leitura")</button>
+                }
+                else
+                {
+                    <span class="sn-comp-ativo"><i></i> Link ativo</span>
+                    <div class="sn-comp-url"><input readonly value="@Url(cc)" /><button class="btn btn-pri" @onclick="() => CopiarLink(cc)"><Icone Nome="@(_copiado ? "check" : "copiar")" Tamanho="15" /> @(_copiado ? "Copiado" : "Copiar")</button></div>
+                    <div class="sn-comp-pe">
+                        <a class="btn btn-sec" href="@Url(cc)" target="_blank" rel="noopener"><Icone Nome="olho" Tamanho="15" /> Ver como os outros veem</a>
+                        <span class="mola"></span>
+                        <button class="btn btn-sec" disabled="@_gerando" @onclick="() => GerarLink(cc, true)" title="O link atual para de funcionar">Gerar outro link</button>
+                        <button class="btn btn-sec sn-comp-off" @onclick="() => DesativarLink(cc)">Desativar</button>
+                    </div>
+                }
+            }
+            else
+            {
+                <button class="btn btn-sec sn-comp-off" style="align-self:flex-start" @onclick="() => SairCaderno(cc)"><Icone Nome="sair" Tamanho="15" /> Sair deste caderno</button>
+            }
+        </div>
     </div>
 }
 
 @code {
     protected override string Chave => "smartnote";
     Caderno? _comp;
-    bool _gerando, _copiado;
+    bool _gerando, _copiado, _carregandoMembros, _salvandoMembro;
+    readonly Dictionary<string, int> _versoes = new();
+    List<Membro> _membros = new();
+    List<PessoaQS> _pessoas = new();
+    string _novaPessoa = "", _novoPapel = "editor";
+
+    async Task AbrirComp(Caderno c)
+    {
+        _comp = c; _membros = new(); _novaPessoa = ""; _novoPapel = "editor"; _copiado = false; _carregandoMembros = true;
+        StateHasChanged();
+        await CarregarMembros(c);
+        if (c.Meu && _pessoas.Count == 0)
+        {
+            var r = await E.Conta.Chamar("GET", "sn/pessoas");
+            if (r.Ok) _pessoas = (r.Json?["pessoas"] as JsonArray ?? new()).Select(x => new PessoaQS(I(x, "id"), S(x, "nome"), S(x, "usuario"))).ToList();
+        }
+    }
+
+    async Task CarregarMembros(Caderno c)
+    {
+        var r = await E.Conta.Chamar("GET", "sn/membros?caderno=" + Uri.EscapeDataString(c.Id));
+        _carregandoMembros = false;
+        if (!r.Ok) { await J.Erro("Compartilhar", r.Erro); return; }
+        _membros = (r.Json?["membros"] as JsonArray ?? new()).Select(x => new Membro { Id = I(x, "id"), Nome = S(x, "nome"), Usuario = S(x, "usuario"), Foto = S(x, "foto"), Papel = S(x, "papel") }).ToList();
+        c.Membros = _membros.Count(m => m.Papel != "dono");
+    }
+
+    async Task AdicionarMembro(Caderno c)
+    {
+        if (!int.TryParse(_novaPessoa, out var id)) return;
+        _salvandoMembro = true;
+        var r = await E.Conta.Chamar("POST", "sn/membro", new JsonObject { ["caderno"] = c.Id, ["usuario"] = id, ["papel"] = _novoPapel });
+        _salvandoMembro = false;
+        if (!r.Ok) { await J.Erro("Compartilhar", r.Erro); return; }
+        _novaPessoa = "";
+        await CarregarMembros(c);
+        _ = E.Conta.Registrar("nota.compartilhar", true);
+    }
+
+    async Task MudarPapel(Caderno c, Membro m, ChangeEventArgs e)
+    {
+        var papel = e.Value?.ToString() == "leitor" ? "leitor" : "editor";
+        var r = await E.Conta.Chamar("POST", "sn/membro", new JsonObject { ["caderno"] = c.Id, ["usuario"] = m.Id, ["papel"] = papel });
+        if (r.Ok) m.Papel = papel; else await J.Erro("Compartilhar", r.Erro);
+    }
+
+    async Task TirarMembro(Caderno c, Membro m)
+    {
+        if (!await J.Pergunta("Tirar acesso", $"{m.Nome} não vai mais ver nem editar “{c.Nome}”. Continuar?")) return;
+        var r = await E.Conta.Chamar("DELETE", $"sn/membro?caderno={Uri.EscapeDataString(c.Id)}&usuario={m.Id}");
+        if (!r.Ok) { await J.Erro("Compartilhar", r.Erro); return; }
+        _membros.Remove(m); c.Membros = _membros.Count(x => x.Papel != "dono");
+    }
+
+    async Task SairCaderno(Caderno c)
+    {
+        if (!await J.Pergunta("Sair do caderno", $"Sair de “{c.Nome}”? Ele some da sua lista e só volta se {c.Dono} der acesso de novo.")) return;
+        var r = await E.Conta.Chamar("DELETE", $"sn/membro?caderno={Uri.EscapeDataString(c.Id)}&usuario={E.Conta.Perfil?.Id}");
+        if (!r.Ok) { await J.Erro("Smart Note", r.Erro); return; }
+        _comp = null;
+        if (_cad == c.Id) { await Fechar(false); _cad = null; }
+        _cads.Remove(c); _pags.RemoveAll(p => p.Caderno == c.Id);
+        if (_cad == null && _cads.Count > 0) AbrirCaderno(_cads.First().Id);
+    }
+
+    static string PrimeiroNome(string n) => n.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? n;
+    static readonly string[] PaletaAv = { "#0EA5E9", "#8B5CF6", "#EC4899", "#F59E0B", "#10B981", "#6366F1", "#14B8A6", "#F97316" };
+    static string CorNome(string n) { int h = 0; foreach (var ch in n) h = unchecked(h * 31 + ch); return PaletaAv[(int)((uint)h % PaletaAv.Length)]; }
+    static string IniciaisDe(string n) { var p = n.Split(' ', StringSplitOptions.RemoveEmptyEntries); return (p.Length == 0 ? "?" : p.Length == 1 ? p[0][..1] : $"{p[0][0]}{p[^1][0]}").ToUpperInvariant(); }
 
     string Url(Caderno c) => Rotas.BaseUri + "?caderno=" + Uri.EscapeDataString(c.Link);
 
@@ -211,8 +361,16 @@
         c.Link = ""; _copiado = false;
     }
 
-    sealed class Caderno { public string Id = ""; public string Nome = ""; public string Cor = ""; public int Ordem; public string Link = ""; }
-    sealed class Pagina { public string Id = ""; public string Caderno = ""; public string Pai = ""; public string Titulo = ""; public int Ordem; public string CriadoEm = ""; public string AtualizadoEm = ""; }
+    sealed class Caderno
+    {
+        public string Id = ""; public string Nome = ""; public string Cor = ""; public int Ordem; public string Link = "";
+        public string Papel = "dono"; public string Dono = ""; public int Membros;
+        public bool Meu => Papel == "dono";
+        public bool Edita => Papel != "leitor";
+    }
+    sealed class Membro { public int Id; public string Nome = ""; public string Usuario = ""; public string Foto = ""; public string Papel = ""; }
+    sealed record PessoaQS(int Id, string Nome, string Usuario);
+    sealed class Pagina { public string Id = ""; public string Caderno = ""; public string Pai = ""; public string Titulo = ""; public int Ordem; public string CriadoEm = ""; public string AtualizadoEm = ""; public string Por = ""; }
 
     static readonly string[] Cores = { "#7C3AED", "#0EA5E9", "#10B981", "#F59E0B", "#EC4899", "#EF4444", "#14B8A6", "#6366F1" };
     static readonly string[] CoresTexto = { "#111827", "#EF4444", "#F97316", "#CA8A04", "#16A34A", "#0EA5E9", "#7C3AED", "#DB2777", "#64748B" };
@@ -240,14 +398,69 @@
         var r = await E.Conta.Chamar("GET", "sn");
         _carregando = false;
         if (!r.Ok) { await J.Erro("Smart Note", "Não consegui abrir os seus cadernos: " + r.Erro); return; }
-        foreach (var x in r.Json?["cadernos"] as JsonArray ?? new())
-            _cads.Add(new Caderno { Id = S(x, "id"), Nome = S(x, "nome"), Cor = S(x, "cor") is { Length: > 0 } c ? c : Cores[0], Ordem = I(x, "ordem"), Link = S(x, "link") });
-        foreach (var x in r.Json?["paginas"] as JsonArray ?? new())
-            _pags.Add(new Pagina { Id = S(x, "id"), Caderno = S(x, "caderno"), Pai = S(x, "pai"), Titulo = S(x, "titulo"), Ordem = I(x, "ordem"), CriadoEm = S(x, "criadoEm"), AtualizadoEm = S(x, "atualizadoEm") });
+        LerLista(r.Json);
+        _timer = new System.Threading.Timer(_ => InvokeAsync(Sincronizar), null, 40000, 40000);
+        // veio do sininho: smart-note?c=caderno
+        var q = new Uri(Rotas.Uri).Query.TrimStart('?').Split('&').Select(x => x.Split('=', 2)).FirstOrDefault(x => x.Length == 2 && x[0] == "c");
+        if (q != null && _cads.Any(c => c.Id == q[1])) { AbrirCaderno(Uri.UnescapeDataString(q[1])); return; }
         var ult = await E.Nav.Ler("sn_ultima");
         var up = _pags.FirstOrDefault(p => p.Id == ult);
         if (up != null) { _cad = up.Caderno; await AbrirPagina(up.Id); }
-        else if (_cads.Count > 0) AbrirCaderno(_cads.OrderBy(c => c.Ordem).First().Id);
+        else if (_cads.Count > 0) AbrirCaderno(_cads.Where(c => c.Meu).OrderBy(c => c.Ordem).Concat(_cads.Where(c => !c.Meu)).First().Id);
+    }
+
+    void LerLista(JsonNode? j)
+    {
+        _cads.Clear(); _pags.Clear();
+        foreach (var x in j?["cadernos"] as JsonArray ?? new())
+            _cads.Add(new Caderno { Id = S(x, "id"), Nome = S(x, "nome"), Cor = S(x, "cor") is { Length: > 0 } c ? c : Cores[0], Ordem = I(x, "ordem"), Link = S(x, "link"), Papel = S(x, "papel") is { Length: > 0 } pp ? pp : "dono", Dono = S(x, "dono"), Membros = I(x, "membros") });
+        foreach (var x in j?["paginas"] as JsonArray ?? new())
+            _pags.Add(new Pagina { Id = S(x, "id"), Caderno = S(x, "caderno"), Pai = S(x, "pai"), Titulo = S(x, "titulo"), Ordem = I(x, "ordem"), CriadoEm = S(x, "criadoEm"), AtualizadoEm = S(x, "atualizadoEm"), Por = S(x, "por") });
+    }
+
+    // ---- cadernos compartilhados: busca as mudanças dos outros de tempos em tempos ----
+    System.Threading.Timer? _timer;
+    string? _mudouFora;
+    async Task Sincronizar()
+    {
+        if (!_cads.Any(c => !c.Meu || c.Membros > 0) || _abrindo) return;
+        var r = await E.Conta.Chamar("GET", "sn");
+        if (!r.Ok) return;
+        var antes = Pag;
+        string? atual = antes?.AtualizadoEm;
+        LerLista(r.Json);
+        if (_cad != null && !_cads.Any(c => c.Id == _cad)) { await Fechar(false); _cad = _cads.FirstOrDefault()?.Id; _ = J.Aviso("Smart Note", "Seu acesso a esse caderno compartilhado foi retirado."); }
+        else if (_pag != null && Pag is null) { await Fechar(false); }
+        else if (Pag is { } p && atual != null && p.AtualizadoEm != atual && p.Por != "" && _versoes.ContainsKey(p.Id))
+        {
+            // alguém salvou esta página: confere se o texto mudou
+            var rp = await E.Conta.Chamar("GET", "sn/pagina?id=" + Uri.EscapeDataString(p.Id));
+            if (rp.Ok && I(rp.Json, "versao") != _versoes[p.Id]) _mudouFora = S(rp.Json, "por") is { Length: > 0 } quem ? quem : "Outra pessoa";
+        }
+        StateHasChanged();
+    }
+    bool _montado;
+    (string id, string quem, string html)? _conflito;
+
+    async Task ManterMinha()
+    {
+        if (_conflito is not { } c) return;
+        var p = _pags.FirstOrDefault(x => x.Id == c.id); if (p == null) return;
+        var corpo = Meta(p, c.html); corpo["forcar"] = true;
+        _conflito = null; _status = "Salvando…"; _statusCls = "";
+        var r = await E.Conta.Chamar("PUT", "sn/pagina", corpo);
+        if (r.Ok) { _versoes[c.id] = I(r.Json, "versao"); p.Por = ""; p.AtualizadoEm = DateTime.UtcNow.ToString("o"); _status = $"Salvo às {DateTime.Now:HH:mm}"; _statusCls = "ok"; }
+        else { _status = "Não salvou: " + r.Erro; _statusCls = "erro"; }
+    }
+
+    async Task VerDela() { _conflito = null; await RecarregarPagina(); }
+
+    async Task RecarregarPagina()
+    {
+        if (_pag is not { } id) return;
+        _mudouFora = null;
+        await Fechar(false);
+        await AbrirPagina(id);
     }
 
     protected override async Task OnAfterRenderAsync(bool primeira)
@@ -255,7 +468,8 @@
         if (_montar != null && !_abrindo && Pag?.Id == _montar)
         {
             var id = _montar; _montar = null;
-            await E.Nav.NotaMontar(_ed, _barra, _arq, _ref!, _conteudo, id);
+            if (Cad?.Edita == false) await E.Nav.NotaVer(_ed, _conteudo);
+            else { await E.Nav.NotaMontar(_ed, _barra, _arq, _ref!, _conteudo, id); _montado = true; }
         }
     }
 
@@ -359,8 +573,8 @@
     // ---------------- páginas ----------------
     async Task Fechar(bool salvar = true)
     {
-        if (_pag != null && salvar && !_abrindo) { try { await E.Nav.NotaDesmontar(_ed); } catch { } }
-        _pag = null; _montar = null;
+        if (_montado) { _montado = false; try { if (salvar) await E.Nav.NotaDesmontar(_ed); else await E.Nav.NotaDescartar(_ed); } catch { } }
+        _pag = null; _montar = null; _mudouFora = null; _conflito = null;
     }
 
     async Task AbrirPagina(string id)
@@ -375,6 +589,7 @@
         var r = await E.Conta.Chamar("GET", "sn/pagina?id=" + Uri.EscapeDataString(id));
         if (_pag != id) return;
         _conteudo = r.Ok ? S(r.Json, "conteudo") : "";
+        if (r.Ok) { _versoes[id] = I(r.Json, "versao"); p.Por = S(r.Json, "por"); }
         _abrindo = false; _montar = id;
         _ = E.Nav.Gravar("sn_ultima", id);
         if (!r.Ok) { _status = "Não consegui abrir: " + r.Erro; _statusCls = "erro"; }
@@ -428,7 +643,7 @@
         if (i < irmas.Count - 1) ops.Add(("baixo", "Mover para baixo"));
         if (i > 0) ops.Add(("dentro", $"Virar subpágina de “{(irmas[i - 1].Titulo == "" ? "Sem título" : irmas[i - 1].Titulo)}”"));
         if (p.Pai != "") ops.Add(("fora", "Subir um nível (deixar de ser subpágina)"));
-        foreach (var c in _cads.Where(c => c.Id != p.Caderno)) ops.Add(("cad:" + c.Id, $"Mover para o caderno “{c.Nome}”"));
+        foreach (var c in _cads.Where(c => c.Id != p.Caderno && c.Edita)) ops.Add(("cad:" + c.Id, $"Mover para o caderno “{c.Nome}”"));
         ops.Add(("excluir", "Excluir página"));
         var op = await J.Um(p.Titulo == "" ? "Página sem título" : p.Titulo, ops, "", "O que fazer com esta página?", "");
         if (string.IsNullOrEmpty(op)) return;
@@ -495,8 +710,17 @@
         try
         {
             if (id == _pag) { _status = "Salvando…"; _statusCls = ""; await InvokeAsync(StateHasChanged); }
-            var r = await E.Conta.Chamar("PUT", "sn/pagina", Meta(p, html));
-            if (r.Ok) { p.AtualizadoEm = DateTime.UtcNow.ToString("o"); if (id == _pag) { _status = $"Salvo às {DateTime.Now:HH:mm}"; _statusCls = "ok"; } }
+            var corpo = Meta(p, html);
+            if (_versoes.TryGetValue(id, out var vb)) corpo["base"] = vb;
+            var r = await E.Conta.Chamar("PUT", "sn/pagina", corpo);
+            if (r.Status == 409)
+            {
+                // outra pessoa salvou esta página enquanto você editava: pausa e pergunta na própria página
+                _conflito = (id, S(r.Json, "quem") is { Length: > 0 } q ? q : "Outra pessoa", html);
+                if (id == _pag) { _status = "Não salvo"; _statusCls = "erro"; }
+                return;
+            }
+            if (r.Ok) { p.AtualizadoEm = DateTime.UtcNow.ToString("o"); p.Por = ""; _versoes[id] = I(r.Json, "versao"); _mudouFora = null; if (id == _pag) { _status = $"Salvo às {DateTime.Now:HH:mm}"; _statusCls = "ok"; } }
             else { _status = r.Status == 413 ? r.Erro : "Não salvou: " + r.Erro; _statusCls = "erro"; if (r.Status == 413) await J.Aviso("Smart Note", r.Erro); }
         }
         finally { _fila.Release(); await InvokeAsync(StateHasChanged); }
@@ -518,7 +742,8 @@
     public override void Dispose()
     {
         base.Dispose();
-        if (_pag != null && !_abrindo) { try { _ = E.Nav.NotaDesmontar(_ed); } catch { } }
+        _timer?.Dispose();
+        if (_montado) { try { _ = E.Nav.NotaDesmontar(_ed); } catch { } }
         _ = Task.Delay(3000).ContinueWith(_ => _ref?.Dispose());
     }
 }

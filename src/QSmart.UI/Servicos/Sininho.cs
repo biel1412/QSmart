@@ -13,6 +13,9 @@ public sealed class Notificacao
     public string Nome { get; set; } = "";
     public string Trecho { get; set; } = "";
     public string Foto { get; set; } = "";
+    public string Ref { get; set; } = "";
+    public string Href => Tipo == "caderno" ? $"smart-note?c={Uri.EscapeDataString(Ref)}" : $"feed?post={PostId}";
+    public string IconeTipo => Tipo switch { "curtida" => "coracao-cheio", "post" => "feed", "caderno" => "caderno", _ => "conversa" };
 
     public string Texto => Tipo switch
     {
@@ -20,6 +23,7 @@ public sealed class Notificacao
         "curtida" => $"{Nome} curtiu a sua publicação",
         "comentario" => $"{Nome} comentou na sua publicação",
         "resposta" => $"{Nome} também comentou numa publicação que você comentou",
+        "caderno" => $"{Nome} compartilhou um caderno do Smart Note com você",
         _ => Nome,
     };
 }
@@ -66,7 +70,7 @@ public sealed class Sininho
             var n = new Notificacao
             {
                 Id = I(x, "id"), Tipo = S(x, "tipo"), PostId = I(x, "postId"), CriadoEm = S(x, "criadoEm"), Lida = x?["lida"]?.GetValue<bool>() ?? false,
-                De = I(x, "de"), Nome = S(x, "nome"), Trecho = S(x, "trecho"),
+                De = I(x, "de"), Nome = S(x, "nome"), Trecho = S(x, "trecho"), Ref = S(x, "ref"),
             };
             if (fotos?[n.De.ToString()] is JsonValue fv && fv.TryGetValue<string>(out var f)) n.Foto = f;
             l.Add(n);

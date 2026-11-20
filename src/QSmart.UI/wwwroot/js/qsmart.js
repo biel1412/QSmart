@@ -421,6 +421,7 @@
       if (h === st.ult) { st.ref.invokeMethodAsync("Salvo"); return; }
       st.ult = h; st.ref.invokeMethodAsync("Mudou", st.id, h);
     },
+    descartar(el) { const st = notas.get(el); if (st) { st.ult = el.innerHTML; nota.desmontar(el); } },
     desmontar(el) {
       const st = notas.get(el); if (!st) return;
       if (st.ult !== el.innerHTML) { st.ult = el.innerHTML; st.ref.invokeMethodAsync("Mudou", st.id, el.innerHTML); }

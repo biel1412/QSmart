@@ -106,9 +106,9 @@ else
                         }
                         @foreach (var n in E.Sino.Itens)
                         {
-                            <a class="sino-it @(n.Lida ? "" : "nova")" href="@($"feed?post={n.PostId}")" @onclick="() => _sino = false">
+                            <a class="sino-it @(n.Lida ? "" : "nova")" href="@n.Href" @onclick="() => _sino = false">
                                 <span class="sino-av" style="background:@CorNome(n.Nome)">@if (n.Foto != "") { <img src="@n.Foto" alt="" /> } else { @IniciaisDe(n.Nome) }
-                                    <i class="t-@n.Tipo"><Icone Nome="@(n.Tipo == "curtida" ? "coracao-cheio" : n.Tipo == "post" ? "feed" : "conversa")" Tamanho="10" /></i></span>
+                                    <i class="t-@n.Tipo"><Icone Nome="@n.IconeTipo" Tamanho="10" /></i></span>
                                 <div><b>@n.Texto</b>@if (n.Trecho != "") { <span>“@n.Trecho”</span> }<small>@QSmart.UI.Paginas.FeedPag.Quando(n.CriadoEm)</small></div>
                             </a>
                         }
