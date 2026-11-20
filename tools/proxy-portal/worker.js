@@ -166,7 +166,7 @@ async function api(req, env, url) {
     const generico = rota === "entrar" ? "Usuário ou senha incorretos." : "Usuário ou código de recuperação incorretos.";
     if (!u) { await hashSenha("x"); return erro(generico, 401); }
     if (u.travado_ate && u.travado_ate > agora()) {
-      const min = Math.max(1, Math.ceil((new Date(u.travado_ate) - Date.now()) / 60000));
+      const min = Math.max(1, Math.ceil((new Date(u.travado_ate).getTime() - Date.now()) / 60000));
       return erro(`Muitas tentativas erradas. Tente de novo em ${min} min.`, 429);
     }
     const ok = rota === "entrar" ? await confere(String(b.senha || ""), u.senha) : await confere(normCodigo(b.codigo), u.recuperacao);
