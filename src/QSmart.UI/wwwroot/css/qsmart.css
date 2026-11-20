@@ -1698,3 +1698,4 @@ a.rx-st:hover { text-decoration: underline; }
 .oo-migra { border-color: color-mix(in srgb, var(--blue) 45%, transparent); background: color-mix(in srgb, var(--blue) 8%, var(--surface)); }
 .oo-migra > div { flex: 1; } .oo-migra > svg { color: var(--blue); flex: none; }
 .principal:has(.conta-canto) .hero-acoes { margin-right: 58px; }
+.oo-lane-ac { display: flex; gap: 6px; margin-top: 8px; justify-content: center; }

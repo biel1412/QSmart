@@ -76,7 +76,13 @@
                                 <div class="oo-ring" style="--p:@pct"><span>@pct%</span></div>
                                 <small class="oo-emd">em dia</small>
                                 <div class="oo-mini"><span class="g" title="Em dia">@em</span><span class="a" title="Chegando">@ch</span><span class="r" title="Atrasado">@at</span></div>
-                                @if (ps.Count == 0 && E.OneVeTudo) { <button class="btn btn-sec btn-peq" @onclick="() => RemoverLideranca(l)">Remover</button> }
+                                @if (E.OneVeTudo)
+                                {
+                                    <div class="oo-lane-ac">
+                                        <button class="btn btn-sec btn-peq" title="Renomear a liderança" @onclick="() => Renomear(l)">Renomear</button>
+                                        <button class="btn btn-sec btn-peq" title="Excluir a liderança" @onclick="() => ExcluirLideranca(l)"><Icone Nome="lixo" Tamanho="14" /></button>
+                                    </div>
+                                }
                             </header>
                             <div class="oo-belt">
                                 @foreach (var fx in new[] { FaixaOO.EmDia, FaixaOO.Chegando, FaixaOO.Atrasado })
@@ -473,7 +479,32 @@
         Salvar();
     }
 
-    void RemoverLideranca(string l) { E.OneBase!.Liderancas.RemoveAll(x => x == l); Salvar(); }
+    async Task ExcluirLideranca(string l)
+    {
+        var b = E.OneBase!;
+        var ps = b.Pessoas.Where(p => !p.Arquivado && p.Lideranca == l).ToList();
+        if (ps.Count == 0)
+        {
+            if (!await J.Pergunta("Excluir liderança", $"Excluir a liderança “{l}”? Ela está vazia.")) return;
+        }
+        else
+        {
+            const string Arquivar = "__arquivar";
+            var opcoes = b.TodasLiderancas().Where(x => x != l).Select(x => (x, $"Mover para {x}"))
+                .Append((Arquivar, "Arquivar todos (o histórico fica guardado)")).ToList();
+            var destino = await J.Um("Excluir liderança", opcoes, "", $"“{l}” tem {Ferias.Plural(ps.Count, "colaborador", "colaboradores")}. O que fazer com eles?", "");
+            if (string.IsNullOrEmpty(destino)) return;
+            if (destino == Arquivar)
+            {
+                if (!await J.Pergunta("Excluir liderança", $"Arquivar {Ferias.Plural(ps.Count, "colaborador", "colaboradores")} e excluir “{l}”? Dá para reativar cada pessoa depois em Arquivados.")) return;
+                foreach (var p in ps) { p.Arquivado = true; p.ArquivadoEm = _hoje; }
+            }
+            else foreach (var p in ps) OneAOne.TrocarLideranca(p, destino, _hoje);
+        }
+        b.Liderancas.RemoveAll(x => x == l);
+        if (_lider == l) _lider = Todas;
+        Salvar();
+    }
 
     async Task Anexar(List<Arquivo> arqs)
     {

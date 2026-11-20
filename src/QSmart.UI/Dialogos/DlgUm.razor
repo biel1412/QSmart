@@ -10,7 +10,7 @@
         </div>
     </ChildContent>
     <Rodape>
-        <button class="btn btn-sec" @onclick="@(() => Fechar(""))">@Limpar</button>
+        @if (!string.IsNullOrEmpty(Limpar)) { <button class="btn btn-sec" @onclick="@(() => Fechar(""))">@Limpar</button> } else { <span></span> }
         <span class="mola"></span>
         <button class="btn btn-sec" @onclick="() => Fechar(null)">Cancelar</button>
         <button class="btn btn-pri" disabled="@(_atual == null)" @onclick="() => Fechar(_atual)">Aplicar</button>
