@@ -1,0 +1,218 @@
+@page "/perfil"
+@using QSmart.Core.Conta
+@using Microsoft.AspNetCore.Components.Forms
+@inject Estado E
+@inject Janelas J
+@implements IDisposable
+
+@if (E.Conta.Perfil is { } p)
+{
+    var r = Calc();
+    <div class="pf">
+        <section class="pf-cap">
+            <div class="pf-foto">
+                <span class="pf-anel" style="--p:@((int)(r.ProgressoNivel * 100))"></span>
+                <span class="pf-img">@if (p.Foto != "") { <img src="@p.Foto" alt="Foto de @p.Nome" /> } else { @p.Iniciais }</span>
+                <label class="pf-cam" title="Trocar a foto">
+                    <InputFile OnChange="TrocarFoto" accept="image/*" />
+                    @if (_enviando) { <span class="ia-spin"></span> } else { <Icone Nome="camera" Tamanho="17" /> }
+                </label>
+                <span class="pf-lv">NÍVEL @r.Nivel</span>
+            </div>
+            <div class="pf-nm">
+                <h1>@p.NomeCompleto</h1>
+                <div class="pf-tags">
+                    <span>@("@" + p.Usuario)</span>
+                    <span class="papel @p.Papel">@p.PapelNome</span>
+                    @if (p.Lideranca != "") { <span>Equipe: @p.Lideranca</span> }
+                    @if (Desde(p.CriadoEm) is { } d) { <span>no QSmart desde @d</span> }
+                </div>
+                <div class="pf-xp">
+                    <div class="pf-barra"><i style="width:@F(r.ProgressoNivel * 100)%"></i></div>
+                    <small><span><b>@r.Titulo</b> · @Num(r.Xp) / @Num(r.XpProximo) XP</span><span>faltam @Num(r.XpProximo - r.Xp) XP para o nível @(r.Nivel + 1)</span></small>
+                </div>
+            </div>
+            <div class="pf-kp">
+                <div><b>@r.Seguidos @(r.Seguidos == 1 ? "dia" : "dias")</b><small>seguidos usando</small></div>
+                <div><b>@r.Dias</b><small>dias de uso</small></div>
+                <div><b>@r.MedalhasGanhas</b><small>medalhas de @r.Medalhas.Count</small></div>
+                <div><b>@r.TrofeusGanhos</b><small>troféus de @r.Trofeus.Count</small></div>
+            </div>
+        </section>
+
+        <div class="pf-sec"><b>Estante de troféus</b><span>sobem de bronze para prata e ouro</span></div>
+        <div class="pf-trof">
+            @foreach (var t in r.Trofeus)
+            {
+                <div class="pf-tr @(t.Grau == 0 ? "off" : "")" style="--c:@t.Cor" title="@TituloTrofeu(t)">
+                    <span class="pf-tr-g">@t.GrauNome</span>
+                    <div class="pf-tr-ic"><Icone Nome="@t.Icone" Tamanho="38" /></div>
+                    <b>@t.Nome</b>
+                    <small>@t.Valor @t.Como</small>
+                    @if (t.ProximaMeta is { } m)
+                    {
+                        <div class="pf-pb"><i style="width:@F(Math.Min(100, t.Valor * 100.0 / m))%"></i></div>
+                        <small class="pf-meta">próximo: @m</small>
+                    }
+                    else { <small class="pf-meta">nível máximo!</small> }
+                </div>
+            }
+        </div>
+
+        <div class="pf-sec"><b>Medalhas</b><span>@r.MedalhasGanhas de @r.Medalhas.Count · passe o mouse para ver como ganhar</span></div>
+        <div class="pf-md">
+            @foreach (var m in r.Medalhas.OrderByDescending(m => m.Ganha).ThenByDescending(m => m.Progresso))
+            {
+                <div class="pf-m @(m.Ganha ? "" : "off")" style="--c:@m.Cor" title="@TituloMedalha(m)">
+                    <div class="pf-h"><Icone Nome="@m.Icone" Tamanho="28" /></div>
+                    <b>@m.Nome</b>
+                    <small>@m.Como</small>
+                    @if (!m.Ganha) { <div class="pf-pb"><i style="width:@F(m.Progresso * 100)%"></i></div> }
+                </div>
+            }
+        </div>
+
+        <div class="pf-g2">
+            <div class="pf-card">
+                <div class="pf-ct"><Icone Nome="cadeado" Tamanho="16" /> TROCAR A SENHA</div>
+                <input class="campo" type="password" placeholder="Senha atual" @bind="_atual" autocomplete="current-password" />
+                <input class="campo" type="password" placeholder="Nova senha (mínimo 8 caracteres)" @bind="_nova" autocomplete="new-password" />
+                <input class="campo" type="password" placeholder="Confirmar a nova senha" @bind="_nova2" autocomplete="new-password" />
+                <button class="btn btn-pri" @onclick="TrocarSenha">Trocar a senha</button>
+            </div>
+            <div class="pf-card">
+                <div class="pf-ct"><Icone Nome="escudo" Tamanho="16" /> SUA CONTA</div>
+                <p class="muted">A senha é guardada com criptografia de mão única: nem o administrador consegue ler. A cada vez que abrir o QSmart, ela é pedida de novo.</p>
+                <p class="muted">Perdeu o código de recuperação? Peça um novo ao administrador.</p>
+                <button class="btn btn-sec" @onclick="Sair"><Icone Nome="sair" Tamanho="16" /> Sair do QSmart</button>
+            </div>
+        </div>
+
+        @if (p.Admin)
+        {
+            <div class="pf-sec"><b>Equipe e acessos</b><span>aprovar cadastros, definir papéis e equipes</span>
+                <button class="btn btn-sec pf-rec" @onclick="CarregarUsuarios"><Icone Nome="atualizar" Tamanho="14" /> Atualizar</button></div>
+            @if (_usuarios == null) { <p class="muted"><span class="ia-spin pequeno"></span> Carregando…</p> }
+            else
+            {
+                <div class="pf-card pf-equipe">
+                    <div class="pf-eq-cab"><span>Pessoa</span><span>Papel</span><span>Equipe (liderança)</span><span>Situação</span><span></span></div>
+                    @foreach (var u in _usuarios)
+                    {
+                        var eu = u.Id == p.Id;
+                        <div class="pf-eq-lin @u.Status">
+                            <div><b>@u.Nome @u.Sobrenome</b><small>@("@" + u.Usuario)@(u.Ultimo_acesso is { Length: > 9 } ua ? " · último acesso " + Dia(ua) : " · nunca entrou")</small></div>
+                            <select class="campo" value="@u.Papel" disabled="@eu" @onchange="e => MudarPapel(u, e.Value?.ToString())">
+                                <option value="usuario">Usuário</option><option value="lideranca">Liderança</option>
+                                <option value="coordenador">Coordenador</option><option value="admin">Administrador</option>
+                            </select>
+                            <input class="campo" placeholder="@(u.Papel == "lideranca" ? "nome da equipe no One a One" : "—")" value="@u.Lideranca" @onchange="e => MudarEquipe(u, e.Value?.ToString())" />
+                            <span class="pf-st @u.Status">@(u.Status switch { "ativo" => "Ativo", "pendente" => "Aguardando aprovação", _ => "Bloqueado" })</span>
+                            <div class="pf-eq-ac">
+                                @if (u.Status == "pendente") { <button class="btn btn-pri rx-mini" @onclick="() => Status(u, Ativo)">Aprovar</button> }
+                                else if (u.Status == "ativo" && !eu) { <button class="btn btn-sec rx-mini" @onclick="() => Status(u, Bloqueado)">Bloquear</button> }
+                                else if (u.Status == "bloqueado") { <button class="btn btn-sec rx-mini" @onclick="() => Status(u, Ativo)">Desbloquear</button> }
+                                <button class="btn btn-sec rx-mini" title="Gera um código de recuperação novo para a pessoa trocar a senha" @onclick="() => NovoCodigo(u)">Novo código</button>
+                                @if (!eu) { <button class="btn btn-sec rx-mini" title="Excluir a conta" @onclick="() => Excluir(u)"><Icone Nome="lixo" Tamanho="14" /></button> }
+                            </div>
+                        </div>
+                    }
+                </div>
+                <p class="muted pequeno">Coordenador e administrador veem todas as equipes do One a One. Liderança vê só a equipe com o nome escrito aqui, igual ao do One a One.</p>
+            }
+        }
+    </div>
+}
+
+@code {
+    const string Ativo = "ativo", Bloqueado = "bloqueado";
+    string _atual = "", _nova = "", _nova2 = "";
+    bool _enviando;
+    List<UsuarioAdmin>? _usuarios;
+    static readonly string[] Ferramentas = Abas.Todas.Where(a => !a.Externo).Select(a => a.Chave).ToArray();
+
+    protected override async Task OnInitializedAsync()
+    {
+        E.Conta.Mudou += Atualizar;
+        await E.Conta.CarregarEu();
+        if (E.Conta.Perfil?.Admin == true) await CarregarUsuarios();
+    }
+
+    void Atualizar() => InvokeAsync(StateHasChanged);
+    public void Dispose() => E.Conta.Mudou -= Atualizar;
+
+    ResumoConta Calc() => Conquistas.Calcular(E.Conta.Uso, E.Conta.Dias, Ferramentas, DateOnly.FromDateTime(DateTime.Today));
+    static string F(double v) => v.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture);
+    static string Num(int v) => v.ToString("#,##0", System.Globalization.CultureInfo.InvariantCulture).Replace(',', '.');
+    static string TituloMedalha(Medalha m) => m.Como + (m.Ganha ? " · conquistada!" : $" · {m.Valor} de {m.Meta}");
+    static string TituloTrofeu(Trofeu t) => $"{t.Nome}: bronze {t.Metas[0]}, prata {t.Metas[1]}, ouro {t.Metas[2]} {t.Como}";
+    static string Dia(string iso) => DateTime.TryParse(iso, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AdjustToUniversal, out var d) ? d.ToLocalTime().ToString("dd/MM/yyyy") : iso;
+
+    static string? Desde(string iso)
+    {
+        if (iso.Length < 7 || !int.TryParse(iso[..4], out var a) || !int.TryParse(iso[5..7], out var m)) return null;
+        return Texto.MesesPt[m - 1][..3].ToLowerInvariant() + "/" + a;
+    }
+
+    async Task TrocarFoto(InputFileChangeEventArgs e)
+    {
+        var f = e.File;
+        if (f.Size > 15_000_000) { await J.Aviso("Foto", "Escolha uma imagem de até 15 MB."); return; }
+        _enviando = true; StateHasChanged();
+        try
+        {
+            using var ms = new MemoryStream();
+            await f.OpenReadStream(15_000_000).CopyToAsync(ms);
+            var url = await E.Nav.ReduzirImagem(ms.ToArray(), 256);
+            var r = await E.Conta.SalvarFoto(url);
+            if (!r.Ok) await J.Aviso("Foto", r.Erro);
+        }
+        catch (Exception ex) { await J.Aviso("Foto", "Não consegui usar essa imagem: " + ex.Message); }
+        finally { _enviando = false; StateHasChanged(); }
+    }
+
+    async Task TrocarSenha()
+    {
+        if (_nova.Length < 8) { await J.Aviso("Senha", "A nova senha precisa ter pelo menos 8 caracteres."); return; }
+        if (_nova != _nova2) { await J.Aviso("Senha", "As duas senhas novas não estão iguais."); return; }
+        var r = await E.Conta.TrocarSenha(_atual, _nova);
+        if (!r.Ok) { await J.Aviso("Senha", r.Erro); return; }
+        _atual = _nova = _nova2 = "";
+        await J.Info("Senha", "Senha trocada. Use a nova senha da próxima vez que entrar.");
+    }
+
+    async Task Sair()
+    {
+        if (!await J.Pergunta("Sair", "Sair do QSmart neste computador?")) return;
+        await E.Conta.Sair();
+    }
+
+    async Task CarregarUsuarios() { _usuarios = null; StateHasChanged(); _usuarios = await E.Conta.Usuarios() ?? new(); }
+
+    async Task Aplicar(Task<RespostaApi> t)
+    {
+        var r = await t;
+        if (!r.Ok) await J.Aviso("Equipe e acessos", r.Erro);
+        await CarregarUsuarios();
+    }
+
+    async Task MudarPapel(UsuarioAdmin u, string? papel) { if (papel != null && papel != u.Papel) await Aplicar(E.Conta.AtualizarUsuario(u.Id, papel: papel)); }
+    async Task MudarEquipe(UsuarioAdmin u, string? l) { if (l != null && l.Trim() != u.Lideranca) await Aplicar(E.Conta.AtualizarUsuario(u.Id, lideranca: l.Trim())); }
+    async Task Status(UsuarioAdmin u, string st) => await Aplicar(E.Conta.AtualizarUsuario(u.Id, status: st));
+
+    async Task NovoCodigo(UsuarioAdmin u)
+    {
+        if (!await J.Pergunta("Novo código", $"Gerar um código de recuperação novo para {u.Nome}? O código antigo deixa de valer.")) return;
+        var r = await E.Conta.NovoCodigo(u.Id);
+        if (!r.Ok) { await J.Aviso("Novo código", r.Erro); return; }
+        var c = r.Json?["codigo"]?.GetValue<string>() ?? "";
+        await E.Nav.Copiar(c);
+        await J.Info("Novo código", $"Código de recuperação de {u.Nome} {u.Sobrenome} (@{u.Usuario}):\n\n{c}\n\nJá copiei. Passe para a pessoa: ela usa em “Esqueci a senha” para criar uma senha nova.");
+    }
+
+    async Task Excluir(UsuarioAdmin u)
+    {
+        if (!await J.Pergunta("Excluir conta", $"Excluir a conta de {u.Nome} {u.Sobrenome}? As medalhas dela se perdem. Os registros do One a One continuam.")) return;
+        await Aplicar(E.Conta.Excluir(u.Id));
+    }
+}

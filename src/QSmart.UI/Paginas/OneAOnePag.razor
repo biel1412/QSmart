@@ -7,23 +7,33 @@
         Sub="Cada colaborador é um cartão que anda sozinho na esteira conforme o tempo passa: Em dia → Chegando → Atrasado. Fez o 1:1? Registre e o cartão volta para o começo."
         Kpis="@(b != null && _ativos > 0 ? KpisOO : null)">
     <Acoes>
-        <button class="btn btn-hero" @onclick="BaixarModelo" title="Planilha em branco com o passo a passo de como preencher"><Icone Nome="download" Tamanho="17" /> Modelo em branco</button>
-        <button class="btn btn-hero" disabled="@(b == null)" @onclick="Exportar" title="A carteira em planilha, no mesmo formato, com o histórico"><Icone Nome="download" Tamanho="17" /> Exportar planilha</button>
-        <BotaoArquivo Texto="@(b != null ? "Atualizar com planilha" : "Anexar planilha")" Variante="pri" Icone="upload" Aceita=".xlsx,.xlsm" AoEscolher="Anexar"
-                      Desativado="E.Carregando" Dica="A planilha de One a One da coordenação" />
+        <button class="btn btn-hero" disabled="@(b == null || b.Pessoas.Count == 0)" @onclick="Exportar" title="A carteira em planilha, com o histórico"><Icone Nome="download" Tamanho="17" /> Exportar planilha</button>
     </Acoes>
     <ChildContent>
-        @if (b == null)
+        @if (E.OneErro != null)
         {
+            <div class="oo-bloqueio"><Icone Nome="cadeado" Tamanho="26" /><div><b>@E.OneErro</b><p class="muted">O One a One fica no banco do QSmart e cada pessoa vê só o que o administrador liberou: coordenador vê todas as equipes; liderança, só a sua.</p></div></div>
+        }
+        else if (b == null)
+        {
+            <p class="muted"><span class="ia-spin pequeno"></span> Abrindo a carteira do banco…</p>
+        }
+        else if (b.Pessoas.Count == 0 && b.TodasLiderancas().Count == 0)
+        {
+            @if (_antigo != null)
+            {
+                <div class="oo-migra"><Icone Nome="upload" Tamanho="22" /><div><b>Este navegador tem uma carteira antiga com @Ferias.Plural(_antigo.Pessoas.Count, "pessoa", "pessoas")</b>
+                    <p class="muted">Ela era guardada só aqui. Envie uma vez para o banco do QSmart e ela passa a valer para toda a coordenação, com o histórico de 1:1.</p></div>
+                    <button class="btn btn-pri" @onclick="EnviarAntigo" disabled="@_enviando">@(_enviando ? "Enviando…" : "Enviar para o banco")</button></div>
+            }
             <div class="fa-intro">
-                <div class="fa-passo"><span>1</span><div><b>Baixe o modelo em branco</b><p class="muted">Uma linha por colaborador: liderança, nome, tipo (Novo ou Antigo) e a data do último 1:1. Vem com uma aba “Como preencher”, passo a passo.</p>
-                    <button class="btn btn-sec" @onclick="BaixarModelo"><Icone Nome="download" Tamanho="16" /> Baixar modelo em branco</button></div></div>
-                <div class="fa-passo"><span>2</span><div><b>Anexe a planilha preenchida</b><p class="muted">O QSmart monta uma esteira para cada liderança, do jeito que estiver na planilha: 2, 3 ou 10 lideranças, com quantas pessoas houver.</p>
-                    <BotaoArquivo Texto="Anexar planilha" Variante="pri" Icone="upload" Aceita=".xlsx,.xlsm" AoEscolher="Anexar" Desativado="E.Carregando" /></div></div>
-                <div class="fa-passo"><span>3</span><div><b>Registre cada 1:1 no QSmart</b><p class="muted">Clique no cartão, anote o que foi conversado e a ação combinada. O próximo 1:1 é calculado sozinho (Novo: 30 dias, Antigo: 90).</p>
-                    <button class="btn btn-sec" @onclick="ComecarVazio">Começar sem planilha</button></div></div>
+                <div class="fa-passo"><span>1</span><div><b>Cadastre as lideranças</b><p class="muted">Cada liderança vira uma esteira. Pode ter 2, 3 ou 10.</p>
+                    @if (E.OneVeTudo) { <button class="btn btn-sec" @onclick="NovaLideranca"><Icone Nome="mais" Tamanho="15" /> Liderança</button> }</div></div>
+                <div class="fa-passo"><span>2</span><div><b>Cadastre as pessoas</b><p class="muted">Nome, liderança e tipo: Novo (1:1 a cada 30 dias) ou Antigo (a cada 90).</p>
+                    <button class="btn btn-sec" @onclick="NovaPessoa"><Icone Nome="mais" Tamanho="15" /> Pessoa</button></div></div>
+                <div class="fa-passo"><span>3</span><div><b>Registre cada 1:1</b><p class="muted">Clique no cartão, anote o que foi conversado e a ação combinada. O próximo 1:1 é calculado sozinho.</p></div></div>
             </div>
-            <p class="fa-privado"><Icone Nome="escudo" Tamanho="16" /> Nada vai para servidor. Os dados ficam neste navegador, criptografados, e — se você criar uma senha — também na sua pasta de dados e nos backups, para abrir em outro computador.</p>
+            <p class="fa-privado"><Icone Nome="escudo" Tamanho="16" /> Tudo fica no banco do QSmart, criptografado. Só entra quem tem conta aprovada, e a liderança vê só a própria equipe. A planilha serve só para exportar.</p>
         }
         else
         {
@@ -37,28 +47,22 @@
                 </select>
                 <input class="campo" style="width:200px" placeholder="Buscar pessoa…" @bind="_busca" @bind:event="oninput" />
                 <button class="btn btn-sec" @onclick="NovaPessoa"><Icone Nome="mais" Tamanho="15" /> Pessoa</button>
-                <button class="btn btn-sec" @onclick="NovaLideranca"><Icone Nome="mais" Tamanho="15" /> Liderança</button>
+                @if (E.OneVeTudo) { <button class="btn btn-sec" @onclick="NovaLideranca"><Icone Nome="mais" Tamanho="15" /> Liderança</button> }
                 <span class="mola"></span>
-                @if (E.TemSenhaPasta)
-                {
-                    <span class="fa-cadeado" title="Criptografado neste navegador e, com senha, @E.Dados.OndeGrava (entra nos backups)"><Icone Nome="escudo" Tamanho="14" /> protegido com senha@(E.Dados.PastaDados != null ? $" · pasta {E.Dados.PastaDados}" : "")</span>
-                }
-                else
-                {
-                    <span class="fa-cadeado so" title="Criptografado, mas só neste navegador"><Icone Nome="escudo" Tamanho="14" /> só neste navegador</span>
-                    <button class="btn btn-sec" @onclick="ProtegerSenha" title="Salva também na pasta de dados e nos backups, protegido com senha">Proteger com senha</button>
-                }
-                <button class="btn btn-sec" @onclick="Limpar" title="Apaga a carteira deste navegador e da pasta"><Icone Nome="lixo" Tamanho="16" /></button>
+                <span class="fa-cadeado" title="Salvo no banco do QSmart, criptografado"><Icone Nome="escudo" Tamanho="14" /> salvo no banco · criptografado</span>
+                <button class="btn btn-sec" @onclick="Recarregar" title="Buscar as mudanças feitas por outras pessoas"><Icone Nome="atualizar" Tamanho="15" /></button>
             </div>
-            @if (!E.TemSenhaPasta)
+            @if (_antigo != null)
             {
-                <p class="hero-aviso"><Icone Nome="alerta" Tamanho="15" /> Hoje a carteira está só neste navegador. Se os dados do navegador forem limpos, ela se perde. Clique em “Proteger com senha” para guardar também na pasta de dados e nos backups.</p>
+                <div class="oo-migra"><Icone Nome="upload" Tamanho="22" /><div><b>Este navegador ainda tem a carteira antiga (@Ferias.Plural(_antigo.Pessoas.Count, "pessoa", "pessoas"))</b>
+                    <p class="muted">Envie para o banco para não perder o histórico. Quem já existir com o mesmo cadastro é atualizado.</p></div>
+                    <button class="btn btn-pri" @onclick="EnviarAntigo" disabled="@_enviando">@(_enviando ? "Enviando…" : "Enviar para o banco")</button></div>
             }
 
             <div class="oo-grade">
                 <div>
                     <div class="oo-legenda"><div></div><div><i class="g"></i>EM DIA</div><div title="Vence em até @OneAOne.Chegando dias"><i class="a"></i>CHEGANDO</div><div><i class="r"></i>ATRASADO (DIAS)</div></div>
-                    @if (_lids.Count == 0) { <p class="muted">Nenhuma liderança ainda. Use “+ Liderança” ou anexe a planilha.</p> }
+                    @if (_lids.Count == 0) { <p class="muted">Nenhuma liderança ainda. Use “+ Liderança”.</p> }
                     @foreach (var l in _lids.Where(l => _lider == Todas || l == _lider))
                     {
                         var ps = b.Ativos.Where(p => p.Lideranca == l).ToList();
@@ -68,11 +72,11 @@
                         <section class="oo-lane @(_soltar == l ? "alvo" : "")" style="--l:@cor" @ondragover="() => Sobre(l)" @ondragover:preventDefault="true" @ondrop="() => Soltar(l)" @ondrop:preventDefault="true">
                             <header>
                                 <span class="oo-lav">@(l.Length > 0 ? l[..1].ToUpperInvariant() : "?")</span>
-                                <div><b title="Clique para renomear" @onclick="() => Renomear(l)">@l</b><small>@Ferias.Plural(ps.Count, "colaborador", "colaboradores")</small></div>
+                                <div><b title="@(E.OneVeTudo ? "Clique para renomear" : l)" @onclick="() => Renomear(l)">@l</b><small>@Ferias.Plural(ps.Count, "colaborador", "colaboradores")</small></div>
                                 <div class="oo-ring" style="--p:@pct"><span>@pct%</span></div>
                                 <small class="oo-emd">em dia</small>
                                 <div class="oo-mini"><span class="g" title="Em dia">@em</span><span class="a" title="Chegando">@ch</span><span class="r" title="Atrasado">@at</span></div>
-                                @if (ps.Count == 0) { <button class="btn btn-sec btn-peq" @onclick="() => RemoverLideranca(l)">Remover</button> }
+                                @if (ps.Count == 0 && E.OneVeTudo) { <button class="btn btn-sec btn-peq" @onclick="() => RemoverLideranca(l)">Remover</button> }
                             </header>
                             <div class="oo-belt">
                                 @foreach (var fx in new[] { FaixaOO.EmDia, FaixaOO.Chegando, FaixaOO.Atrasado })
@@ -173,7 +177,31 @@
     // formulário da ficha
     string _fData = "", _fObs = "", _fAcao = "", _fPrazo = "";
 
-    protected override async Task OnInitializedAsync() => await E.CarregarOne();
+    QSmart.Core.Coordenacao.BaseOO? _antigo;
+    bool _enviando;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await E.CarregarOne(true);
+        if (E.OneVeTudo) _antigo = await E.OneLocalAntigo();
+    }
+
+    async Task Recarregar() { E.OneBase = null; await E.CarregarOne(true); }
+
+    async Task EnviarAntigo()
+    {
+        if (_antigo == null) return;
+        if (!await J.Pergunta("Enviar para o banco", $"Enviar a carteira deste navegador ({Ferias.Plural(_antigo.Pessoas.Count, "pessoa", "pessoas")}) para o banco do QSmart? Depois do envio, a cópia antiga deste navegador é apagada.")) return;
+        _enviando = true; StateHasChanged();
+        try
+        {
+            var (ok, falhas) = await E.EnviarOneLocal(_antigo);
+            _antigo = falhas == 0 ? null : _antigo;
+            await J.Info("One a One", falhas == 0 ? $"Pronto: {Ferias.Plural(ok, "registro enviado", "registros enviados")} para o banco." : $"{ok} enviados e {falhas} recusados (de outras equipes).");
+        }
+        catch (Exception ex) { await J.Aviso("One a One", ex.Message); }
+        finally { _enviando = false; StateHasChanged(); }
+    }
 
     void Montar()
     {
@@ -273,7 +301,7 @@
             <div class="oo-ficha-corpo">
                 <div class="oo-campos">
                     <label>Liderança
-                        <select class="campo" value="@p.Lideranca" @onchange="e => MudarLideranca(p, e.Value?.ToString() ?? p.Lideranca)">
+                        <select class="campo" value="@p.Lideranca" disabled="@(!E.OneVeTudo)" @onchange="e => MudarLideranca(p, e.Value?.ToString() ?? p.Lideranca)">
                             @foreach (var l in _lids) { <option value="@l">@l</option> }
                         </select></label>
                     <label>Tipo
@@ -338,7 +366,7 @@
 
     void Salvar()
     {
-        if (E.OneBase is { } b) OneAOne.Fotografar(b, _hoje);
+        if (E.OneBase is { } b && E.OneVeTudo) OneAOne.Fotografar(b, _hoje);
         _ = E.SalvarOne();
         E.Notificar();
     }
@@ -352,6 +380,7 @@
         if (d == null) { await J.Aviso("1:1", "Informe a data do 1:1."); return; }
         if (d > _hoje) { await J.Aviso("1:1", "A data do 1:1 não pode ser no futuro."); return; }
         OneAOne.Registrar(p, new RegistroOO { Data = d.Value, Obs = _fObs.Trim(), Acao = _fAcao.Trim(), AcaoPrazo = _fAcao.Trim() == "" ? null : DeIso(_fPrazo) });
+        _ = E.Conta.Registrar(QSmart.Core.Conta.Conquistas.OoRegistro, true);
         _fObs = ""; _fAcao = ""; _fPrazo = "";
         Salvar();
         _ficha = null;
@@ -372,6 +401,7 @@
     void Soltar(string l)
     {
         var p = _arrastando; _arrastando = null; _soltar = null;
+        if (!E.OneVeTudo) return;
         if (p == null || p.Lideranca == l) return;
         OneAOne.TrocarLideranca(p, l, _hoje);
         Salvar();
@@ -402,7 +432,7 @@
             await J.Aviso("Nova pessoa", ja.Arquivado ? $"{ja.Nome} já estava na carteira (arquivada). Abri a ficha para você reativar." : $"{ja.Nome} já está na carteira.");
             Abrir(ja); return;
         }
-        string? l = _lider != Todas ? _lider : _lids.Count == 1 ? _lids[0] : null;
+        string? l = !E.OneVeTudo ? E.OneMinhaLideranca : _lider != Todas ? _lider : _lids.Count == 1 ? _lids[0] : null;
         if (l == null)
         {
             if (_lids.Count == 0) { l = await J.Entrada("Liderança", "Nome da liderança desta pessoa:", ""); }
@@ -427,6 +457,7 @@
 
     async Task Renomear(string l)
     {
+        if (!E.OneVeTudo) return;
         var n = await J.Entrada("Renomear liderança", $"Novo nome para “{l}” (todas as pessoas dela passam junto):", l);
         if (string.IsNullOrWhiteSpace(n) || n.Trim() == l) return;
         n = n.Trim();
@@ -443,8 +474,6 @@
     }
 
     void RemoverLideranca(string l) { E.OneBase!.Liderancas.RemoveAll(x => x == l); Salvar(); }
-
-    void ComecarVazio() { E.OneBase = new BaseOO(); Salvar(); }
 
     async Task Anexar(List<Arquivo> arqs)
     {
@@ -477,23 +506,5 @@
         Salvar();
     }
 
-    async Task ProtegerSenha()
-    {
-        if (!await E.PedirNovaSenha()) return;
-        if (E.Dados.PastaDados != null)
-            await J.Info("Protegido", $"Pronto. A carteira agora também é salva na pasta “{E.Dados.PastaDados}”, protegida com senha, e entra nos backups. Em outro computador, aponte o QSmart para a mesma pasta e digite a senha.");
-        else
-            await J.Info("Protegido", "Pronto. A carteira agora também entra nos backups, protegida com senha. Para abrir em outro computador (ou não perder se o navegador for limpo), escolha uma pasta de dados em Configurações, de preferência dentro do OneDrive: o QSmart passa a gravar lá.");
-    }
-
-    async Task Limpar()
-    {
-        if (!await J.Pergunta("Limpar", "Apagar a carteira de One a One deste navegador e da pasta de dados? Exporte a planilha antes se quiser guardar.")) return;
-        E.OneBase = null; _ficha = null; _mud = null;
-        await E.SalvarOne();
-        E.Notificar();
-    }
-
-    async Task BaixarModelo() => await E.Salvar("Modelo_one_a_one.xlsx", OneAOne.Modelo(), Navegador.MimeXlsx, "Modelo baixado");
     async Task Exportar() => await E.Salvar($"One_a_one_{_hoje:yyyy-MM-dd}.xlsx", OneAOne.Exportar(E.OneBase!), Navegador.MimeXlsx, "Planilha exportada");
 }

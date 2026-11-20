@@ -286,6 +286,7 @@
             var txt = QSmart.Core.Operacao.EstrategiaIA.Ler(r.Texto);
             if (txt == null) { await J.Aviso("Mr. Smart", "A IA não devolveu a estratégia. Tente de novo."); return; }
             M.Texto = txt;
+            _ = E.Conta.Registrar(QSmart.Core.Conta.Conquistas.EstrategiaIA, true);
             await Salvar();
         }
         catch (Exception ex) { await J.Aviso("Mr. Smart", ex.Message); }

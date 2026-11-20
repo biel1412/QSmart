@@ -12,7 +12,8 @@ public sealed class Estado
     public Navegador Nav { get; }
     public Dados Dados { get; }
     public Janelas Janelas { get; }
-    public Estado(Navegador nav, Dados dados, Janelas janelas) { Nav = nav; Dados = dados; Janelas = janelas; }
+    public Estado(Navegador nav, Dados dados, Janelas janelas) { Nav = nav; Dados = dados; Janelas = janelas; Conta = new Conta(this); }
+    public Conta Conta { get; }
 
     public event Action? Mudou;
     public void Notificar() => Mudou?.Invoke();
@@ -361,22 +362,116 @@ public sealed class Estado
 
     public const string MsgSemIA = "Esta ferramenta ainda não está liberada nesta máquina. Contate o suporte para configurar sua máquina para o uso total das ferramentas do QSmart.";
 
-    // ---- One a One ----
+    // ---- One a One: no banco do QSmart (cifrado no servidor). A planilha serve só para exportar. ----
     public QSmart.Core.Coordenacao.BaseOO? OneBase;
-    bool _oneLido;
+    /// <summary>Erro ao abrir (sem acesso, sem internet…).</summary>
+    public string? OneErro;
+    public bool OneVeTudo;
+    public string OneMinhaLideranca = "";
+    public bool OneCarregando;
     const string CofreOne = "one_a_one";
-    public async Task CarregarOne()
+    const string IdMeta = "__base";
+    readonly Dictionary<string, string> _oneSinc = new();
+    readonly SemaphoreSlim _oneTrava = new(1, 1);
+
+    static string Ser(QSmart.Core.Coordenacao.BaseOO b) => System.Text.Encoding.UTF8.GetString(QSmart.Core.Coordenacao.OneAOne.ParaBytes(b));
+    static string SerPessoa(QSmart.Core.Coordenacao.PessoaOO p) => Ser(new QSmart.Core.Coordenacao.BaseOO { Pessoas = { p } });
+    static string SerMeta(QSmart.Core.Coordenacao.BaseOO b) => Ser(new QSmart.Core.Coordenacao.BaseOO { Liderancas = b.Liderancas, Fotos = b.Fotos });
+
+    public async Task CarregarOne(bool forcar = false)
     {
-        if (_oneLido) return;
-        _oneLido = true;
-        var b = await LerSeguro(CofreOne, Dados.ChOneAOne, "o One a One");
-        if (b != null && QSmart.Core.Coordenacao.OneAOne.DeBytes(b) is { } o) { OneBase = o; Notificar(); }
+        if (!Conta.Logado) return;
+        if (OneBase != null && !forcar) return;
+        OneCarregando = true; Notificar();
+        try
+        {
+            var r = await Conta.Chamar("GET", "oo");
+            if (!r.Ok || r.Json == null) { OneErro = r.Erro; OneBase = null; return; }
+            OneErro = null;
+            OneVeTudo = r.Json["veTudo"]?.GetValue<bool>() ?? false;
+            OneMinhaLideranca = r.Json["lideranca"]?.GetValue<string>() ?? "";
+            var b = new QSmart.Core.Coordenacao.BaseOO();
+            _oneSinc.Clear();
+            if (r.Json["pessoas"] is System.Text.Json.Nodes.JsonArray a)
+                foreach (var x in a)
+                {
+                    var id = x?["id"]?.GetValue<string>() ?? ""; var dados = x?["dados"]?.GetValue<string>() ?? "";
+                    var lida = QSmart.Core.Coordenacao.OneAOne.DeBytes(System.Text.Encoding.UTF8.GetBytes(dados));
+                    if (lida == null) continue;
+                    if (id == IdMeta) { b.Liderancas = lida.Liderancas; b.Fotos = lida.Fotos; _oneSinc[id] = SerMeta(b); }
+                    else if (lida.Pessoas.Count > 0) { var p = lida.Pessoas[0]; p.Id = id; b.Pessoas.Add(p); _oneSinc[id] = SerPessoa(p); }
+                }
+            if (!OneVeTudo && OneMinhaLideranca != "" && !b.Liderancas.Contains(OneMinhaLideranca)) b.Liderancas.Add(OneMinhaLideranca);
+            if (!OneVeTudo) b.Liderancas.RemoveAll(l => l != OneMinhaLideranca);
+            b.Pessoas = b.Pessoas.OrderBy(p => p.Nome, StringComparer.CurrentCultureIgnoreCase).ToList();
+            OneBase = b;
+        }
+        finally { OneCarregando = false; Notificar(); }
     }
+
+    /// <summary>Envia ao banco só o que mudou desde a última leitura.</summary>
     public async Task SalvarOne()
     {
-        if (OneBase == null) { await ApagarSeguro(CofreOne, Dados.ChOneAOne); return; }
-        OneBase.AtualizadoEm = QSmart.Core.Texto.Agora();
-        await GuardarSeguro(CofreOne, Dados.ChOneAOne, QSmart.Core.Coordenacao.OneAOne.ParaBytes(OneBase));
+        if (OneBase == null || !Conta.Logado) return;
+        await _oneTrava.WaitAsync();
+        var erros = new List<string>();
+        try
+        {
+            var b = OneBase;
+            var ids = new HashSet<string>();
+            foreach (var p in b.Pessoas.ToList())
+            {
+                ids.Add(p.Id);
+                var json = SerPessoa(p);
+                if (_oneSinc.TryGetValue(p.Id, out var ant) && ant == json) continue;
+                var r = await Conta.Chamar("PUT", "oo", new System.Text.Json.Nodes.JsonObject { ["id"] = p.Id, ["lideranca"] = p.Lideranca, ["dados"] = json });
+                if (r.Ok) _oneSinc[p.Id] = json; else erros.Add($"{p.Nome}: {r.Erro}");
+            }
+            foreach (var id in _oneSinc.Keys.Where(k => k != IdMeta && !ids.Contains(k)).ToList())
+            {
+                var r = await Conta.Chamar("DELETE", "oo?id=" + Uri.EscapeDataString(id));
+                if (r.Ok) _oneSinc.Remove(id); else erros.Add(r.Erro);
+            }
+            if (OneVeTudo)
+            {
+                var meta = SerMeta(b);
+                if (!_oneSinc.TryGetValue(IdMeta, out var antM) || antM != meta)
+                {
+                    var r = await Conta.Chamar("PUT", "oo", new System.Text.Json.Nodes.JsonObject { ["id"] = IdMeta, ["lideranca"] = "", ["dados"] = meta });
+                    if (r.Ok) _oneSinc[IdMeta] = meta; else erros.Add(r.Erro);
+                }
+            }
+        }
+        finally { _oneTrava.Release(); }
+        if (erros.Count > 0)
+        {
+            await Janelas.Aviso("One a One", "Algumas mudanças não foram salvas no banco:\n\n" + string.Join("\n", erros.Distinct().Take(5)) + "\n\nVou recarregar a carteira do banco.");
+            OneBase = null; await CarregarOne(true);
+        }
+    }
+
+    /// <summary>Carteira antiga, guardada só neste navegador (antes do banco), para enviar uma vez.</summary>
+    public async Task<QSmart.Core.Coordenacao.BaseOO?> OneLocalAntigo()
+    {
+        try
+        {
+            var b = await LerSeguro(CofreOne, Dados.ChOneAOne, "o One a One deste navegador");
+            return b != null && QSmart.Core.Coordenacao.OneAOne.DeBytes(b) is { } o && o.Pessoas.Count > 0 ? o : null;
+        }
+        catch { return null; }
+    }
+
+    public async Task<(int ok, int falhas)> EnviarOneLocal(QSmart.Core.Coordenacao.BaseOO antigo)
+    {
+        var lista = new System.Text.Json.Nodes.JsonArray();
+        foreach (var p in antigo.Pessoas) lista.Add(new System.Text.Json.Nodes.JsonObject { ["id"] = p.Id, ["lideranca"] = p.Lideranca, ["dados"] = SerPessoa(p) });
+        lista.Add(new System.Text.Json.Nodes.JsonObject { ["id"] = IdMeta, ["lideranca"] = "", ["dados"] = SerMeta(antigo) });
+        var r = await Conta.Chamar("POST", "oo/lote", new System.Text.Json.Nodes.JsonObject { ["pessoas"] = lista });
+        if (!r.Ok) throw new InvalidOperationException(r.Erro);
+        int ok = r.Json?["ok"]?.GetValue<int>() ?? 0, falhas = r.Json?["falhas"]?.GetValue<int>() ?? 0;
+        if (falhas == 0) await ApagarSeguro(CofreOne, Dados.ChOneAOne);
+        OneBase = null; await CarregarOne(true);
+        return (ok, falhas);
     }
 
     // ---- Controle automatizado de férias: planilha completa, guardada só neste navegador e criptografada ----

@@ -287,6 +287,21 @@
     try { const r = await fetch(url); return { status: r.status, texto: await r.text() }; }
     catch (e) { return { status: 0, texto: String(e) }; }
   };
+  // requisição genérica (contas e banco do QSmart)
+  const req = async (url, metodo, cab, corpo, ms) => {
+    const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), ms || 30000);
+    try { const r = await fetch(url, { method: metodo, headers: cab || {}, body: corpo == null ? undefined : corpo, signal: ctl.signal }); return { status: r.status, texto: await r.text() }; }
+    catch (e) { return { status: 0, texto: String(e) }; }
+    finally { clearTimeout(t); }
+  };
+  // reduz uma imagem (foto de perfil) para um quadrado de "max" px em JPEG
+  const reduzirImagem = async (bytes, max) => {
+    const bmp = await createImageBitmap(new Blob([bytes]));
+    const lado = Math.min(bmp.width, bmp.height);
+    const c = document.createElement("canvas"); c.width = c.height = max;
+    c.getContext("2d").drawImage(bmp, (bmp.width - lado) / 2, (bmp.height - lado) / 2, lado, lado, 0, 0, max, max);
+    return c.toDataURL("image/jpeg", 0.85);
+  };
   // GET com cabeçalhos (ex.: chave do Portal da Transparência) e tempo-limite
   const getH = async (url, cab, ms) => {
     const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), ms || 25000);
@@ -295,5 +310,5 @@
     finally { clearTimeout(t); }
   };
   const rolar = id => { const el = document.getElementById(id); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); };
-  window.qsmart = { kv, cofre, rolar, ia, get, getH, pasta, baixar, abrir, copiar, abrirUrl, pdfPaginas, pdfJuntar, pdfLinhas, tema, aoOcultar, focar, rolarLinha, pronto };
+  window.qsmart = { kv, cofre, rolar, ia, get, getH, req, reduzirImagem, pasta, baixar, abrir, copiar, abrirUrl, pdfPaginas, pdfJuntar, pdfLinhas, tema, aoOcultar, focar, rolarLinha, pronto };
 })();

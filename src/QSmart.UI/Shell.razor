@@ -3,6 +3,12 @@
 @inject Estado E
 @inject NavigationManager Rotas
 
+@if (E.Iniciado && !E.Conta.Logado)
+{
+    <Acesso />
+}
+else
+{
 <div class="app @(E.Prefs.Recolhido ? "recolhido" : "") @(_menuMovel ? "menu-aberto" : "")">
     <aside class="lateral" aria-label="Menu principal">
         <div class="marca">
@@ -63,6 +69,15 @@
             <Logo Tamanho="28" /><span class="marca-nome"><b>Q</b>Smart</span>
         </div>
         <div class="progresso @(E.Carregando ? "ativo" : "")"><span></span></div>
+        @if (E.Conta.Perfil is { } pf)
+        {
+            var res = Nivel();
+            <a class="conta-canto" href="perfil" title="Meu perfil · @pf.NomeCompleto · nível @res.Nivel" @onclick="FecharMovel">
+                <span class="cc-anel" style="--p:@((int)(res.ProgressoNivel * 100))"></span>
+                <span class="cc-av">@if (pf.Foto != "") { <img src="@pf.Foto" alt="" /> } else { @pf.Iniciais }</span>
+                <span class="cc-nv">@res.Nivel</span>
+            </a>
+        }
         <main class="conteudo">
             @if (E.Iniciado) { @Body }
         </main>
@@ -77,8 +92,9 @@
         </footer>
     </div>
 </div>
+}
 <JanelasHost />
-@if (E.Iniciado) { <MrSmartChat /> }
+@if (E.Iniciado && E.Conta.Logado) { <MrSmartChat /> }
 
 @code {
     bool _menuMovel;
@@ -87,6 +103,7 @@
     protected override async Task OnInitializedAsync()
     {
         E.Mudou += Atualizar;
+        E.Conta.Mudou += Atualizar;
         Rotas.LocationChanged += AoNavegar;
         await E.Iniciar();
         Proteger();
@@ -102,7 +119,17 @@
         }
     }
 
-    void AoNavegar(object? s, LocationChangedEventArgs e) { Proteger(); InvokeAsync(StateHasChanged); }
+    void AoNavegar(object? s, LocationChangedEventArgs e) { Proteger(); ContarUso(); InvokeAsync(StateHasChanged); }
+
+    /// <summary>Abrir uma aba conta para as medalhas do perfil.</summary>
+    void ContarUso()
+    {
+        var rel = Rotas.ToBaseRelativePath(Rotas.Uri).Split('?', '#')[0].Trim('/');
+        if (Abas.Todas.FirstOrDefault(a => a.Rota == rel) is { } aba) _ = E.Conta.Registrar(aba.Chave);
+    }
+
+    static readonly string[] ChavesFerramentas = Abas.Todas.Where(a => !a.Externo).Select(a => a.Chave).ToArray();
+    QSmart.Core.Conta.ResumoConta Nivel() => QSmart.Core.Conta.Conquistas.Calcular(E.Conta.Uso, E.Conta.Dias, ChavesFerramentas, DateOnly.FromDateTime(DateTime.Today));
 
     /// <summary>Página de uma aba desativada volta para o início (aplicar_abas do original).</summary>
     void Proteger()
@@ -150,6 +177,7 @@
     public void Dispose()
     {
         E.Mudou -= Atualizar;
+        E.Conta.Mudou -= Atualizar;
         Rotas.LocationChanged -= AoNavegar;
         _ref?.Dispose();
     }

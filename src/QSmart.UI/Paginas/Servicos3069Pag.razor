@@ -259,6 +259,7 @@
                 res = AnaliseIA.Ler(r2.Texto, resposta, mapa, _modelo);
             }
             _res = res; _quando = agora; _desatualizada = resposta != _resposta;
+            _ = E.Conta.Registrar(QSmart.Core.Conta.Conquistas.S3069Analise, true);
             _ignorados.Clear(); _checados.Clear(); _filtro = null; _foco = null;
         }
         catch (Exception ex) { _erro = ex.Message; }

@@ -466,6 +466,7 @@
             if (seq != _seq) return;
             if (e == null) { _erro = erro; _emp = null; return; }
             _emp = e; _quando = DateTime.Now;
+            _ = E.Conta.Registrar(QSmart.Core.Conta.Conquistas.RadarConsulta, true);
             _base ??= await E.CarregarRadar();
             _mudouAgora = _base.Registrar(e, _quando);
             await E.SalvarRadar();
@@ -705,6 +706,7 @@
         var seq = ++_seq;
         LimparCpf();
         _cpf = cpf; _cpfNome = _nomeDigitado.Trim(); _finalidadeUsada = _finalidade;
+        _ = E.Conta.Registrar(QSmart.Core.Conta.Conquistas.RadarCpf, true);
         _buscando = true; _parecer = null; _parecerErro = null; _quando = DateTime.Now; _entrada = Documento.MascararCpf(cpf);
         _checks = ChecagensIniciaisPF();
         _cpfFeito = true;

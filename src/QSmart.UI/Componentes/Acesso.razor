@@ -1,0 +1,213 @@
+@inject Estado E
+
+<div class="ac">
+    <div class="ac-marca">
+        <span class="ac-logo"><Logo Tamanho="96" /></span>
+        <h1>@(_modo == "criar" ? "Crie sua conta no" : "Bem-vindo ao")<br /><span>QSmart</span></h1>
+        <p>@(_modo == "criar"
+            ? "Depois do cadastro, o administrador libera o seu acesso. Guarde o código de recuperação: é com ele que você troca a senha se esquecer."
+            : "A plataforma de qualidade da Insi. Entre com o seu usuário para continuar de onde parou.")</p>
+        <div class="ac-mini">
+            <span style="--c:#EC4899"><i><Icone Nome="radar" Tamanho="15" /></i>Radar Smart360</span>
+            <span style="--c:#14B8A6"><i><Icone Nome="conversa" Tamanho="15" /></i>One a One</span>
+            <span style="--c:#F59E0B"><i><Icone Nome="estrela" Tamanho="15" /></i>Medalhas</span>
+        </div>
+    </div>
+
+    <div class="ac-painel">
+        <div class="ac-abas">
+            <button class="@(_modo == "entrar" ? "on" : "")" @onclick="@(() => Ir("entrar"))">Entrar</button>
+            <button class="@(_modo == "criar" ? "on" : "")" @onclick="@(() => Ir("criar"))">Criar conta</button>
+            <button class="@(_modo == "esqueci" ? "on" : "")" @onclick="@(() => Ir("esqueci"))">Esqueci a senha</button>
+        </div>
+
+        @if (_codigo != null)
+        {
+            <div class="ac-ok">
+                <span class="ac-ok-ic"><Icone Nome="check" Tamanho="30" /></span>
+                @if (_modo == "criar")
+                {
+                    <h2>Conta criada, @_nome.Trim()!</h2>
+                    @if (_ativo) { <p class="ac-sub">Você é o <b class="ac-ouro">administrador</b> do QSmart: a sua conta já está liberada.</p> }
+                    else { <p class="ac-sub">Seu acesso está <b class="ac-ouro">aguardando aprovação</b> do administrador.</p> }
+                }
+                else
+                {
+                    <h2>Senha trocada!</h2>
+                    <p class="ac-sub">Use a nova senha para entrar. O código antigo deixou de valer: este é o novo.</p>
+                }
+            </div>
+            <div class="ac-codigo">
+                <small>@(_modo == "criar" ? "SEU CÓDIGO DE RECUPERAÇÃO" : "SEU NOVO CÓDIGO DE RECUPERAÇÃO")</small>
+                <b>@_codigo</b>
+                <span>Aparece só agora. Anote ou baixe antes de fechar.</span>
+                <div>
+                    <button @onclick="CopiarCodigo"><Icone Nome="copiar" Tamanho="14" /> @(_copiado ? "Copiado!" : "Copiar")</button>
+                    <button @onclick="BaixarCodigo"><Icone Nome="download" Tamanho="14" /> Baixar .txt</button>
+                </div>
+            </div>
+            <button class="ac-bt" @onclick="DepoisDoCodigo">@(_ativo || _modo == "esqueci" ? "Já anotei, entrar agora" : "Já anotei, voltar para entrar")</button>
+        }
+        else if (_modo == "entrar")
+        {
+            @if (_lembrado is { } l && !_trocar)
+            {
+                <div class="ac-ola">
+                    <span class="ac-av">@if (l.foto != "") { <img src="@l.foto" alt="" /> } else { @Ini(l.nome) }</span>
+                    <div><b>Olá de novo, @l.nome!</b><small>usuário lembrado neste computador: @l.usuario</small></div>
+                    <button class="ac-link" @onclick="Trocar">trocar</button>
+                </div>
+            }
+            else
+            {
+                <label class="ac-campo">USUÁRIO<input @bind="_usuario" @bind:event="oninput" autocomplete="username" placeholder="seu.usuario" @onkeydown="Tecla" /></label>
+            }
+            <label class="ac-campo">SENHA
+                <span class="ac-in"><input id="ac-senha" type="@(_ver ? "text" : "password")" @bind="_senha" @bind:event="oninput" autocomplete="current-password" @onkeydown="Tecla" />
+                    <button class="ac-olho" title="@(_ver ? "Esconder" : "Mostrar") a senha" @onclick="() => _ver = !_ver"><Icone Nome="olho" Tamanho="17" /></button></span>
+            </label>
+            <div class="ac-lin">
+                <label class="ac-tg"><input type="checkbox" @bind="_lembrar" /><i></i> Lembrar meu usuário neste computador</label>
+                <button class="ac-link" @onclick="@(() => Ir("esqueci"))">Esqueci a senha</button>
+            </div>
+            @Erro()
+            <button class="ac-bt" @onclick="Entrar" disabled="@_ocupado">@if (_ocupado) { <span class="ia-spin"></span> } Entrar <Icone Nome="seta" Tamanho="17" /></button>
+        }
+        else if (_modo == "criar")
+        {
+            <div class="ac-dois">
+                <label class="ac-campo">NOME<input @bind="_nome" @bind:event="oninput" autocomplete="given-name" /></label>
+                <label class="ac-campo">SOBRENOME<input @bind="_sobrenome" @bind:event="oninput" autocomplete="family-name" /></label>
+            </div>
+            <label class="ac-campo">USUÁRIO<input @bind="_usuario" @bind:event="oninput" autocomplete="username" placeholder="ex.: gabriel.militz" />
+                <small>letras sem acento, números, ponto ou traço</small></label>
+            <div class="ac-dois">
+                <label class="ac-campo">SENHA<input type="password" @bind="_senha" @bind:event="oninput" autocomplete="new-password" /><small>mínimo 8 caracteres</small></label>
+                <label class="ac-campo">CONFIRMAR SENHA<input type="password" @bind="_senha2" @bind:event="oninput" autocomplete="new-password" @onkeydown="Tecla" /></label>
+            </div>
+            @Erro()
+            <button class="ac-bt" @onclick="Criar" disabled="@_ocupado">@if (_ocupado) { <span class="ia-spin"></span> } Criar conta</button>
+        }
+        else
+        {
+            <p class="ac-sub">Use o código de recuperação que apareceu quando você criou a conta. Perdeu o código? Peça um novo ao administrador.</p>
+            <label class="ac-campo">USUÁRIO<input @bind="_usuario" @bind:event="oninput" autocomplete="username" /></label>
+            <label class="ac-campo">CÓDIGO DE RECUPERAÇÃO<input @bind="_codigoDigitado" @bind:event="oninput" placeholder="XXXX-XXXX-XXXX" class="ac-mono" /></label>
+            <div class="ac-dois">
+                <label class="ac-campo">NOVA SENHA<input type="password" @bind="_senha" @bind:event="oninput" autocomplete="new-password" /></label>
+                <label class="ac-campo">CONFIRMAR<input type="password" @bind="_senha2" @bind:event="oninput" autocomplete="new-password" @onkeydown="Tecla" /></label>
+            </div>
+            @Erro()
+            <button class="ac-bt" @onclick="Recuperar" disabled="@_ocupado">@if (_ocupado) { <span class="ia-spin"></span> } Trocar a senha</button>
+        }
+        <div class="ac-seg"><Icone Nome="escudo" Tamanho="14" /> Senha protegida com criptografia · nada fica salvo neste computador sem você pedir</div>
+    </div>
+</div>
+
+@code {
+    string _modo = "entrar", _usuario = "", _senha = "", _senha2 = "", _nome = "", _sobrenome = "", _codigoDigitado = "";
+    string? _erro, _codigo, _aviso;
+    bool _ocupado, _ver, _lembrar = true, _trocar, _ativo, _copiado;
+    (string usuario, string nome, string foto)? _lembrado;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _lembrado = await E.Conta.Lembrado();
+        if (_lembrado is { } l && l.usuario != "") { _usuario = l.usuario; _lembrar = true; }
+        else _lembrado = null;
+    }
+
+    static string Ini(string n) => n.Length > 0 ? n[..1].ToUpperInvariant() : "?";
+
+    void Ir(string m) { _modo = m; _erro = null; _aviso = null; _codigo = null; _senha = _senha2 = ""; _copiado = false; }
+    void Trocar() { _trocar = true; _usuario = ""; }
+    async Task Tecla(KeyboardEventArgs k)
+    {
+        if (k.Key != "Enter") return;
+        if (_modo == "entrar") await Entrar(); else if (_modo == "criar") await Criar(); else await Recuperar();
+    }
+
+    RenderFragment Erro() => __builder =>
+    {
+        if (_erro != null) { <div class="ac-erro"><Icone Nome="alerta" Tamanho="16" /> @_erro</div> }
+        if (_aviso != null) { <div class="ac-aviso"><Icone Nome="relogio" Tamanho="16" /> @_aviso</div> }
+    };
+
+    async Task Entrar()
+    {
+        _erro = _aviso = null;
+        if (_usuario.Trim() == "" || _senha == "") { _erro = "Digite o usuário e a senha."; return; }
+        _ocupado = true; StateHasChanged();
+        try
+        {
+            var r = await E.Conta.Entrar(_usuario.Trim(), _senha);
+            if (!r.Ok)
+            {
+                if (r.Json?["motivo"]?.GetValue<string>() == "pendente") _aviso = r.Erro; else _erro = r.Erro;
+                return;
+            }
+            await E.Conta.Lembrar(_lembrar);
+            _senha = "";
+        }
+        finally { _ocupado = false; StateHasChanged(); }
+    }
+
+    async Task Criar()
+    {
+        _erro = null;
+        if (_nome.Trim() == "" || _sobrenome.Trim() == "" || _usuario.Trim() == "") { _erro = "Preencha nome, sobrenome e usuário."; return; }
+        if (_senha.Length < 8) { _erro = "A senha precisa ter pelo menos 8 caracteres."; return; }
+        if (_senha != _senha2) { _erro = "As duas senhas não estão iguais."; return; }
+        _ocupado = true; StateHasChanged();
+        try
+        {
+            var r = await E.Conta.Cadastrar(_nome.Trim(), _sobrenome.Trim(), _usuario.Trim().ToLowerInvariant(), _senha);
+            if (!r.Ok) { _erro = r.Erro; return; }
+            _codigo = r.Json?["codigo"]?.GetValue<string>();
+            _ativo = r.Json?["status"]?.GetValue<string>() == "ativo";
+        }
+        finally { _ocupado = false; StateHasChanged(); }
+    }
+
+    async Task Recuperar()
+    {
+        _erro = null;
+        if (_usuario.Trim() == "" || _codigoDigitado.Trim() == "") { _erro = "Digite o usuário e o código de recuperação."; return; }
+        if (_senha.Length < 8) { _erro = "A nova senha precisa ter pelo menos 8 caracteres."; return; }
+        if (_senha != _senha2) { _erro = "As duas senhas não estão iguais."; return; }
+        _ocupado = true; StateHasChanged();
+        try
+        {
+            var r = await E.Conta.Recuperar(_usuario.Trim(), _codigoDigitado.Trim(), _senha);
+            if (!r.Ok) { _erro = r.Erro; return; }
+            _codigo = r.Json?["codigo"]?.GetValue<string>();
+            _ativo = r.Json?["status"]?.GetValue<string>() == "ativo";
+            _codigoDigitado = "";
+        }
+        finally { _ocupado = false; StateHasChanged(); }
+    }
+
+    async Task CopiarCodigo() { if (_codigo != null) _copiado = await E.Nav.Copiar(_codigo); }
+
+    async Task BaixarCodigo()
+    {
+        if (_codigo == null) return;
+        var txt = $"QSmart · código de recuperação\r\nUsuário: {_usuario.Trim().ToLowerInvariant()}\r\nCódigo: {_codigo}\r\n\r\nGuarde em lugar seguro. Use em “Esqueci a senha” para criar uma senha nova.";
+        await E.Salvar("QSmart_codigo_recuperacao.txt", System.Text.Encoding.UTF8.GetBytes(txt), "text/plain", "Código salvo");
+    }
+
+    async Task DepoisDoCodigo()
+    {
+        var entrarJa = _ativo || _modo == "esqueci";
+        var senha = _senha;
+        var modoAnt = _modo;
+        Ir("entrar");
+        _trocar = true;
+        if (entrarJa && senha.Length >= 8)
+        {
+            _senha = senha;
+            await Entrar();
+        }
+        else if (modoAnt == "criar") _aviso = "Assim que o administrador aprovar, é só entrar com o seu usuário e senha.";
+    }
+}
