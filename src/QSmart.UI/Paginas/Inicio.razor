@@ -80,45 +80,45 @@
     @{ var visiveis = Abas.Todas.Where(a => E.AbaAtiva(a.Chave) && Combina(a)).ToList(); }
     @if (_busca.Trim() == "")
     {
-        <section class="uni" aria-label="Ferramentas do QSmart">
-            <div class="uni-estrelas e1"></div><div class="uni-estrelas e2"></div>
-            <div class="uni-tit"><b>Universo <span>QSmart</span></b><small>cada área é um planeta · passe o mouse ou toque para ver as ferramentas</small></div>
-            <svg class="uni-orbitas" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-                <ellipse cx="50" cy="52" rx="@F(RxIn)" ry="@F(RyIn)" /><ellipse cx="50" cy="52" rx="@F(RxOut)" ry="@F(RyOut)" />
-            </svg>
-            <div class="uni-sol"><span class="uni-halo"></span><Logo Tamanho="92" /><b>QSmart</b></div>
-            @{ int ordem = 0; }
-            @foreach (var (grupo, ang, fora, luas) in Planetas)
-            {
-                var itens = visiveis.Where(a => a.Grupo == grupo).ToList();
-                if (itens.Count == 0) continue;
-                var r = Math.PI * ang / 180;
-                var x = 50 + Math.Cos(r) * (fora ? RxOut : RxIn);
-                var y = 52 + Math.Sin(r) * (fora ? RyOut : RyIn);
-                var dir = luas;
-                var abre = _planeta == grupo;
-                var atraso = (ordem++ * 0.7).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture);
-                <div class="uni-pl g-@Indice(grupo) @(abre ? "on" : "")" style="left:@F(x)%;top:@F(y)%;animation-delay:-@(atraso)s">
-                    <button class="uni-nucleo" title="@grupo" @onclick="() => AlternarPlaneta(grupo)">@NomePlaneta(grupo)</button>
-                    @for (int k = 0; k < itens.Count; k++)
-                    {
-                        var a = itens[k];
-                        var passo = itens.Count >= 4 ? 40.0 : 46.0;
-                        var b = Math.PI * (dir + (k - (itens.Count - 1) / 2.0) * passo) / 180;
-                        var dx = Math.Cos(b) * 82; var dy = Math.Sin(b) * 82;
-                        var lado = Math.Cos(b) > 0.45 ? "ld" : Math.Cos(b) < -0.45 ? "le" : Math.Sin(b) > 0 ? "lb" : "lc";
-                        <a class="uni-lua @lado" href="@a.Rota" target="@(a.Externo ? "_blank" : null)" rel="@(a.Externo ? "noopener" : null)"
-                           style="--dx:@F(dx)px;--dy:@F(dy)px" title="@a.Nome · @a.Descricao">
-                            <span class="uni-lua-ic"><Icone Nome="@a.Icone" Tamanho="17" /></span>
-                            @if (Novos.Contains(a.Chave)) { <span class="uni-novo">NOVO</span> }
-                            <span class="uni-rot">@a.Nome</span>
-                        </a>
-                    }
-                </div>
-            }
+        <section class="dk" aria-label="Ferramentas do QSmart">
+            <h2 class="dk-tit">O que vamos <span>resolver hoje?</span></h2>
+            <p class="dk-sub">Em destaque, as ferramentas novas e as que você mais usa. Embaixo, todas as outras.</p>
+            <div class="dk-areas">
+                <button class="@(_area == null ? "on" : "")" @onclick="() => EscolherArea(null)">Destaques</button>
+                @foreach (var g in Abas.Grupos.Where(g => visiveis.Any(a => a.Grupo == g)))
+                {
+                    <button class="@(_area == g ? "on" : "")" @onclick="() => EscolherArea(g)">@NomeArea(g)</button>
+                }
+            </div>
+            @{ var cartas = Cartas(visiveis); var resto = visiveis.Where(a => !cartas.Contains(a)).ToList(); }
+            <div class="dk-leque n@(cartas.Count)">
+                @for (int k = 0; k < cartas.Count; k++)
+                {
+                    var a = cartas[k];
+                    var pos = k * 2 - (cartas.Count - 1);
+                    <a class="dk-carta @(pos == 0 ? "meio" : "")" style="--c:@CorCarta(a);--p:@pos;--a:@Math.Abs(pos)" href="@a.Rota" target="@(a.Externo ? "_blank" : null)" rel="@(a.Externo ? "noopener" : null)">
+                        @if (Novos.Contains(a.Chave)) { <span class="dk-novo">NOVO</span> }
+                        <span class="dk-fundo"><Icone Nome="@a.Icone" Tamanho="170" /></span>
+                        <span class="dk-ic"><Icone Nome="@a.Icone" Tamanho="24" /></span>
+                        <span class="dk-area">@NomeArea(a.Grupo).ToUpperInvariant()</span>
+                        <b>@a.Menu</b>
+                        <span class="dk-frase">@Frase(a)</span>
+                        <span class="dk-abrir">Abrir <Icone Nome="@(a.Externo ? "externo" : "seta")" Tamanho="14" /></span>
+                    </a>
+                }
+            </div>
+            <div class="dk-fichas">
+                @foreach (var a in resto)
+                {
+                    <a class="dk-ficha" style="--c:@CorCarta(a)" href="@a.Rota" target="@(a.Externo ? "_blank" : null)" rel="@(a.Externo ? "noopener" : null)" title="@a.Descricao">
+                        <i><Icone Nome="@a.Icone" Tamanho="16" /></i>@a.Menu
+                        @if (Novos.Contains(a.Chave)) { <span class="dk-novo mini">NOVO</span> }
+                    </a>
+                }
+            </div>
         </section>
     }
-    <section class="vitrine @(_busca.Trim() == "" ? "uni-alt" : "")">
+    <section class="vitrine @(_busca.Trim() == "" ? "dk-alt" : "")">
         <span class="vt-luz l1"></span><span class="vt-luz l2"></span><span class="vt-luz l3"></span>
         <div class="vt-conteudo">
     @if (visiveis.Count == 0)
@@ -274,19 +274,50 @@
 
     static int Indice(string g) => Abas.Cor(g);
 
-    // ---- Universo QSmart: cada área é um planeta; as ferramentas, luas ----
-    const double RxIn = 21, RyIn = 25, RxOut = 38, RyOut = 38;
-    /// <summary>Área, ângulo na órbita (graus, sentido horário a partir da direita) e se fica na órbita de fora.</summary>
-    static readonly (string grupo, double ang, bool fora, double luas)[] Planetas =
-    {
-        ("Decisões", 205, false, 180), ("Inspeção", 245, true, 180), ("Conformidade", 330, false, 330), ("Operação", 15, true, 180),
-        ("Coordenação", 95, false, 90), ("Relacionamento e cooperativas", 150, true, 300), ("Ferramentas", 295, true, 0),
-    };
+    // ---- Cartas em destaque ----
     static readonly HashSet<string> Novos = new() { "radar360", "servicos3069", "oneaone" };
-    string? _planeta;
-    void AlternarPlaneta(string g) => _planeta = _planeta == g ? null : g;
-    static string NomePlaneta(string g) => g == "Relacionamento e cooperativas" ? "Relacionamento" : g;
-    static string F(double v) => v.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+    static readonly string[] Destaques = { "oneaone", "servicos3069", "radar360", "estrategia", "ferias" };
+    string? _area;
+    void EscolherArea(string? g) => _area = g;
+    static string NomeArea(string g) => g == "Relacionamento e cooperativas" ? "Relacionamento" : g;
+
+    List<Aba> Cartas(List<Aba> visiveis)
+    {
+        if (_area != null) return visiveis.Where(a => a.Grupo == _area).Take(5).ToList();
+        var l = Destaques.Select(c => visiveis.FirstOrDefault(a => a.Chave == c)).Where(a => a != null).Select(a => a!).ToList();
+        foreach (var a in visiveis) { if (l.Count >= 5) break; if (!l.Contains(a)) l.Add(a); }
+        return l;
+    }
+
+
+    static string CorCarta(Aba a) => a.Chave switch
+    {
+        "radar360" => "#EC4899", "servicos3069" => "#C026D3", "oneaone" => "#14B8A6", "ferias" => "#0EA5E9", "pontos" => "#0D9488",
+        "estrategia" => "#F59E0B", "volume" => "#F97316", "monitor" => "#EAB308", "corredor" => "#D97706",
+        "resumo" => "#10B981", "usuarios" => "#059669", "evolucao" => "#0EA5E9", "inspecao" => "#3B82F6", "historico" => "#6366F1",
+        "pareceres" => "#8B5CF6", _ => "#64748B",
+    };
+
+    static string Frase(Aba a) => a.Chave switch
+    {
+        "radar360" => "Ficha 360 de CNPJ e CPF em segundos.",
+        "servicos3069" => "Resposta revisada pelo Mr. Smart antes do Teams.",
+        "oneaone" => "Ninguém fica sem 1:1.",
+        "estrategia" => "O Mr. Smart escreve a estratégia do dia.",
+        "ferias" => "Choques de datas resolvidos sozinhos.",
+        "pontos" => "Meta diária e justificativas do mês.",
+        "resumo" => "Aprovações, reprovações e motivos.",
+        "usuarios" => "Quem mais devolve, num ranking.",
+        "evolucao" => "Desvios por autorização e inspetor.",
+        "inspecao" => "Internas por inspetor e por dia.",
+        "historico" => "A evolução mês a mês.",
+        "pareceres" => "Justificativas conferidas com o padrão.",
+        "volume" => "Quanto cada pessoa executou.",
+        "monitor" => "O tempo ocioso, dia a dia.",
+        "corredor" => "Compilados e PDFs num arquivo só.",
+        "depurador" => "O que foi lido da planilha.",
+        _ => "Abre em uma nova aba.",
+    };
 
     static string DescGrupo(string g) => g switch
     {
