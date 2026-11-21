@@ -1,0 +1,1266 @@
+@page "/smart-screen"
+@inherits PaginaBase
+@using System.Globalization
+@using System.Text.Json.Nodes
+@using Microsoft.JSInterop
+@using QSmart.Core.Pacote
+
+<div class="ss @(_mostrando ? "mostrando" : "")">
+    <header class="sw-app ss-app">
+        <a class="sw-volta" href="pacote-smart" title="Voltar ao Pacote Smart"><Icone Nome="esquerda" Tamanho="18" /></a>
+        <span class="sw-logo ss-logo"><Icone Nome="apresentacao" Tamanho="20" /></span>
+        <div class="sw-nome">
+            <input value="@_nome" @onchange="MudarNome" title="Nome do arquivo" spellcheck="false" />
+            <small>@(_sujo ? (_rascunhoOk ? "alterações guardadas neste navegador · salve para gerar o .pptx" : "alterações não salvas") : _status)</small>
+        </div>
+        <span class="mola"></span>
+        <button class="sw-bt" @onclick="Nova" title="Apresentação em branco"><Icone Nome="mais" Tamanho="16" /> Nova</button>
+        <label class="sw-bt" title="Abrir uma apresentação do PowerPoint (.pptx) do seu computador">
+            <Icone Nome="upload" Tamanho="16" /> Abrir
+            <InputFile OnChange="Abrir" accept=".pptx" @key="_chaveArq" />
+        </label>
+        <button class="sw-bt" @onclick="Imprimir" title="Imprimir ou salvar em PDF (um slide por página)"><Icone Nome="pdf" Tamanho="16" /> Imprimir / PDF</button>
+        <button class="sw-bt" @onclick="() => Apresentar(0)" title="Apresentar do início (F5)"><Icone Nome="play" Tamanho="16" /> Apresentar</button>
+        <button class="sw-bt pri" @onclick="Salvar" disabled="@_salvando" title="Baixar como arquivo do PowerPoint (Ctrl+S)"><Icone Nome="download" Tamanho="16" /> @(_salvando ? "Gerando…" : "Salvar .pptx")</button>
+    </header>
+
+    @if (_recuperar != null)
+    {
+        <div class="sw-aviso">
+            <Icone Nome="info" Tamanho="16" />
+            <span>Você tem uma apresentação que não foi salva: <b>@_recuperar.Value.nome</b>, editada @_recuperar.Value.quando.</span>
+            <button class="btn btn-pri btn-peq" @onclick="Recuperar">Recuperar</button>
+            <button class="btn btn-sec btn-peq" @onclick="Descartar">Descartar</button>
+        </div>
+    }
+
+    @* ======================================================= faixa com abas *@
+    <nav class="ss-abas">
+        @foreach (var (k, n) in AbasFaixa)
+        {
+            <button class="@(_aba == k ? "on" : "")" @onclick="() => TrocarAba(k)">@n</button>
+        }
+    </nav>
+    <div class="sw-faixa ss-faixa">
+        @switch (_aba)
+        {
+            case "inicio":
+                <button @onclick="Desfazer" disabled="@(_desfazer.Count == 0)" title="Desfazer (Ctrl+Z)"><Icone Nome="desfazer" Tamanho="17" /></button>
+                <button @onclick="Refazer" disabled="@(_refazer.Count == 0)" title="Refazer (Ctrl+Y)"><Icone Nome="refazer" Tamanho="17" /></button>
+                <i></i>
+                <div class="ss-grupo">
+                    <button class="ss-gde" @onclick="() => _menuNovo = !_menuNovo" title="Novo slide"><Icone Nome="mais" Tamanho="20" /><span>Novo slide ▾</span></button>
+                    @if (_menuNovo) { @MenuLayouts(NovoSlide) }
+                </div>
+                <div class="ss-grupo">
+                    <button class="ss-gde" @onclick="() => _menuLayout = !_menuLayout" title="Trocar o layout deste slide"><Icone Nome="mosaico" Tamanho="20" /><span>Layout ▾</span></button>
+                    @if (_menuLayout) { @MenuLayouts(TrocarLayout) }
+                </div>
+                <i></i>
+                <select data-cmd="fonte" class="sw-sel larga" title="Fonte">
+                    <option value="">Fonte</option>
+                    @foreach (var f in Fontes) { <option value="@f" style="font-family:@f">@f</option> }
+                </select>
+                <select data-cmd="tamanho" class="sw-sel" title="Tamanho da letra">
+                    <option value="">Tam.</option>
+                    @foreach (var t in Tamanhos) { <option value="@t">@t</option> }
+                </select>
+                <button data-cmd="maior" title="Aumentar a letra"><Icone Nome="letra-maior" Tamanho="17" /></button>
+                <button data-cmd="menor" title="Diminuir a letra"><Icone Nome="letra-menor" Tamanho="17" /></button>
+                <i></i>
+                <button data-cmd="bold" class="tx b" title="Negrito (Ctrl+B)">N</button>
+                <button data-cmd="italic" class="tx it" title="Itálico (Ctrl+I)">I</button>
+                <button data-cmd="underline" class="tx u" title="Sublinhado (Ctrl+U)">S</button>
+                <button data-cmd="strikeThrough" class="tx s" title="Tachado">abc</button>
+                <span class="sw-cor ss-cor" title="Cor do texto"><Icone Nome="cor-texto" Tamanho="17" />
+                    <span class="sw-paleta">
+                        @foreach (var c in PaletaTexto) { <button data-cmd="foreColor" data-val="@(c == "" ? "inherit" : c)" style="background:@(c == "" ? "transparent" : c)" title="@(c == "" ? "Cor do tema" : c)"></button> }
+                    </span>
+                </span>
+                <button data-cmd="removeFormat" title="Limpar formatação"><Icone Nome="borracha" Tamanho="17" /></button>
+                <i></i>
+                <button data-cmd="insertUnorderedList" title="Marcadores"><Icone Nome="lista" Tamanho="17" /></button>
+                <button data-cmd="insertOrderedList" title="Numeração"><Icone Nome="lista-num" Tamanho="17" /></button>
+                <button data-cmd="justifyLeft" title="Alinhar à esquerda"><Icone Nome="alinhar-esq" Tamanho="17" /></button>
+                <button data-cmd="justifyCenter" title="Centralizar"><Icone Nome="alinhar-centro" Tamanho="17" /></button>
+                <button data-cmd="justifyRight" title="Alinhar à direita"><Icone Nome="alinhar-dir" Tamanho="17" /></button>
+                <i></i>
+                <button @onclick="() => Camada(true)" disabled="@(_sel.Count == 0)" title="Trazer para a frente"><Icone Nome="frente" Tamanho="17" /></button>
+                <button @onclick="() => Camada(false)" disabled="@(_sel.Count == 0)" title="Enviar para trás"><Icone Nome="tras" Tamanho="17" /></button>
+                <button @onclick="DuplicarSel" disabled="@(_sel.Count == 0)" title="Duplicar (Ctrl+D)"><Icone Nome="duplicar" Tamanho="17" /></button>
+                <button @onclick="ExcluirSel" disabled="@(_sel.Count == 0)" title="Excluir (Delete)"><Icone Nome="lixo" Tamanho="17" /></button>
+                break;
+
+            case "inserir":
+                <button class="ss-gde" @onclick="NovaCaixa" title="Caixa de texto"><Icone Nome="texto-caixa" Tamanho="20" /><span>Caixa de texto</span></button>
+                <button class="ss-gde" @onclick="() => EscolherImagem(null)" title="Imagem do computador (também dá para colar com Ctrl+V)"><Icone Nome="imagem" Tamanho="20" /><span>Imagem</span></button>
+                <i></i>
+                <span class="ss-rot">Formas</span>
+                @foreach (var (f, n) in Formas)
+                {
+                    <button class="ss-forma-bt" @onclick="() => NovaForma(f)" title="@n">@((MarkupString)IconeForma(f))</button>
+                }
+                <i></i>
+                <div class="ss-grupo">
+                    <button class="ss-gde" @onclick="() => _menuTabela = !_menuTabela" title="Tabela"><Icone Nome="tabela" Tamanho="20" /><span>Tabela ▾</span></button>
+                    @if (_menuTabela)
+                    {
+                        <div class="ss-menu ss-menu-tab" @onmouseleave="() => _tabSobre = (0, 0)">
+                            <small>@(_tabSobre.l > 0 ? $"{_tabSobre.l} × {_tabSobre.c}" : "Escolha o tamanho")</small>
+                            <div class="ss-tab-grade">
+                                @for (int l = 1; l <= 8; l++) for (int c = 1; c <= 8; c++)
+                                {
+                                    var ll = l; var cc = c;
+                                    <span class="@(ll <= _tabSobre.l && cc <= _tabSobre.c ? "on" : "")" @onmouseover="() => _tabSobre = (ll, cc)" @onclick="() => NovaTabela(ll, cc)"></span>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+                <span class="ss-rot">Gráfico</span>
+                @foreach (var (g, n) in TiposGrafico)
+                {
+                    <button class="ss-gde peq" @onclick="() => NovoGrafico(g)" title="Gráfico de @n.ToLowerInvariant()"><Icone Nome="@(g == "pizza" ? "radial" : g == "linhas" ? "evolucao" : "grafico-barra")" Tamanho="18" /><span>@n</span></button>
+                }
+                break;
+
+            case "design":
+                <span class="ss-rot">Tema</span>
+                <div class="ss-temas">
+                    @foreach (var t in Apresentacao.Temas)
+                    {
+                        var tt = t;
+                        <button class="ss-tema @(_ap.Tema == t.Chave ? "on" : "")" @onclick="() => MudarTema(tt.Chave)" title="Tema @t.Nome">
+                            <span class="ss-escala" style="--k:.105"><SlideVista Ap="@Previa(t.Chave)" S="@S" /></span>
+                            <small>@t.Nome</small>
+                        </button>
+                    }
+                </div>
+                <i></i>
+                <span class="ss-rot">Fundo do slide</span>
+                <div class="ss-fundos">
+                    <button class="ss-fundo-bt tema @(S.Fundo == "" ? "on" : "")" @onclick='() => MudarFundo("")' title="Fundo do tema">Tema</button>
+                    @foreach (var c in PaletaFundo)
+                    {
+                        <button class="ss-fundo-bt @(S.Fundo.Equals(c, StringComparison.OrdinalIgnoreCase) ? "on" : "")" style="background:@c" @onclick="() => MudarFundo(c)" title="@c"></button>
+                    }
+                    <label class="ss-fundo-bt outra" title="Outra cor"><input type="color" value="@(S.Fundo == "" ? "#ffffff" : S.Fundo)" @onchange="MudarFundoEv" />+</label>
+                </div>
+                <button class="btn btn-sec btn-peq" @onclick="FundoParaTodos" title="Usar este fundo em todos os slides">Aplicar a todos</button>
+                break;
+
+            case "transicoes":
+                <span class="ss-rot">Transição deste slide</span>
+                @foreach (var (k, n) in Transicoes)
+                {
+                    var kk = k;
+                    <button class="ss-efeito @(S.Transicao == k ? "on" : "")" @onclick="() => MudarTransicao(kk)"><span class="ss-efeito-ic ss-ic-@(k == "" ? "nenhuma" : k)"></span>@n</button>
+                }
+                <i></i>
+                <button class="btn btn-sec btn-peq" @onclick="TransicaoParaTodos">Aplicar a todos</button>
+                <button class="btn btn-sec btn-peq" @onclick="VerTransicao" disabled="@(S.Transicao == "")"><Icone Nome="play" Tamanho="14" /> Visualizar</button>
+                break;
+
+            case "animacoes":
+                <span class="ss-rot">@(_sel.Count == 0 ? "Selecione um item do slide" : _sel.Count == 1 ? "Entrada do item" : $"Entrada dos {_sel.Count} itens")</span>
+                @foreach (var (k, n) in Animacoes)
+                {
+                    var kk = k;
+                    <button class="ss-efeito @(_sel.Count > 0 && SelEls().All(e => e.Anim == k) ? "on" : "")" disabled="@(_sel.Count == 0)" @onclick="() => MudarAnim(kk)"><span class="ss-efeito-ic ss-ia-@(k == "" ? "nenhuma" : k)"></span>@n</button>
+                }
+                <i></i>
+                <button class="btn btn-sec btn-peq" @onclick="VerAnimacoes" disabled="@(S.Animados.Count == 0)"><Icone Nome="play" Tamanho="14" /> Visualizar</button>
+                <small class="ss-dica">Os itens entram um por clique, na ordem dos números.</small>
+                break;
+        }
+    </div>
+
+    <div class="ss-corpo">
+        @* ======================================================= miniaturas *@
+        <aside class="ss-lista">
+            @for (int i = 0; i < _ap.Slides.Count; i++)
+            {
+                var ii = i; var s = _ap.Slides[i];
+                <div class="ss-mini @(i == _si ? "on" : "") @(s.Oculto ? "oculto" : "") @(_arrastando == i ? "arrastando" : "") @(_alvoSolta == i ? "alvo" : "")" @key="s.Id"
+                     draggable="true" @ondragstart="() => _arrastando = ii" @ondragend="() => { _arrastando = null; _alvoSolta = null; }"
+                     @ondragenter="() => _alvoSolta = ii" @ondragover:preventDefault="true" @ondrop="() => Soltar(ii)"
+                     @onclick="() => IrPara(ii)">
+                    <span class="ss-num">@(i + 1)@if (s.Transicao != "") {<em title="Tem transição">✦</em>}</span>
+                    <span class="ss-escala" style="--k:.1875"><SlideVista Ap="@_ap" S="@s" /></span>
+                    <span class="ss-mini-acoes">
+                        <button title="Duplicar slide" @onclick:stopPropagation="true" @onclick="() => DuplicarSlide(ii)"><Icone Nome="duplicar" Tamanho="13" /></button>
+                        <button title="@(s.Oculto ? "Mostrar na apresentação" : "Ocultar na apresentação")" @onclick:stopPropagation="true" @onclick="() => Ocultar(ii)"><Icone Nome="@(s.Oculto ? "olho" : "ocultar")" Tamanho="13" /></button>
+                        <button title="Excluir slide" @onclick:stopPropagation="true" @onclick="() => ExcluirSlide(ii)"><Icone Nome="lixo" Tamanho="13" /></button>
+                    </span>
+                </div>
+            }
+            <button class="ss-mini-novo" @onclick='() => NovoSlide(S.Layout == "titulo" ? "conteudo" : S.Layout)'><Icone Nome="mais" Tamanho="16" /> Novo slide</button>
+        </aside>
+
+        @* ======================================================= palco *@
+        <section class="ss-centro">
+            <div class="ss-palco" tabindex="0" @ref="_palco">
+                <div class="ss-escala ss-escala-palco">
+                    <SlideVista Ap="@_ap" S="@S" Editor="true" Sel="@_sel" Editando="@_editando" Congelado="@_congelado"
+                                Passo="@_previaPasso" Animar="@(_previaPasso >= 0)" MostrarOrdem="@(_aba == "animacoes")" Classe="@_previaTrans" @key="@(S.Id + _previaChave)" />
+                </div>
+            </div>
+            <div class="ss-notas">
+                <Icone Nome="notas" Tamanho="15" />
+                <textarea placeholder="Anotações do apresentador (aparecem só para você no modo apresentador)" value="@S.Notas" @onchange="MudarNotas" rows="2"></textarea>
+            </div>
+        </section>
+
+        @* ======================================================= painel de formatação *@
+        <aside class="ss-painel">
+            @if (Um is { } e)
+            {
+                <div class="ss-p-cab"><b>@NomeTipo(e)</b><button class="sn-mais" title="Excluir" @onclick="ExcluirSel"><Icone Nome="lixo" Tamanho="15" /></button></div>
+                <div class="ss-p-geo">
+                    <label>X<input type="number" value="@N0(e.X)" @onchange='v => Geo(e, "x", v)' /></label>
+                    <label>Y<input type="number" value="@N0(e.Y)" @onchange='v => Geo(e, "y", v)' /></label>
+                    <label>Larg.<input type="number" value="@N0(e.W)" @onchange='v => Geo(e, "w", v)' /></label>
+                    <label>Alt.<input type="number" value="@N0(e.H)" @onchange='v => Geo(e, "h", v)' /></label>
+                    <label>Girar<input type="number" value="@N0(e.Rot)" @onchange='v => Geo(e, "r", v)' /></label>
+                </div>
+                @if (e.Tipo is "texto" or "forma" && !(e.Tipo == "forma" && e.Forma == "linha"))
+                {
+                    <div class="ss-p-lin"><span>Texto na vertical</span>
+                        <div class="ss-seg">
+                            @foreach (var (k, n) in new[] { ("t", "Topo"), ("m", "Meio"), ("b", "Base") })
+                            {
+                                var kk = k;
+                                <button class="@((e.AlinhV == k || (e.Tipo == "forma" && e.AlinhV == "t" && k == "m" && false)) ? "on" : "")" @onclick="() => AlinharV(e, kk)">@n</button>
+                            }
+                        </div>
+                    </div>
+                }
+                @if (e.Tipo == "forma")
+                {
+                    <div class="ss-p-lin"><span>@(e.Forma == "linha" ? "Cor da linha" : "Preenchimento")</span></div>
+                    <div class="ss-cores">
+                        @if (e.Forma != "linha") { <button class="nada @(e.Preench == "" ? "on" : "")" title="Sem preenchimento" @onclick='() => CorForma(e, "pre", "")'>∅</button> }
+                        @foreach (var c in CoresForma)
+                        {
+                            var cc = c;
+                            var on = e.Forma == "linha" ? e.Borda.Equals(c, StringComparison.OrdinalIgnoreCase) : e.Preench.Equals(c, StringComparison.OrdinalIgnoreCase);
+                            <button class="@(on ? "on" : "")" style="background:@c" @onclick='() => CorForma(e, e.Forma == "linha" ? "borda" : "pre", cc)'></button>
+                        }
+                    </div>
+                    @if (e.Forma != "linha")
+                    {
+                        <div class="ss-p-lin"><span>Contorno</span></div>
+                        <div class="ss-cores">
+                            <button class="nada @(e.BordaL == 0 ? "on" : "")" title="Sem contorno" @onclick='() => CorForma(e, "borda", "")'>∅</button>
+                            @foreach (var c in CoresForma.Take(10))
+                            {
+                                var cc = c;
+                                <button class="@(e.BordaL > 0 && e.Borda.Equals(c, StringComparison.OrdinalIgnoreCase) ? "on" : "")" style="background:@c" @onclick='() => CorForma(e, "borda", cc)'></button>
+                            }
+                        </div>
+                    }
+                    <div class="ss-p-lin"><span>Espessura</span><input type="range" min="0" max="16" step="1" value="@N0(e.BordaL)" @onchange="v => Espessura(e, v)" /><b>@N0(e.BordaL)</b></div>
+                }
+                @if (e.Tipo == "imagem")
+                {
+                    <button class="btn btn-sec btn-peq" @onclick="() => EscolherImagem(e.Id)"><Icone Nome="imagem" Tamanho="14" /> Trocar imagem</button>
+                    <button class="btn btn-sec btn-peq" @onclick="() => TamanhoOriginal(e)">Proporção original</button>
+                }
+                @if (e.Tipo == "tabela")
+                {
+                    <div class="ss-p-lin"><span>Linhas e colunas</span></div>
+                    <div class="ss-p-bts">
+                        <button class="btn btn-sec btn-peq" @onclick='() => Tabela(e, "+l")'>+ Linha</button>
+                        <button class="btn btn-sec btn-peq" @onclick='() => Tabela(e, "-l")' disabled="@(e.Celulas.Count <= 1)">− Linha</button>
+                        <button class="btn btn-sec btn-peq" @onclick='() => Tabela(e, "+c")'>+ Coluna</button>
+                        <button class="btn btn-sec btn-peq" @onclick='() => Tabela(e, "-c")' disabled="@(e.Celulas[0].Count <= 1)">− Coluna</button>
+                    </div>
+                    <label class="ss-p-chk"><input type="checkbox" checked="@e.CabDestaque" @onchange='_ => Tabela(e, "cab")' /> Destacar a primeira linha</label>
+                    <div class="ss-p-lin"><span>Tamanho da letra</span><input type="range" min="10" max="36" step="1" value="@N0(e.Tam > 0 ? e.Tam : 18)" @onchange="v => TamTabela(e, v)" /><b>@N0(e.Tam > 0 ? e.Tam : 18)</b></div>
+                    <small class="ss-dica">Clique duas vezes na tabela para escrever nas células.</small>
+                }
+                @if (e.Tipo == "grafico")
+                {
+                    <div class="ss-p-lin"><span>Tipo</span>
+                        <select class="sw-sel" value="@e.Graf" @onchange="v => Grafico(e, v.Value?.ToString() ?? e.Graf, null, null)">
+                            @foreach (var (g, n) in TiposGrafico) { <option value="@g">@n</option> }
+                        </select>
+                    </div>
+                    <label class="ss-p-campo">Título<input value="@e.TituloGraf" @onchange="v => GraficoTitulo(e, v)" placeholder="(sem título)" /></label>
+                    <label class="ss-p-campo">Dados <small>categoria na 1ª coluna, séries ao lado (cole do Smart Math ou do Excel)</small>
+                        <textarea rows="8" spellcheck="false" @onchange="v => GraficoDados(e, v)">@Apresentacao.DadosTsv(e)</textarea>
+                    </label>
+                }
+                <div class="ss-p-lin"><span>Animação de entrada</span>
+                    <select class="sw-sel" value="@e.Anim" @onchange="MudarAnimEv">
+                        @foreach (var (k, n) in Animacoes) { <option value="@k">@n</option> }
+                    </select>
+                </div>
+            }
+            else if (_sel.Count > 1)
+            {
+                <div class="ss-p-cab"><b>@_sel.Count itens selecionados</b></div>
+                <span class="ss-rot">Alinhar</span>
+                <div class="ss-p-bts">
+                    @foreach (var (k, n) in new[] { ("esq", "Esquerda"), ("centro", "Centro"), ("dir", "Direita"), ("topo", "Topo"), ("meio", "Meio"), ("base", "Base") })
+                    {
+                        var kk = k;
+                        <button class="btn btn-sec btn-peq" @onclick="() => AlinharVarios(kk)">@n</button>
+                    }
+                </div>
+                <span class="ss-rot">Distribuir</span>
+                <div class="ss-p-bts">
+                    <button class="btn btn-sec btn-peq" @onclick='() => AlinharVarios("dist-h")' disabled="@(_sel.Count < 3)">Na horizontal</button>
+                    <button class="btn btn-sec btn-peq" @onclick='() => AlinharVarios("dist-v")' disabled="@(_sel.Count < 3)">Na vertical</button>
+                </div>
+            }
+            else
+            {
+                <div class="ss-p-cab"><b>Slide @(_si + 1)</b></div>
+                <div class="ss-p-lin"><span>Layout</span><b>@Apresentacao.Layouts.First(l => l.chave == S.Layout).nome</b></div>
+                <div class="ss-p-lin"><span>Transição</span><b>@Transicoes.First(t => t.k == S.Transicao).n</b></div>
+                <label class="ss-p-chk"><input type="checkbox" checked="@S.Oculto" @onchange="_ => Ocultar(_si)" /> Ocultar na apresentação</label>
+                @if (_aba == "animacoes" && S.Animados.Count > 0)
+                {
+                    <span class="ss-rot">Ordem dos cliques</span>
+                    <div class="ss-ordens">
+                        @foreach (var a in S.Animados)
+                        {
+                            var aa = a;
+                            <div class="ss-ordem-it" @onclick="() => { _sel = new() { aa.Id }; }">
+                                <span class="ss-ordem">@a.Ordem</span><span>@Rotulo(a)</span><em>@Animacoes.First(x => x.k == a.Anim).n</em>
+                                <button title="Antes" @onclick:stopPropagation="true" @onclick="() => OrdemAnim(aa, -1)"><Icone Nome="cima" Tamanho="12" /></button>
+                                <button title="Depois" @onclick:stopPropagation="true" @onclick="() => OrdemAnim(aa, 1)"><Icone Nome="baixo" Tamanho="12" /></button>
+                            </div>
+                        }
+                    </div>
+                }
+                <div class="ss-dicas">
+                    <b>Dicas</b>
+                    <span>Clique duas vezes num texto para escrever.</span>
+                    <span>Arraste para mover; as bordas mostram linhas-guia (segure Alt para soltar livre).</span>
+                    <span>Shift ao redimensionar mantém a proporção.</span>
+                    <span>Cole imagens com Ctrl+V.</span>
+                    <span><b>F5</b> apresenta do início; <b>Shift+F5</b> deste slide.</span>
+                </div>
+            }
+        </aside>
+    </div>
+
+    <footer class="ss-pe">
+        <span>Slide <b>@(_si + 1)</b> de <b>@_ap.Slides.Count</b></span>
+        <span>Tema <b>@_ap.T.Nome</b></span>
+        <span class="mola"></span>
+        <button class="ss-pe-bt" @onclick="() => Apresentar(_si)" title="Apresentar a partir deste slide (Shift+F5)"><Icone Nome="play" Tamanho="13" /> Deste slide</button>
+    </footer>
+
+    <InputFile class="ss-arq-img" OnChange="ImagemEscolhida" accept="image/*" @ref="_arqImg" @key="_chaveImg" />
+
+    @* ======================================================= modo apresentação *@
+    @if (_mostrando)
+    {
+        var vis = Visiveis();
+        var atual = _sh < vis.Count ? vis[_sh] : null;
+        var prox = _sh + 1 < vis.Count ? vis[_sh + 1] : null;
+        <div class="ss-show @(_apresentador ? "ap" : "") @(_telaShow)" tabindex="0" @ref="_showEl">
+            @if (!_apresentador)
+            {
+                <div class="ss-show-tela" data-escala>
+                    @if (_fimShow) { <div class="ss-show-fim">Fim da apresentação. Clique ou aperte Esc para sair.</div> }
+                    else if (atual != null)
+                    {
+                        <div class="ss-escala ss-escala-show"><SlideVista Ap="@_ap" S="@atual" Passo="@_passo" Animar="@_animar" Classe="@_trans" @key="@($"{atual.Id}-{_entradas}")" /></div>
+                    }
+                </div>
+                <div class="ss-show-barra">
+                    <button @onclick='() => ShowTecla("voltar")' title="Voltar (←)"><Icone Nome="esquerda" Tamanho="16" /></button>
+                    <span>@(Math.Min(_sh + 1, vis.Count)) / @vis.Count</span>
+                    <button @onclick='() => ShowTecla("avancar")' title="Avançar (→, espaço ou clique)"><Icone Nome="direita" Tamanho="16" /></button>
+                    <button @onclick='() => ShowTecla("apresentador")' title="Modo apresentador (A)"><Icone Nome="notas" Tamanho="16" /></button>
+                    <button @onclick="AlternarTelaCheia" title="Tela cheia"><Icone Nome="tela-cheia" Tamanho="16" /></button>
+                    <button @onclick='() => ShowTecla("sair")' title="Sair (Esc)"><Icone Nome="x" Tamanho="16" /></button>
+                </div>
+            }
+            else
+            {
+                <div class="ss-ap">
+                    <div class="ss-ap-topo">
+                        <b>Modo apresentador</b>
+                        <span class="ss-ap-relogio"><Icone Nome="relogio" Tamanho="15" /> @Decorrido()</span>
+                        <span>Slide @(Math.Min(_sh + 1, vis.Count)) de @vis.Count@(atual != null && atual.Animados.Count > 0 ? $" · animação {_passo}/{atual.Animados.Count}" : "")</span>
+                        <span class="mola"></span>
+                        <button class="btn btn-sec btn-peq" @onclick="AbrirPlateia" title="Abre uma segunda janela só com os slides: arraste para o projetor/TV e deixe em tela cheia"><Icone Nome="externo" Tamanho="14" /> Janela da plateia</button>
+                        <button class="btn btn-sec btn-peq" @onclick='() => ShowTecla("apresentador")'>Só os slides</button>
+                        <button class="btn btn-sec btn-peq" @onclick='() => ShowTecla("sair")'>Encerrar</button>
+                    </div>
+                    <div class="ss-ap-corpo">
+                        <div class="ss-ap-atual" data-escala>
+                            @if (_fimShow) { <div class="ss-show-fim">Fim da apresentação.</div> }
+                            else if (atual != null) { <div class="ss-escala ss-escala-show"><SlideVista Ap="@_ap" S="@atual" Passo="@_passo" Animar="@_animar" Classe="@_trans" @key="@($"{atual.Id}-{_entradas}")" /></div> }
+                        </div>
+                        <div class="ss-ap-lado">
+                            <small>Próximo</small>
+                            <div class="ss-ap-prox" data-escala>
+                                @if (atual != null && _passo < atual.Animados.Count) { <div class="ss-escala ss-escala-show"><SlideVista Ap="@_ap" S="@atual" Passo="@(_passo + 1)" /></div> }
+                                else if (prox != null) { <div class="ss-escala ss-escala-show"><SlideVista Ap="@_ap" S="@prox" Passo="0" /></div> }
+                                else { <div class="ss-show-fim peq">Fim</div> }
+                            </div>
+                            <small>Anotações</small>
+                            <div class="ss-ap-notas">@(atual == null || atual.Notas.Trim() == "" ? "(sem anotações neste slide)" : atual.Notas)</div>
+                            <div class="ss-ap-nav">
+                                <button class="btn btn-sec" @onclick='() => ShowTecla("voltar")'><Icone Nome="esquerda" Tamanho="16" /> Voltar</button>
+                                <button class="btn btn-pri" @onclick='() => ShowTecla("avancar")'>Avançar <Icone Nome="direita" Tamanho="16" /></button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+
+    @* ======================================================= impressão (um slide por página) *@
+    @if (_imprimindo)
+    {
+        <div class="ss-impressao">
+            @foreach (var s in _ap.Slides.Where(x => !x.Oculto))
+            {
+                <div class="ss-imp-pag"><div class="ss-escala" style="--k:1"><SlideVista Ap="@_ap" S="@s" /></div></div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    protected override string Chave => "smartscreen";
+    const string Rascunho = "qsmart_ss_rascunho";
+    static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
+
+    static readonly (string, string)[] AbasFaixa = { ("inicio", "Página inicial"), ("inserir", "Inserir"), ("design", "Design"), ("transicoes", "Transições"), ("animacoes", "Animações") };
+    static readonly string[] Fontes = { "Inter", "Arial", "Calibri", "Georgia", "Times New Roman", "Verdana", "Trebuchet MS", "Courier New", "Segoe UI" };
+    static readonly int[] Tamanhos = { 10, 12, 14, 16, 18, 20, 24, 28, 32, 36, 40, 44, 48, 54, 60, 72, 88 };
+    static readonly string[] PaletaTexto = { "", "#000000", "#FFFFFF", "#475569", "#DC2626", "#EA580C", "#F59E0B", "#16A34A", "#0EA5E9", "#2563EB", "#7C3AED", "#DB2777" };
+    static readonly string[] PaletaFundo = { "#FFFFFF", "#F8FAFC", "#FEF3C7", "#DCFCE7", "#DBEAFE", "#EDE9FE", "#FCE7F3", "#0F172A", "#1E3A8A", "#064E3B", "#7C2D12", "#000000" };
+    static readonly string[] CoresForma = { "#2563EB", "#0EA5E9", "#10B981", "#84CC16", "#F59E0B", "#EA580C", "#EF4444", "#DB2777", "#7C3AED", "#111827", "#64748B", "#E2E8F0", "#FFFFFF" };
+    static readonly (string, string)[] Formas = { ("ret", "Retângulo"), ("arred", "Retângulo arredondado"), ("elipse", "Elipse"), ("triangulo", "Triângulo"), ("seta", "Seta"), ("estrela", "Estrela"), ("losango", "Losango"), ("linha", "Linha") };
+    static readonly (string, string)[] TiposGrafico = { ("colunas", "Colunas"), ("barras", "Barras"), ("linhas", "Linhas"), ("pizza", "Pizza") };
+    static readonly (string k, string n)[] Transicoes = { ("", "Nenhuma"), ("esmaecer", "Esmaecer"), ("empurrar", "Empurrar"), ("revelar", "Revelar"), ("zoom", "Zoom") };
+    static readonly (string k, string n)[] Animacoes = { ("", "Nenhuma"), ("aparecer", "Aparecer"), ("esmaecer", "Esmaecer"), ("subir", "Subir"), ("zoom", "Zoom") };
+
+    Apresentacao _ap = Apresentacao.Nova();
+    int _si;
+    Slide S => _ap.Slides[Math.Clamp(_si, 0, _ap.Slides.Count - 1)];
+    HashSet<string> _sel = new();
+    string? _editando, _congelado, _editarDepois;
+    bool _editarTudo;
+    string _aba = "inicio";
+    bool _menuNovo, _menuLayout, _menuTabela;
+    (int l, int c) _tabSobre;
+    int? _arrastando, _alvoSolta;
+    ElementReference _palco, _showEl;
+    InputFile? _arqImg;
+    string? _imgAlvo;
+    int _chaveArq, _chaveImg;
+    DotNetObjectReference<SmartScreenPag>? _ref;
+    bool _montado;
+
+    string _nome = "Apresentação sem título", _status = "apresentação nova";
+    bool _sujo, _rascunhoOk, _salvando, _imprimindo;
+    (string nome, string json, string quando)? _recuperar;
+    readonly List<(Apresentacao a, int si)> _desfazer = new(), _refazer = new();
+    List<Elemento>? _clip;
+
+    // prévia de transição/animação no palco
+    string _previaTrans = "", _previaChave = "";
+    int _previaPasso = -1;
+
+    // apresentação
+    bool _mostrando, _apresentador, _fimShow, _animar, _showMontar, _escalarShow;
+    int _sh, _passo, _entradas;
+    string _trans = "", _telaShow = "";
+    DateTime _inicioShow;
+    long _versaoShow;
+    System.Threading.Timer? _relogio;
+
+    Elemento? Um => _sel.Count == 1 && _editando == null ? S.Elementos.FirstOrDefault(e => _sel.Contains(e.Id)) : _sel.Count == 1 ? S.Elementos.FirstOrDefault(e => _sel.Contains(e.Id)) : null;
+    IEnumerable<Elemento> SelEls() => S.Elementos.Where(e => _sel.Contains(e.Id));
+    static string N0(double v) => Math.Round(v).ToString(Inv);
+    Apresentacao Previa(string tema) => new() { Tema = tema, Slides = _ap.Slides };
+
+    protected override async Task OnInitializedAsync()
+    {
+        _ref = DotNetObjectReference.Create(this);
+        try
+        {
+            var r = await E.Nav.LsGet(Rascunho);
+            if (!string.IsNullOrEmpty(r))
+            {
+                var j = JsonNode.Parse(r);
+                var json = j?["ap"]?.GetValue<string>() ?? "";
+                if (json != "")
+                {
+                    var em = DateTime.TryParse(j?["em"]?.GetValue<string>(), null, DateTimeStyles.RoundtripKind, out var d) ? d.ToLocalTime() : DateTime.Now;
+                    _recuperar = (j?["nome"]?.GetValue<string>() ?? "Apresentação", json, em.Date == DateTime.Today ? $"hoje às {em:HH:mm}" : em.ToString("dd/MM 'às' HH:mm"));
+                }
+            }
+        }
+        catch { }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool primeira)
+    {
+        if (primeira) { await E.Nav.TelaMontar(_palco, _ref!); _montado = true; }
+        if (_editarDepois != null) { var id = _editarDepois; _editarDepois = null; await E.Nav.TelaEditar(id, _editarTudo); }
+        if (_showMontar) { _showMontar = false; await E.Nav.TelaShow(_showEl, _ref!); await E.Nav.TelaCheia(_showEl, true); }
+        if (_escalarShow) { _escalarShow = false; await E.Nav.TelaEscalarTodos(_showEl); }
+        if (_montado && !_mostrando) await E.Nav.TelaEstado();
+    }
+
+    // ====================================================== util
+    void Guardar()
+    {
+        _desfazer.Add((_ap.Clonar(), _si));
+        if (_desfazer.Count > 80) _desfazer.RemoveAt(0);
+        _refazer.Clear();
+    }
+
+    void Desfazer()
+    {
+        if (_desfazer.Count == 0) return;
+        var (a, si) = _desfazer[^1]; _desfazer.RemoveAt(_desfazer.Count - 1);
+        _refazer.Add((_ap.Clonar(), _si));
+        _ap = a; _si = Math.Clamp(si, 0, _ap.Slides.Count - 1); _sel.Clear(); _editando = null;
+        Mudou();
+    }
+
+    void Refazer()
+    {
+        if (_refazer.Count == 0) return;
+        var (a, si) = _refazer[^1]; _refazer.RemoveAt(_refazer.Count - 1);
+        _desfazer.Add((_ap.Clonar(), _si));
+        _ap = a; _si = Math.Clamp(si, 0, _ap.Slides.Count - 1); _sel.Clear(); _editando = null;
+        Mudou();
+    }
+
+    void Mudou()
+    {
+        _sujo = true;
+        _ = GuardarRascunho();
+    }
+
+    System.Threading.CancellationTokenSource? _cts;
+    async Task GuardarRascunho()
+    {
+        _cts?.Cancel(); var cts = _cts = new();
+        try { await Task.Delay(1200, cts.Token); } catch { return; }
+        var j = new JsonObject { ["nome"] = _nome, ["em"] = DateTime.UtcNow.ToString("o"), ["ap"] = _ap.ParaJson() };
+        _rascunhoOk = await E.Nav.LsSet(Rascunho, j.ToJsonString());
+        StateHasChanged();
+    }
+
+    Elemento? El(string id) => S.Elementos.FirstOrDefault(e => e.Id == id);
+
+    void TrocarAba(string k) { _aba = k; _menuNovo = _menuLayout = _menuTabela = false; }
+
+    static string Rotulo(Elemento e)
+    {
+        if (e.Tipo is "texto" or "forma" && e.Html != "")
+        {
+            var t = string.Concat(TextoRico.Ler(e.Html).Select(p => p.TextoPuro + " ")).Trim();
+            if (t != "") return t.Length > 28 ? t[..28] + "…" : t;
+        }
+        return NomeTipo(e);
+    }
+
+    static string NomeTipo(Elemento e) => e.Tipo switch
+    {
+        "imagem" => "Imagem", "tabela" => "Tabela", "grafico" => "Gráfico",
+        "forma" => Formas.First(f => f.Item1 == e.Forma).Item2,
+        _ => e.Papel switch { "titulo" => "Título", "subtitulo" => "Subtítulo", "corpo" => "Texto", _ => "Caixa de texto" },
+    };
+
+    // ====================================================== seleção e edição (chamadas do palco)
+    [JSInvokable]
+    public void Selecionar(string? id, bool somar)
+    {
+        _menuNovo = _menuLayout = _menuTabela = false;
+        if (id == null) _sel.Clear();
+        else if (somar) { if (!_sel.Remove(id)) _sel.Add(id); }
+        else if (!_sel.Contains(id) || _sel.Count > 1) _sel = new() { id };
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public void Mover(string json)
+    {
+        var arr = JsonNode.Parse(json)?.AsArray();
+        if (arr == null) return;
+        Guardar();
+        foreach (var o in arr)
+        {
+            if (o == null || El(o["id"]?.GetValue<string>() ?? "") is not { } e) continue;
+            e.X = Math.Round(o["x"]!.GetValue<double>(), 1); e.Y = Math.Round(o["y"]!.GetValue<double>(), 1);
+        }
+        Mudou(); StateHasChanged();
+    }
+
+    [JSInvokable]
+    public void Geometria(string id, double x, double y, double w, double h)
+    {
+        if (El(id) is not { } e) return;
+        Guardar();
+        e.X = Math.Round(x, 1); e.Y = Math.Round(y, 1); e.W = Math.Round(w, 1); e.H = Math.Round(h, 1);
+        Mudou(); StateHasChanged();
+    }
+
+    [JSInvokable]
+    public void EditarTexto(string id)
+    {
+        if (El(id) is not { } e) return;
+        Guardar();
+        _sel = new() { id };
+        _editando = id; _congelado = e.Html; _editarDepois = id; _editarTudo = false;
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public void TextoMudou(string id, string html)
+    {
+        if (El(id) is { } e) { e.Html = html; Mudou(); }
+    }
+
+    [JSInvokable]
+    public void FimTexto(string id, string? html)
+    {
+        if (El(id) is { } e)
+        {
+            if (html != null) e.Html = html;
+            // caixa de texto livre que ficou vazia some (como no PowerPoint)
+            if (e.Tipo == "texto" && e.Papel == "" && TextoRico.Vazio(e.Html)) { S.Elementos.Remove(e); _sel.Remove(id); }
+        }
+        if (_editando == id) { _editando = null; _congelado = null; }
+        Mudou(); StateHasChanged();
+    }
+
+    [JSInvokable]
+    public void TextosMudaram(string json)
+    {
+        var arr = JsonNode.Parse(json)?.AsArray();
+        if (arr == null) return;
+        Guardar();
+        foreach (var o in arr)
+            if (o != null && El(o["id"]?.GetValue<string>() ?? "") is { } e) e.Html = o["html"]?.GetValue<string>() ?? e.Html;
+        Mudou(); StateHasChanged();
+    }
+
+    [JSInvokable]
+    public void TabelaTexto(string id, string json)
+    {
+        if (El(id) is not { } e) return;
+        var arr = JsonNode.Parse(json)?.AsArray();
+        if (arr == null) return;
+        var cels = arr.Select(l => l?.AsArray().Select(c => c?.GetValue<string>() ?? "").ToList() ?? new()).ToList();
+        if (cels.Count == e.Celulas.Count) e.Celulas = cels;
+        Mudou();
+    }
+
+    [JSInvokable]
+    public async Task Atalho(string qual)
+    {
+        switch (qual)
+        {
+            case "salvar": await Salvar(); break;
+            case "apresentar": await Apresentar(0); break;
+            case "apresentar-atual": await Apresentar(_si); break;
+            case "ctrl-z": Desfazer(); break;
+            case "ctrl-y": Refazer(); break;
+            case "ctrl-d": DuplicarSel(); break;
+            case "ctrl-a": _sel = S.Elementos.Select(e => e.Id).ToHashSet(); break;
+            case "ctrl-c": case "copiar": _clip = SelEls().Select(e => e.Clonar()).ToList(); break;
+            case "ctrl-x": case "recortar": _clip = SelEls().Select(e => e.Clonar()).ToList(); ExcluirSel(); break;
+            case "colar": Colar(); break;
+            case "excluir": ExcluirSel(); break;
+            case "proximo": if (_si < _ap.Slides.Count - 1) IrPara(_si + 1); break;
+            case "anterior": if (_si > 0) IrPara(_si - 1); break;
+        }
+        StateHasChanged();
+    }
+
+    void Colar()
+    {
+        if (_clip == null || _clip.Count == 0) return;
+        Guardar();
+        var novos = _clip.Select(e => { var c = e.Clonar(); if (S.Elementos.Any(x => Math.Abs(x.X - c.X) < 1 && Math.Abs(x.Y - c.Y) < 1)) { c.X += 18; c.Y += 18; } return c; }).ToList();
+        S.Elementos.AddRange(novos);
+        _clip = novos.Select(e => e.Clonar()).ToList();
+        _sel = novos.Select(e => e.Id).ToHashSet();
+        S.Renumerar();
+        Mudou();
+    }
+
+    [JSInvokable]
+    public void ColarTexto(string txt)
+    {
+        Guardar();
+        var linhas = txt.Replace("\r", "").Split('\n').Select(l => l.TrimEnd()).Where(l => l != "").Take(40).ToList();
+        var html = string.Concat(linhas.Select(l => "<p>" + System.Net.WebUtility.HtmlEncode(l) + "</p>"));
+        var e = new Elemento { Tipo = "texto", X = 180, Y = 170, W = 600, H = Math.Min(400, 40 + linhas.Count * 32), Html = html };
+        S.Elementos.Add(e); _sel = new() { e.Id };
+        Mudou(); StateHasChanged();
+    }
+
+    [JSInvokable]
+    public async Task ImagemColada(string dataUrl) => await PorImagem(dataUrl, null);
+
+    async Task PorImagem(string dataUrl, string? alvo)
+    {
+        var tam = await E.Nav.TelaTamanhoImagem(dataUrl);
+        double iw = Math.Max(1, tam.Length > 0 ? tam[0] : 400), ih = Math.Max(1, tam.Length > 1 ? tam[1] : 300);
+        Guardar();
+        if (alvo != null && El(alvo) is { } velho && velho.Tipo == "imagem")
+        {
+            // mantém a área e encaixa a proporção nova dentro dela
+            var k = Math.Min(velho.W / iw, velho.H / ih);
+            var nw = iw * k; var nh = ih * k;
+            velho.X += (velho.W - nw) / 2; velho.Y += (velho.H - nh) / 2; velho.W = nw; velho.H = nh; velho.Src = dataUrl;
+            _sel = new() { velho.Id };
+        }
+        else
+        {
+            var k = Math.Min(1, Math.Min(640 / iw, 400 / ih));
+            var e = new Elemento { Tipo = "imagem", W = Math.Round(iw * k), H = Math.Round(ih * k), Src = dataUrl };
+            e.X = Math.Round((960 - e.W) / 2); e.Y = Math.Round((540 - e.H) / 2 + 20);
+            S.Elementos.Add(e); _sel = new() { e.Id };
+        }
+        Mudou(); StateHasChanged();
+    }
+
+    [JSInvokable]
+    public async Task TrocarImagem(string id) => await EscolherImagem(id);
+
+    async Task EscolherImagem(string? alvo)
+    {
+        _imgAlvo = alvo;
+        if (_arqImg?.Element is { } el) await E.Nav.Clicar(el);
+    }
+
+    async Task ImagemEscolhida(InputFileChangeEventArgs ev)
+    {
+        _chaveImg++;
+        try
+        {
+            var f = ev.File;
+            using var ms = new MemoryStream();
+            await f.OpenReadStream(25_000_000).CopyToAsync(ms);
+            var url = await E.Nav.TelaImagem(ms.ToArray(), f.ContentType);
+            await PorImagem(url, _imgAlvo);
+        }
+        catch (Exception ex) { await J.Erro("Imagem", "Não consegui abrir essa imagem: " + ex.Message); }
+        _imgAlvo = null;
+    }
+
+    // ====================================================== slides
+    void IrPara(int i)
+    {
+        if (_editando != null) _ = E.Nav.TelaFimEdicao();
+        _si = Math.Clamp(i, 0, _ap.Slides.Count - 1); _sel.Clear(); _menuNovo = _menuLayout = false;
+        _ = E.Nav.TelaFocar();
+    }
+
+    void NovoSlide(string layout)
+    {
+        Guardar();
+        var s = Apresentacao.NovoSlide(layout);
+        if (S.Transicao != "" && _ap.Slides.All(x => x.Transicao == S.Transicao)) s.Transicao = S.Transicao;
+        _ap.Slides.Insert(_si + 1, s);
+        _menuNovo = false;
+        IrPara(_si + 1);
+        Mudou();
+    }
+
+    void TrocarLayout(string layout)
+    {
+        Guardar();
+        var modelo = Apresentacao.NovoSlide(layout);
+        var usados = new HashSet<Elemento>();
+        foreach (var m in modelo.Elementos)
+        {
+            var atual = S.Elementos.FirstOrDefault(e => !usados.Contains(e) && e.Papel == m.Papel && m.Papel != "")
+                     ?? (m.Tipo == "imagem" ? S.Elementos.FirstOrDefault(e => !usados.Contains(e) && e.Tipo == "imagem") : null);
+            if (atual != null)
+            {
+                usados.Add(atual);
+                atual.X = m.X; atual.Y = m.Y; atual.W = m.W; atual.H = m.H; atual.AlinhV = m.AlinhV;
+                if (m.Papel != "" && layout == "titulo" && TextoRico.Vazio(atual.Html)) atual.Html = m.Html;
+            }
+            else S.Elementos.Add(m);
+        }
+        // espaços reservados vazios que não existem no layout novo saem
+        S.Elementos.RemoveAll(e => !usados.Contains(e) && !modelo.Elementos.Contains(e) && e.Papel != "" && TextoRico.Vazio(e.Html));
+        S.Layout = layout;
+        _menuLayout = false;
+        Mudou();
+    }
+
+    void DuplicarSlide(int i)
+    {
+        Guardar();
+        _ap.Slides.Insert(i + 1, _ap.Slides[i].Clonar());
+        IrPara(i + 1);
+        Mudou();
+    }
+
+    async Task ExcluirSlide(int i)
+    {
+        if (_ap.Slides.Count == 1) { await J.Aviso("Smart Screen", "A apresentação precisa ter pelo menos um slide."); return; }
+        Guardar();
+        _ap.Slides.RemoveAt(i);
+        IrPara(Math.Min(i, _ap.Slides.Count - 1));
+        Mudou();
+    }
+
+    void Ocultar(int i) { Guardar(); _ap.Slides[i].Oculto = !_ap.Slides[i].Oculto; Mudou(); }
+
+    void Soltar(int destino)
+    {
+        if (_arrastando is not int de || de == destino) { _arrastando = null; _alvoSolta = null; return; }
+        Guardar();
+        var s = _ap.Slides[de];
+        _ap.Slides.RemoveAt(de);
+        _ap.Slides.Insert(destino, s);
+        _si = destino; _arrastando = null; _alvoSolta = null; _sel.Clear();
+        Mudou();
+    }
+
+    void MudarNotas(ChangeEventArgs e) { S.Notas = e.Value?.ToString() ?? ""; Mudou(); }
+
+    // ====================================================== inserir
+    void Inserir(Elemento e, bool editar = false)
+    {
+        Guardar();
+        S.Elementos.Add(e);
+        _sel = new() { e.Id };
+        if (editar) { _editando = e.Id; _congelado = e.Html; _editarDepois = e.Id; _editarTudo = true; }
+        Mudou();
+    }
+
+    void NovaCaixa() => Inserir(new Elemento { Tipo = "texto", X = 280, Y = 220, W = 400, H = 60, Html = "<p>Texto</p>" }, true);
+
+    void NovaForma(string f)
+    {
+        var e = new Elemento { Tipo = "forma", Forma = f, X = 380, Y = 190, W = 200, H = 140, Preench = _ap.T.Cores[0] };
+        if (f == "linha") { e.H = 0; e.W = 300; e.Y = 270; e.X = 330; e.Preench = ""; e.Borda = _ap.T.Cores[0]; e.BordaL = 3; }
+        if (f == "seta") { e.H = 100; e.W = 220; }
+        if (f is "elipse" or "estrela") { e.W = 160; e.H = 160; }
+        Inserir(e);
+    }
+
+    void NovaTabela(int l, int c)
+    {
+        _menuTabela = false;
+        var t = Apresentacao.TabelaExemplo(l, c);
+        t.W = Math.Min(860, 160 * c); t.X = (960 - t.W) / 2; t.H = 40 * l; t.Y = Math.Max(130, (540 - t.H) / 2 + 30);
+        Inserir(t);
+    }
+
+    void NovoGrafico(string tipo)
+    {
+        var g = Apresentacao.GraficoExemplo(); g.Graf = tipo;
+        if (tipo == "pizza") g.Series.RemoveAt(1);
+        Inserir(g);
+    }
+
+    // ====================================================== organizar
+    void Camada(bool frente)
+    {
+        Guardar();
+        var sel = SelEls().ToList();
+        foreach (var e in sel) S.Elementos.Remove(e);
+        if (frente) S.Elementos.AddRange(sel); else S.Elementos.InsertRange(0, sel);
+        Mudou();
+    }
+
+    void DuplicarSel()
+    {
+        var sel = SelEls().ToList();
+        if (sel.Count == 0) return;
+        Guardar();
+        var novos = sel.Select(e => { var c = e.Clonar(); c.X += 18; c.Y += 18; return c; }).ToList();
+        S.Elementos.AddRange(novos);
+        _sel = novos.Select(e => e.Id).ToHashSet();
+        S.Renumerar();
+        Mudou();
+    }
+
+    void ExcluirSel()
+    {
+        if (_sel.Count == 0) return;
+        Guardar();
+        S.Elementos.RemoveAll(e => _sel.Contains(e.Id));
+        _sel.Clear(); _editando = null;
+        S.Renumerar();
+        Mudou();
+        _ = E.Nav.TelaFocar();
+    }
+
+    void AlinharVarios(string como)
+    {
+        var els = SelEls().ToList();
+        if (els.Count < 2) return;
+        Guardar();
+        double x1 = els.Min(e => e.X), x2 = els.Max(e => e.X + e.W), y1 = els.Min(e => e.Y), y2 = els.Max(e => e.Y + e.H);
+        switch (como)
+        {
+            case "esq": els.ForEach(e => e.X = x1); break;
+            case "dir": els.ForEach(e => e.X = x2 - e.W); break;
+            case "centro": els.ForEach(e => e.X = (x1 + x2) / 2 - e.W / 2); break;
+            case "topo": els.ForEach(e => e.Y = y1); break;
+            case "base": els.ForEach(e => e.Y = y2 - e.H); break;
+            case "meio": els.ForEach(e => e.Y = (y1 + y2) / 2 - e.H / 2); break;
+            case "dist-h":
+            {
+                var ord = els.OrderBy(e => e.X).ToList(); var livre = (x2 - x1 - ord.Sum(e => e.W)) / (ord.Count - 1); double x = x1;
+                foreach (var e in ord) { e.X = x; x += e.W + livre; }
+                break;
+            }
+            case "dist-v":
+            {
+                var ord = els.OrderBy(e => e.Y).ToList(); var livre = (y2 - y1 - ord.Sum(e => e.H)) / (ord.Count - 1); double y = y1;
+                foreach (var e in ord) { e.Y = y; y += e.H + livre; }
+                break;
+            }
+        }
+        Mudou();
+    }
+
+    // ====================================================== painel de formatação
+    void Geo(Elemento e, string campo, ChangeEventArgs v)
+    {
+        if (!double.TryParse(v.Value?.ToString(), NumberStyles.Float, Inv, out var d)) return;
+        Guardar();
+        switch (campo) { case "x": e.X = d; break; case "y": e.Y = d; break; case "w": e.W = Math.Max(1, d); break; case "h": e.H = Math.Max(0, d); break; case "r": e.Rot = ((d % 360) + 360) % 360; break; }
+        Mudou();
+    }
+
+    void AlinharV(Elemento e, string v) { Guardar(); e.AlinhV = v; Mudou(); }
+
+    void CorForma(Elemento e, string qual, string cor)
+    {
+        Guardar();
+        if (qual == "pre") e.Preench = cor;
+        else { e.Borda = cor; if (cor == "") e.BordaL = 0; else if (e.BordaL == 0) e.BordaL = 2; }
+        Mudou();
+    }
+
+    void Espessura(Elemento e, ChangeEventArgs v)
+    {
+        if (!double.TryParse(v.Value?.ToString(), NumberStyles.Float, Inv, out var d)) return;
+        Guardar(); e.BordaL = d; if (d > 0 && e.Borda == "") e.Borda = e.Forma == "linha" ? _ap.T.Cores[0] : "#111827"; Mudou();
+    }
+
+    async Task TamanhoOriginal(Elemento e)
+    {
+        var t = await E.Nav.TelaTamanhoImagem(e.Src);
+        if (t.Length < 2 || t[0] == 0) return;
+        Guardar();
+        e.H = Math.Round(e.W * t[1] / t[0]);
+        Mudou();
+    }
+
+    void Tabela(Elemento e, string op)
+    {
+        Guardar();
+        int cols = e.Celulas[0].Count;
+        switch (op)
+        {
+            case "+l": e.Celulas.Add(Enumerable.Repeat("", cols).ToList()); e.H += e.H / Math.Max(1, e.Celulas.Count - 1); break;
+            case "-l": if (e.Celulas.Count > 1) { e.H -= e.H / e.Celulas.Count; e.Celulas.RemoveAt(e.Celulas.Count - 1); } break;
+            case "+c": foreach (var l in e.Celulas) l.Add(e.Celulas.IndexOf(l) == 0 && e.CabDestaque ? $"Coluna {cols + 1}" : ""); break;
+            case "-c": if (cols > 1) foreach (var l in e.Celulas) l.RemoveAt(l.Count - 1); break;
+            case "cab": e.CabDestaque = !e.CabDestaque; break;
+        }
+        Mudou();
+    }
+
+    void TamTabela(Elemento e, ChangeEventArgs v) { if (double.TryParse(v.Value?.ToString(), NumberStyles.Float, Inv, out var d)) { Guardar(); e.Tam = d; Mudou(); } }
+
+    void Grafico(Elemento e, string? tipo, string? titulo, string? dados)
+    {
+        Guardar();
+        if (tipo != null) e.Graf = tipo;
+        if (titulo != null) e.TituloGraf = titulo;
+        if (dados != null) Apresentacao.LerTsv(e, dados);
+        Mudou();
+    }
+
+    // ====================================================== design, transições, animações
+    void MudarTema(string t) { Guardar(); _ap.Tema = t; Mudou(); _ = E.Conta.Registrar("screen.tema", true); }
+    void MudarFundoEv(ChangeEventArgs e) => MudarFundo(e.Value?.ToString() ?? "");
+    void MudarAnimEv(ChangeEventArgs e) => MudarAnim(e.Value?.ToString() ?? "");
+    void GraficoTitulo(Elemento e, ChangeEventArgs v) => Grafico(e, null, v.Value?.ToString() ?? "", null);
+    void GraficoDados(Elemento e, ChangeEventArgs v) => Grafico(e, null, null, v.Value?.ToString() ?? "");
+    void MudarFundo(string c) { Guardar(); S.Fundo = c; Mudou(); }
+    void FundoParaTodos() { Guardar(); foreach (var s in _ap.Slides) s.Fundo = S.Fundo; Mudou(); }
+    async Task MudarTransicao(string t) { Guardar(); S.Transicao = t; Mudou(); if (t != "") await VerTransicao(); }
+    void TransicaoParaTodos() { Guardar(); foreach (var s in _ap.Slides) s.Transicao = S.Transicao; Mudou(); }
+
+    async Task VerTransicao()
+    {
+        if (S.Transicao == "") return;
+        _previaTrans = "ss-tr-" + S.Transicao; _previaChave = Guid.NewGuid().ToString("N")[..6];
+        StateHasChanged();
+        await Task.Delay(900);
+        _previaTrans = ""; StateHasChanged();
+    }
+
+    void MudarAnim(string a)
+    {
+        var els = SelEls().ToList();
+        if (els.Count == 0) return;
+        Guardar();
+        int prox = S.Elementos.Where(e => e.Anim != "").Select(e => e.Ordem).DefaultIfEmpty(0).Max();
+        foreach (var e in els)
+        {
+            if (a == "") { e.Anim = ""; e.Ordem = 0; continue; }
+            if (e.Anim == "") e.Ordem = ++prox;
+            e.Anim = a;
+        }
+        S.Renumerar();
+        Mudou();
+        if (a != "") _ = VerUma(els);
+    }
+
+    async Task VerUma(List<Elemento> els)
+    {
+        var o = els.Min(e => e.Ordem);
+        _previaPasso = o; _previaChave = Guid.NewGuid().ToString("N")[..6];
+        StateHasChanged();
+        await Task.Delay(800);
+        _previaPasso = -1; StateHasChanged();
+    }
+
+    async Task VerAnimacoes()
+    {
+        var n = S.Animados.Count;
+        for (int p = 0; p <= n; p++)
+        {
+            _previaPasso = p; _previaChave = "a" + p;
+            StateHasChanged();
+            await Task.Delay(p == 0 ? 400 : 750);
+        }
+        _previaPasso = -1; _previaChave = ""; StateHasChanged();
+    }
+
+    void OrdemAnim(Elemento e, int d)
+    {
+        var lista = S.Animados;
+        int i = lista.IndexOf(e), j = i + d;
+        if (j < 0 || j >= lista.Count) return;
+        Guardar();
+        (lista[i].Ordem, lista[j].Ordem) = (lista[j].Ordem, lista[i].Ordem);
+        S.Renumerar();
+        Mudou();
+    }
+
+    RenderFragment MenuLayouts(Action<string> escolher) => __b =>
+    {
+        int seq = 0;
+        __b.OpenElement(seq++, "div"); __b.AddAttribute(seq++, "class", "ss-menu ss-menu-layouts");
+        foreach (var (k, n) in Apresentacao.Layouts)
+        {
+            var kk = k;
+            __b.OpenElement(seq++, "button");
+            __b.AddAttribute(seq++, "onclick", EventCallback.Factory.Create(this, () => escolher(kk)));
+            __b.OpenElement(seq++, "span"); __b.AddAttribute(seq++, "class", "ss-escala"); __b.AddAttribute(seq++, "style", "--k:.135");
+            __b.OpenComponent<SlideVista>(seq++);
+            __b.AddAttribute(seq++, "Ap", _ap);
+            __b.AddAttribute(seq++, "S", Exemplo(kk));
+            __b.AddAttribute(seq++, "Editor", true);
+            __b.CloseComponent();
+            __b.CloseElement();
+            __b.OpenElement(seq++, "small"); __b.AddContent(seq++, n); __b.CloseElement();
+            __b.CloseElement();
+        }
+        __b.CloseElement();
+    };
+
+    readonly Dictionary<string, Slide> _exemplos = new();
+    Slide Exemplo(string layout) => _exemplos.TryGetValue(layout, out var s) ? s : _exemplos[layout] = Apresentacao.NovoSlide(layout);
+
+    static string IconeForma(string f) => f switch
+    {
+        "ret" => "<svg viewBox='0 0 24 24'><rect x='4' y='6' width='16' height='12'/></svg>",
+        "arred" => "<svg viewBox='0 0 24 24'><rect x='4' y='6' width='16' height='12' rx='3.5'/></svg>",
+        "elipse" => "<svg viewBox='0 0 24 24'><ellipse cx='12' cy='12' rx='8.5' ry='6.5'/></svg>",
+        "triangulo" => "<svg viewBox='0 0 24 24'><path d='M12 4.5 20.5 19h-17z'/></svg>",
+        "seta" => "<svg viewBox='0 0 24 24'><path d='M3 9h10V5l8 7-8 7v-4H3z'/></svg>",
+        "estrela" => "<svg viewBox='0 0 24 24'><path d='m12 3.5 2.6 5.4 5.9.8-4.3 4.1 1 5.8L12 16.8l-5.2 2.8 1-5.8-4.3-4.1 5.9-.8z'/></svg>",
+        "losango" => "<svg viewBox='0 0 24 24'><path d='M12 3.5 20.5 12 12 20.5 3.5 12z'/></svg>",
+        _ => "<svg viewBox='0 0 24 24'><path d='M4 19 20 5' stroke-width='2.2' stroke-linecap='round'/></svg>",
+    };
+
+    // ====================================================== apresentação
+    List<Slide> Visiveis() { var v = _ap.Slides.Where(s => !s.Oculto).ToList(); return v.Count > 0 ? v : _ap.Slides.ToList(); }
+
+    async Task Apresentar(int deSlide)
+    {
+        if (_editando != null) await E.Nav.TelaFimEdicao();
+        var vis = Visiveis();
+        var alvo = _ap.Slides[Math.Clamp(deSlide, 0, _ap.Slides.Count - 1)];
+        _sh = Math.Max(0, vis.IndexOf(alvo)); if (alvo.Oculto) _sh = 0;
+        _passo = 0; _animar = false; _fimShow = false; _trans = ""; _telaShow = ""; _entradas++;
+        _mostrando = true; _showMontar = true; _apresentador = false; _escalarShow = true;
+        _inicioShow = DateTime.Now; _versaoShow = DateTime.UtcNow.Ticks;
+        _relogio?.Dispose();
+        _relogio = new System.Threading.Timer(_ => { if (_apresentador) InvokeAsync(StateHasChanged); }, null, 1000, 1000);
+        _ = E.Conta.Registrar("screen.apresentar", true);
+        StateHasChanged();
+        await Task.CompletedTask;
+    }
+
+    string Decorrido() { var t = DateTime.Now - _inicioShow; return t.TotalHours >= 1 ? t.ToString(@"h\:mm\:ss") : t.ToString(@"mm\:ss"); }
+
+    [JSInvokable]
+    public async Task ShowTecla(string acao)
+    {
+        if (!_mostrando) return;
+        var vis = Visiveis();
+        var atual = _sh < vis.Count ? vis[_sh] : null;
+        switch (acao)
+        {
+            case "avancar":
+                if (_telaShow != "") { _telaShow = ""; break; }
+                if (_fimShow) { await Sair(); return; }
+                if (atual != null && _passo < atual.Animados.Count) { _passo++; _animar = true; }
+                else if (_sh + 1 < vis.Count) { _sh++; _passo = 0; _animar = false; _trans = vis[_sh].Transicao == "" ? "" : "ss-tr-" + vis[_sh].Transicao; _entradas++; }
+                else { _fimShow = true; }
+                break;
+            case "voltar":
+                if (_telaShow != "") { _telaShow = ""; break; }
+                if (_fimShow) { _fimShow = false; break; }
+                if (_passo > 0) { _passo--; _animar = false; }
+                else if (_sh > 0) { _sh--; _passo = vis[_sh].Animados.Count; _animar = false; _trans = ""; _entradas++; }
+                break;
+            case "inicio": _sh = 0; _passo = 0; _fimShow = false; _trans = ""; _entradas++; break;
+            case "fim": _sh = vis.Count - 1; _passo = vis[_sh].Animados.Count; _fimShow = false; _trans = ""; _entradas++; break;
+            case "preto": _telaShow = _telaShow == "preto" ? "" : "preto"; break;
+            case "branco": _telaShow = _telaShow == "branco" ? "" : "branco"; break;
+            case "apresentador": _apresentador = !_apresentador; _escalarShow = true; break;
+            case "sair": await Sair(); return;
+            case "saiu-tela-cheia": if (!_apresentador) { await Sair(); return; } break;
+        }
+        await E.Nav.PlateiaEnviar(_sh, _fimShow ? -2 : _passo, _telaShow, _versaoShow);
+        StateHasChanged();
+    }
+
+    async Task AlternarTelaCheia() => await E.Nav.TelaCheia(_showEl, true);
+
+    async Task Sair()
+    {
+        _relogio?.Dispose(); _relogio = null;
+        await E.Nav.TelaFimShow(_showEl);
+        await E.Nav.PlateiaFim();
+        var vis = Visiveis();
+        if (_sh < vis.Count) _si = _ap.Slides.IndexOf(vis[_sh]);
+        _mostrando = false; _sel.Clear();
+        StateHasChanged();
+        await E.Nav.TelaFocar();
+    }
+
+    async Task AbrirPlateia()
+    {
+        var ok = await E.Nav.PlateiaAbrir(_ap.ParaJson());
+        if (!ok) { await J.Aviso("Janela da plateia", "O navegador bloqueou a janela nova ou a apresentação é grande demais para passar entre as janelas. Libere pop-ups para o QSmart e tente de novo."); return; }
+        await Task.Delay(1500);
+        await E.Nav.PlateiaEnviar(_sh, _passo, _telaShow, _versaoShow);
+    }
+
+    // ====================================================== arquivo
+    async Task MudarNome(ChangeEventArgs e)
+    {
+        var n = (e.Value?.ToString() ?? "").Trim();
+        if (n.EndsWith(".pptx", StringComparison.OrdinalIgnoreCase)) n = n[..^5];
+        _nome = n == "" ? "Apresentação sem título" : n;
+        Mudou();
+        await Task.CompletedTask;
+    }
+
+    async Task<bool> PodeTrocar() => !_sujo || await J.Pergunta("Smart Screen", "A apresentação atual tem alterações que não foram salvas em .pptx. Continuar mesmo assim?");
+
+    void Carregar(Apresentacao a, string nome, string status)
+    {
+        _ap = a; _si = 0; _sel.Clear(); _editando = null; _congelado = null;
+        _nome = nome; _status = status; _sujo = false;
+        _desfazer.Clear(); _refazer.Clear();
+    }
+
+    async Task Nova()
+    {
+        if (!await PodeTrocar()) return;
+        Carregar(Apresentacao.Nova(), "Apresentação sem título", "apresentação nova");
+        await E.Nav.LsDel(Rascunho);
+    }
+
+    async Task Abrir(InputFileChangeEventArgs e)
+    {
+        var f = e.File;
+        using var ms = new MemoryStream();
+        try { await f.OpenReadStream(150_000_000).CopyToAsync(ms); }
+        catch (Exception ex) { _chaveArq++; await J.Erro("Abrir", "Não consegui ler esse arquivo: " + ex.Message); return; }
+        _chaveArq++;   // só depois de ler: trocar o InputFile antes apaga o arquivo escolhido no navegador
+        if (!await PodeTrocar()) return;
+        try
+        {
+            var a = PptxPasta.Ler(ms.ToArray());
+            Carregar(a, Path.GetFileNameWithoutExtension(f.Name), $"aberto de {f.Name}");
+            _recuperar = null;
+            _ = E.Conta.Registrar("screen.abrir", true);
+        }
+        catch (Exception ex) { await J.Erro("Abrir apresentação", "Não consegui abrir esse arquivo: " + ex.Message); }
+    }
+
+    async Task Salvar()
+    {
+        if (_salvando) return;
+        if (_editando != null) { await E.Nav.TelaFimEdicao(); await Task.Delay(50); }
+        _salvando = true; StateHasChanged();
+        try
+        {
+            var bytes = PptxPasta.Gravar(_ap, _nome);
+            var nome = string.Concat(_nome.Select(c => Path.GetInvalidFileNameChars().Contains(c) ? '_' : c)).Trim();
+            await E.Nav.Baixar((nome == "" ? "Apresentação" : nome) + ".pptx", bytes, Navegador.MimePptx);
+            _sujo = false; _status = $"salvo em Downloads às {DateTime.Now:HH:mm}";
+            await E.Nav.LsDel(Rascunho);
+            _ = E.Conta.Registrar("screen.salvar", true);
+        }
+        catch (Exception ex) { await J.Erro("Salvar .pptx", "Não consegui gerar o arquivo: " + ex.Message); }
+        finally { _salvando = false; }
+    }
+
+    async Task Imprimir()
+    {
+        if (_editando != null) await E.Nav.TelaFimEdicao();
+        _imprimindo = true; StateHasChanged();
+        await Task.Delay(150);
+        await E.Nav.TelaImprimir();
+        await Task.Delay(1500);
+        _imprimindo = false; StateHasChanged();
+    }
+
+    async Task Recuperar()
+    {
+        if (_recuperar is not { } r) return;
+        try { Carregar(Apresentacao.DeJson(r.json), r.nome, ""); _sujo = true; }
+        catch { await J.Aviso("Smart Screen", "Não consegui recuperar a apresentação."); }
+        _recuperar = null;
+    }
+
+    async Task Descartar() { _recuperar = null; await E.Nav.LsDel(Rascunho); }
+
+    public override void Dispose()
+    {
+        base.Dispose();
+        _relogio?.Dispose();
+        if (_montado) { try { _ = E.Nav.TelaDesmontar(_palco); } catch { } }
+        _ = Task.Delay(3000).ContinueWith(_ => _ref?.Dispose());
+    }
+}

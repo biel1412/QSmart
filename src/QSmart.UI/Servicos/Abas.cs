@@ -58,6 +58,8 @@ public static class Abas
             "Editor de textos como o Word: abre e salva arquivos .docx no seu computador.", "smart-write"),
         new("smartmath", "Smart Math", "Smart Math", "grade-planilha", "Extensão",
             "Planilhas como o Excel: fórmulas, várias abas, formatação, filtro e gráficos; abre e salva .xlsx no seu computador.", "smart-math"),
+        new("smartscreen", "Smart Screen", "Smart Screen", "apresentacao", "Extensão",
+            "Apresentações como o PowerPoint: slides com temas, textos, imagens, formas, tabelas e gráficos, transições, animações e modo apresentação; abre e salva .pptx.", "smart-screen"),
         new("smartnote", "Smart Note", "Smart Note", "caderno", "Extensão",
             "Seus cadernos de anotações, como no OneNote: cadernos, páginas e subpáginas, texto formatado, listas de tarefas, tabelas e imagens coladas.", "smart-note"),
     };

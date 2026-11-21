@@ -802,8 +802,424 @@
   const lsGet = k => { try { return localStorage.getItem(k) || ""; } catch { return ""; } };
   const lsSet = (k, v) => { try { localStorage.setItem(k, v); return true; } catch { return false; } };
   const lsDel = k => { try { localStorage.removeItem(k); } catch { } };
+
+  // ---------- Smart Screen: palco dos slides (arrastar, redimensionar, editar texto, apresentar) ----------
+  const SS_RASCUNHO = "qsmart_ss_rascunho";
+  const limparSlide = html => {
+    const d = document.createElement("div"); d.innerHTML = limpar(html);
+    d.querySelectorAll("img,table,hr").forEach(n => n.remove());
+    d.querySelectorAll("h1,h2,h3,blockquote,pre").forEach(n => { const p = document.createElement("p"); p.innerHTML = n.innerHTML; n.replaceWith(p); });
+    return d.innerHTML;
+  };
+  const telas = new Map();
+  const tela = {
+    montar(palco, ref) {
+      if (!palco) return;
+      tela.desmontar(palco);
+      const st = { ref, palco, k: 1, edit: null, sel: [], acao: null, t: null };
+      const slideEl = () => palco.querySelector(".ss-slide");
+      const ajustar = () => {
+        const r = palco.getBoundingClientRect();
+        const k = Math.max(0.1, Math.min((r.width - 48) / 960, (r.height - 48) / 540));
+        st.k = k; palco.style.setProperty("--k", k);
+      };
+      st.ro = new ResizeObserver(ajustar); st.ro.observe(palco); ajustar();
+      const caixa = el => ({ x: parseFloat(el.style.left) || 0, y: parseFloat(el.style.top) || 0, w: parseFloat(el.style.width) || 0, h: parseFloat(el.style.height) || 0 });
+      const ponto = e => { const r = slideEl().getBoundingClientRect(); return { x: (e.clientX - r.left) / st.k, y: (e.clientY - r.top) / st.k }; };
+      const selecionados = () => [...palco.querySelectorAll(".ss-slide > .ss-el.sel[data-id]")];
+      const guias = (linhas) => {
+        const sl = slideEl(); if (!sl) return;
+        sl.querySelectorAll(".ss-guia").forEach(g => g.remove());
+        for (const [tipo, v] of linhas) {
+          const g = document.createElement("div"); g.className = "ss-guia " + tipo;
+          if (tipo === "v") g.style.left = v + "px"; else g.style.top = v + "px";
+          sl.appendChild(g);
+        }
+      };
+      // encaixe em bordas/centros do slide e dos outros elementos
+      const encaixar = (b, ignorar) => {
+        const tol = 6 / Math.max(st.k, .3);
+        const xs = [0, 480, 960], ys = [0, 270, 540];
+        for (const el of palco.querySelectorAll(".ss-slide > .ss-el[data-id]")) {
+          if (ignorar.includes(el)) continue;
+          const c = caixa(el); xs.push(c.x, c.x + c.w / 2, c.x + c.w); ys.push(c.y, c.y + c.h / 2, c.y + c.h);
+        }
+        let dx = 0, dy = 0, mx = tol + 1, my = tol + 1, lx = null, ly = null;
+        for (const [px, off] of [[b.x, 0], [b.x + b.w / 2, b.w / 2], [b.x + b.w, b.w]])
+          for (const x of xs) { const d = Math.abs(px - x); if (d < mx) { mx = d; dx = x - px; lx = x; } }
+        for (const [py] of [[b.y], [b.y + b.h / 2], [b.y + b.h]])
+          for (const y of ys) { const d = Math.abs(py - y); if (d < my) { my = d; dy = y - py; ly = y; } }
+        const linhas = [];
+        if (mx <= tol) linhas.push(["v", lx]); else dx = 0;
+        if (my <= tol) linhas.push(["h", ly]); else dy = 0;
+        return { dx, dy, linhas };
+      };
+      const fimEdicao = () => {
+        if (!st.edit) return;
+        const el = palco.querySelector(`.ss-el[data-id="${st.edit}"]`);
+        const id = st.edit; st.edit = null;
+        if (el) {
+          if (el.classList.contains("ss-tabela")) { ref.invokeMethodAsync("TabelaTexto", id, JSON.stringify(celulas(el))); ref.invokeMethodAsync("FimTexto", id, null); }
+          else { const inn = el.querySelector(".ss-in"); if (inn) { inn.contentEditable = "false"; ref.invokeMethodAsync("FimTexto", id, limparSlide(inn.innerHTML)); } else ref.invokeMethodAsync("FimTexto", id, null); }
+        } else ref.invokeMethodAsync("FimTexto", id, null);
+      };
+      st.fimEdicao = fimEdicao;
+      const celulas = el => [...el.querySelectorAll("tr")].map(tr => [...tr.querySelectorAll("td")].map(td => td.innerText.replace(/\n$/, "")));
+      st.down = e => {
+        if (e.button !== 0) return;
+        const alvo = e.target;
+        if (st.edit && alvo.closest(`.ss-el[data-id="${st.edit}"]`) && !alvo.closest(".ss-h")) return;   // clicando dentro do texto em edição
+        if (st.edit) fimEdicao();
+        const h = alvo.closest(".ss-h");
+        const el = alvo.closest(".ss-slide > .ss-el[data-id]");
+        if (!el) { if (alvo.closest(".ss-slide") || alvo === palco) { st.sel = []; ref.invokeMethodAsync("Selecionar", null, false); } palco.focus({ preventScroll: true }); return; }
+        e.preventDefault();
+        palco.focus({ preventScroll: true });
+        const id = el.dataset.id;
+        if (e.shiftKey || e.ctrlKey) { ref.invokeMethodAsync("Selecionar", id, true); return; }
+        let lista = selecionados();
+        if (!el.classList.contains("sel")) { lista = [el]; el.classList.add("sel"); palco.querySelectorAll(".ss-slide > .ss-el.sel").forEach(x => { if (x !== el) x.classList.remove("sel"); }); ref.invokeMethodAsync("Selecionar", id, false); }
+        const p0 = ponto(e);
+        st.acao = { tipo: h ? "redim" : "mover", alca: h?.dataset.h, el, lista, inicio: lista.map(x => caixa(x)), p0, moveu: false, prop: e.shiftKey || el.classList.contains("ss-imagem") };
+      };
+      st.move = e => {
+        const a = st.acao; if (!a) return;
+        if (e.buttons === 0) { st.up(e); return; }
+        const p = ponto(e); let dx = p.x - a.p0.x, dy = p.y - a.p0.y;
+        if (!a.moveu && Math.abs(dx) < 2 && Math.abs(dy) < 2) return;
+        a.moveu = true;
+        if (a.tipo === "mover") {
+          const i0 = a.inicio[a.lista.indexOf(a.el)];
+          const enc = e.altKey ? { dx: 0, dy: 0, linhas: [] } : encaixar({ x: i0.x + dx, y: i0.y + dy, w: i0.w, h: i0.h }, a.lista);
+          dx += enc.dx; dy += enc.dy; guias(enc.linhas);
+          a.lista.forEach((x, i) => { x.style.left = (a.inicio[i].x + dx) + "px"; x.style.top = (a.inicio[i].y + dy) + "px"; });
+        } else {
+          const b = { ...a.inicio[0] }, al = a.alca;
+          let x1 = b.x, y1 = b.y, x2 = b.x + b.w, y2 = b.y + b.h;
+          if (al.includes("w")) x1 += dx; if (al.includes("e")) x2 += dx; if (al.includes("n")) y1 += dy; if (al.includes("s")) y2 += dy;
+          const linha = a.el.classList.contains("ss-forma") && a.el.querySelector("line");
+          if (!linha) {
+            if (x2 - x1 < 8) { if (al.includes("w")) x1 = x2 - 8; else x2 = x1 + 8; }
+            if (y2 - y1 < 8) { if (al.includes("n")) y1 = y2 - 8; else y2 = y1 + 8; }
+          }
+          const canto = al.length === 2;
+          if ((a.prop || e.shiftKey) && canto && b.w > 0 && b.h > 0) {
+            const r = b.w / b.h; const w = x2 - x1, hh = y2 - y1;
+            if (w / hh > r) { const nw = hh * r; if (al.includes("w")) x1 = x2 - nw; else x2 = x1 + nw; }
+            else { const nh = w / r; if (al.includes("n")) y1 = y2 - nh; else y2 = y1 + nh; }
+          }
+          Object.assign(a.el.style, { left: x1 + "px", top: y1 + "px", width: (x2 - x1) + "px", height: (y2 - y1) + "px" });
+          const svg = a.el.querySelector(":scope > svg.ss-geo"); if (svg) svg.style.visibility = "hidden";
+        }
+      };
+      st.up = () => {
+        const a = st.acao; st.acao = null; guias([]);
+        if (!a || !a.moveu) return;
+        if (a.tipo === "mover") ref.invokeMethodAsync("Mover", JSON.stringify(a.lista.map(x => ({ id: x.dataset.id, ...caixa(x) }))));
+        else { const c = caixa(a.el); ref.invokeMethodAsync("Geometria", a.el.dataset.id, c.x, c.y, c.w, c.h); }
+      };
+      st.dbl = e => {
+        const el = e.target.closest(".ss-slide > .ss-el[data-id]"); if (!el) return;
+        if (el.classList.contains("ss-imagem")) { ref.invokeMethodAsync("TrocarImagem", el.dataset.id); return; }
+        if (el.classList.contains("ss-texto") || el.classList.contains("ss-forma") || el.classList.contains("ss-tabela")) {
+          if (el.querySelector("line")) return;
+          st.clique = { x: e.clientX, y: e.clientY };
+          ref.invokeMethodAsync("EditarTexto", el.dataset.id);
+        }
+      };
+      st.input = e => {
+        if (!st.edit) return;
+        const el = palco.querySelector(`.ss-el[data-id="${st.edit}"]`); if (!el) return;
+        clearTimeout(st.t);
+        const id = st.edit;
+        st.t = setTimeout(() => {
+          if (el.classList.contains("ss-tabela")) ref.invokeMethodAsync("TabelaTexto", id, JSON.stringify(celulas(el)));
+          else { const inn = el.querySelector(".ss-in"); if (inn) ref.invokeMethodAsync("TextoMudou", id, limparSlide(inn.innerHTML)); }
+        }, 500);
+      };
+      st.paste = e => {
+        const cd = e.clipboardData; if (!cd) return;
+        const fs = [...cd.files].filter(f => f.type.startsWith("image/"));
+        const emTexto = st.edit && e.target.closest && e.target.closest(".ss-in, td");
+        if (fs.length && !emTexto && !/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName)) { e.preventDefault(); tela._imagens(fs, ref); return; }
+        if (emTexto) {
+          e.preventDefault();
+          const h = cd.getData("text/html");
+          if (h && e.target.closest(".ss-in")) document.execCommand("insertHTML", false, limparSlide(h));
+          else document.execCommand("insertText", false, cd.getData("text/plain"));
+        }
+      };
+      st.tecla = e => {
+        const ae = document.activeElement;
+        const emCampo = ae && (/^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName) || ae.isContentEditable);
+        const ctrl = e.ctrlKey || e.metaKey, k = e.key;
+        if (document.querySelector(".ss-show")) return;   // o modo apresentação cuida das teclas
+        if (st.edit) {
+          if (k === "Escape") { e.preventDefault(); const id = st.edit; fimEdicao(); ref.invokeMethodAsync("Selecionar", id, false); palco.focus({ preventScroll: true }); }
+          else if (k === "Tab" && ae && ae.closest(".ss-in")) { e.preventDefault(); const n = window.getSelection().anchorNode; const li = n && (n.nodeType === 1 ? n : n.parentElement)?.closest("li"); if (li) document.execCommand(e.shiftKey ? "outdent" : "indent"); }
+          else if (ctrl && k.toLowerCase() === "s") { e.preventDefault(); fimEdicao(); ref.invokeMethodAsync("Atalho", "salvar"); }
+          return;
+        }
+        if (k === "F5") { e.preventDefault(); ref.invokeMethodAsync("Atalho", e.shiftKey ? "apresentar-atual" : "apresentar"); return; }
+        if (ctrl && k.toLowerCase() === "s") { e.preventDefault(); ref.invokeMethodAsync("Atalho", "salvar"); return; }
+        if (emCampo) return;
+        const algum = palco.querySelector(".ss-slide > .ss-el.sel[data-id]");
+        if (ctrl && ["z", "y", "d", "c", "x", "v", "a"].includes(k.toLowerCase())) {
+          if (k.toLowerCase() === "v") return;   // o evento "paste" decide (imagem ou elementos copiados)
+          e.preventDefault(); ref.invokeMethodAsync("Atalho", "ctrl-" + k.toLowerCase()); return;
+        }
+        if ((k === "Delete" || k === "Backspace") && algum) { e.preventDefault(); ref.invokeMethodAsync("Atalho", "excluir"); return; }
+        if (k.startsWith("Arrow") && algum) {
+          e.preventDefault();
+          const p = e.shiftKey ? 10 : 1;
+          const dx = k === "ArrowLeft" ? -p : k === "ArrowRight" ? p : 0, dy = k === "ArrowUp" ? -p : k === "ArrowDown" ? p : 0;
+          const lista = selecionados(); lista.forEach(x => { const c = caixa(x); x.style.left = (c.x + dx) + "px"; x.style.top = (c.y + dy) + "px"; });
+          clearTimeout(st.tn); st.tn = setTimeout(() => ref.invokeMethodAsync("Mover", JSON.stringify(lista.map(x => ({ id: x.dataset.id, ...caixa(x) })))), 250);
+          return;
+        }
+        if (k === "Escape") { ref.invokeMethodAsync("Selecionar", null, false); return; }
+        if (k === "PageDown" || (k === "ArrowDown" && !algum)) { e.preventDefault(); ref.invokeMethodAsync("Atalho", "proximo"); return; }
+        if (k === "PageUp" || (k === "ArrowUp" && !algum)) { e.preventDefault(); ref.invokeMethodAsync("Atalho", "anterior"); return; }
+        if (k === "Enter" && algum && algum.matches(".ss-texto, .ss-forma")) { e.preventDefault(); ref.invokeMethodAsync("EditarTexto", algum.dataset.id); return; }
+      };
+      st.copiar = e => {
+        if (st.edit || /^(INPUT|TEXTAREA)$/.test(document.activeElement?.tagName) || document.activeElement?.isContentEditable) return;
+        if (!palco.querySelector(".ss-slide > .ss-el.sel[data-id]")) return;
+        e.preventDefault(); e.clipboardData.setData("text/plain", "qsmart-slides:" + Date.now());
+        ref.invokeMethodAsync("Atalho", e.type === "cut" ? "recortar" : "copiar");
+      };
+      st.colarDoc = e => {
+        if (st.edit || /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName) || document.activeElement?.isContentEditable) return;
+        const cd = e.clipboardData; if (!cd) return;
+        const fs = [...cd.files].filter(f => f.type.startsWith("image/"));
+        if (fs.length) { e.preventDefault(); tela._imagens(fs, ref); return; }
+        const txt = cd.getData("text/plain") || "";
+        if (txt.startsWith("qsmart-slides:")) { e.preventDefault(); ref.invokeMethodAsync("Atalho", "colar"); return; }
+        if (txt.trim()) { e.preventDefault(); ref.invokeMethodAsync("ColarTexto", txt); }
+      };
+      st.fora = e => {
+        if (!st.edit) return;
+        if (palco.contains(e.target) || e.target.closest(".ss-faixa, .ss-painel")) return;
+        fimEdicao();
+      };
+      palco.addEventListener("mousedown", st.down);
+      document.addEventListener("mousemove", st.move);
+      document.addEventListener("mouseup", st.up);
+      palco.addEventListener("dblclick", st.dbl);
+      palco.addEventListener("input", st.input);
+      palco.addEventListener("paste", st.paste);
+      document.addEventListener("keydown", st.tecla);
+      document.addEventListener("copy", st.copiar); document.addEventListener("cut", st.copiar); document.addEventListener("paste", st.colarDoc);
+      document.addEventListener("mousedown", st.fora, true);
+      // a faixa de botões não tira o foco nem a seleção do texto
+      st.faixa = e => { if (e.target.tagName !== "SELECT" && e.target.tagName !== "INPUT" && e.target.closest(".ss-faixa [data-cmd], .ss-faixa .ss-cor, .ss-faixa button")) e.preventDefault(); };
+      document.addEventListener("mousedown", st.faixa);
+      st.faixaClique = e => { const b = e.target.closest(".ss-faixa [data-cmd]"); if (!b || b.tagName === "SELECT") return; e.preventDefault(); tela.cmd(b.dataset.cmd, b.dataset.val); };
+      st.faixaMuda = e => { const s = e.target.closest(".ss-faixa select[data-cmd]"); if (!s) return; tela.cmd(s.dataset.cmd, s.value); };
+      document.addEventListener("click", st.faixaClique); document.addEventListener("change", st.faixaMuda);
+      st.selmuda = () => tela._estado();
+      document.addEventListener("selectionchange", st.selmuda);
+      telas.set(palco, st);
+      palco.focus({ preventScroll: true });
+    },
+    desmontar(palco) {
+      const st = telas.get(palco); if (!st) return;
+      st.ro.disconnect();
+      palco.removeEventListener("mousedown", st.down); palco.removeEventListener("dblclick", st.dbl); palco.removeEventListener("input", st.input); palco.removeEventListener("paste", st.paste);
+      document.removeEventListener("mousemove", st.move); document.removeEventListener("mouseup", st.up); document.removeEventListener("keydown", st.tecla);
+      document.removeEventListener("copy", st.copiar); document.removeEventListener("cut", st.copiar); document.removeEventListener("paste", st.colarDoc);
+      document.removeEventListener("mousedown", st.fora, true); document.removeEventListener("mousedown", st.faixa);
+      document.removeEventListener("click", st.faixaClique); document.removeEventListener("change", st.faixaMuda);
+      document.removeEventListener("selectionchange", st.selmuda);
+      telas.delete(palco);
+    },
+    _st() { return [...telas.values()][0]; },
+    // começa a editar o texto (chamado depois que o Blazor marcou o elemento como "edit")
+    editar(id, tudo) {
+      const st = tela._st(); if (!st) return;
+      st.edit = id;
+      const el = st.palco.querySelector(`.ss-el[data-id="${id}"]`); if (!el) return;
+      if (el.classList.contains("ss-tabela")) { const td = el.querySelector("td"); td && td.focus(); return; }
+      const inn = el.querySelector(".ss-in"); if (!inn) return;
+      inn.contentEditable = "true";
+      try { document.execCommand("styleWithCSS", false, true); } catch { }
+      if (!inn.innerHTML.trim()) inn.innerHTML = el.querySelector(".ss-p-corpo") ? "<ul><li><br></li></ul>" : "<p><br></p>";
+      // parágrafos vazios precisam de um <br> para o cursor entrar neles (e manter o alinhamento do modelo)
+      inn.querySelectorAll("p, li, div").forEach(b => { if (!b.textContent && !b.querySelector("br") && !b.querySelector("p, li, div, ul, ol")) b.appendChild(document.createElement("br")); });
+      inn.focus({ preventScroll: true });
+      const s = window.getSelection(); s.removeAllRanges();
+      let r = null;
+      if (!tudo && st.clique && document.caretRangeFromPoint) { r = document.caretRangeFromPoint(st.clique.x, st.clique.y); if (r && !inn.contains(r.startContainer)) r = null; }
+      st.clique = null;
+      if (!r) {
+        r = document.createRange();
+        const blocos = inn.querySelectorAll("p, li, div");
+        const ult = blocos.length ? blocos[blocos.length - 1] : null;
+        if (tudo) r.selectNodeContents(inn);
+        else if (ult) { r.selectNodeContents(ult); if (ult.lastChild && ult.lastChild.nodeName === "BR") r.setEndBefore(ult.lastChild); r.collapse(false); }
+        else { r.selectNodeContents(inn); r.collapse(false); }
+      }
+      s.addRange(r);
+    },
+    // comando da faixa (negrito, cor, tamanho…): no texto em edição ou em todos os textos selecionados
+    cmd(nome, valor) {
+      const st = tela._st(); if (!st) return;
+      const aplicar = (raiz) => {
+        const envolver = estilo => {
+          document.execCommand("styleWithCSS", false, false);
+          document.execCommand("fontSize", false, "7");
+          const novos = [];
+          for (const f of raiz.querySelectorAll('font[size="7"]')) { const sp = document.createElement("span"); sp.setAttribute("style", estilo); while (f.firstChild) sp.appendChild(f.firstChild); f.replaceWith(sp); novos.push(sp); }
+          // o tamanho novo vale também para os trechos de dentro
+          for (const sp of novos) sp.querySelectorAll("span").forEach(x => { if (estilo.startsWith("font-size")) x.style.fontSize = ""; });
+          if (novos.length) { const r = document.createRange(); r.setStartBefore(novos[0]); r.setEndAfter(novos[novos.length - 1]); const s = window.getSelection(); s.removeAllRanges(); s.addRange(r); }
+          document.execCommand("styleWithCSS", false, true);
+        };
+        const tamAtual = () => { const n = window.getSelection().anchorNode; const e = n && (n.nodeType === 1 ? n : n.parentElement); return e ? parseFloat(getComputedStyle(e).fontSize) : 24; };
+        switch (nome) {
+          case "tamanho": if (valor) envolver(`font-size:${valor}px`); break;
+          case "maior": case "menor": { const t = tamAtual(); const passos = [8,10,12,14,16,18,20,24,28,32,36,40,44,48,54,60,66,72,80,88,96]; let n = nome === "maior" ? passos.find(p => p > t + .5) : [...passos].reverse().find(p => p < t - .5); if (n) envolver(`font-size:${n}px`); break; }
+          case "fonte": if (valor) { document.execCommand("styleWithCSS", false, true); document.execCommand("fontName", false, valor); } break;
+          case "foreColor": document.execCommand("styleWithCSS", false, true); document.execCommand("foreColor", false, valor || "inherit"); break;
+          default: document.execCommand(nome, false, valor ?? null);
+        }
+      };
+      if (st.edit) {
+        const el = st.palco.querySelector(`.ss-el[data-id="${st.edit}"] .ss-in`); if (!el) return;
+        el.focus({ preventScroll: true });
+        aplicar(el);
+        st.input();
+        tela._estado();
+        return;
+      }
+      const alvos = [...st.palco.querySelectorAll(".ss-slide > .ss-el.sel[data-id] .ss-in")];
+      if (!alvos.length) return;
+      const res = [];
+      for (const inn of alvos) {
+        const vazio = !inn.textContent.trim();
+        if (vazio) inn.innerHTML = inn.closest(".ss-el").querySelector(".ss-p-corpo") ? "<ul><li>​</li></ul>" : "<p>​</p>";
+        inn.contentEditable = "true"; inn.focus({ preventScroll: true });
+        const r = document.createRange(); r.selectNodeContents(inn); const s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
+        aplicar(inn);
+        inn.contentEditable = "false";
+        res.push({ id: inn.closest(".ss-el").dataset.id, html: limparSlide(inn.innerHTML).replace(/​/g, "") });
+      }
+      window.getSelection().removeAllRanges();
+      st.palco.focus({ preventScroll: true });
+      st.ref.invokeMethodAsync("TextosMudaram", JSON.stringify(res));
+    },
+    _estado() {
+      const st = tela._st(); if (!st) return;
+      const barra = document.querySelector(".ss-faixa"); if (!barra) return;
+      let alvo = null;
+      if (st.edit) { const n = window.getSelection().anchorNode; alvo = n && (n.nodeType === 1 ? n : n.parentElement); if (alvo && !alvo.closest(".ss-in")) alvo = null; }
+      else { const inn = st.palco.querySelector(".ss-slide > .ss-el.sel[data-id] .ss-in"); alvo = inn && (inn.querySelector("li, p, span, b, i") || inn); }
+      for (const c of ["bold", "italic", "underline", "strikeThrough", "insertUnorderedList", "insertOrderedList", "justifyLeft", "justifyCenter", "justifyRight"]) {
+        const b = barra.querySelector(`[data-cmd="${c}"]`); if (!b) continue;
+        let on = false;
+        if (st.edit) { try { on = document.queryCommandState(c); } catch { } }
+        else if (alvo) {
+          const cs = getComputedStyle(alvo);
+          on = c === "bold" ? parseInt(cs.fontWeight) >= 600 : c === "italic" ? cs.fontStyle === "italic" : c === "underline" ? cs.textDecorationLine.includes("underline")
+            : c === "insertUnorderedList" ? !!alvo.closest("ul") : c === "insertOrderedList" ? !!alvo.closest("ol")
+            : c === "justifyCenter" ? cs.textAlign === "center" : c === "justifyRight" ? cs.textAlign === "right" : false;
+        }
+        b.classList.toggle("on", on);
+      }
+      if (alvo) {
+        const cs = getComputedStyle(alvo);
+        const fs = barra.querySelector('select[data-cmd="tamanho"]'); if (fs && document.activeElement !== fs) { const px = Math.round(parseFloat(cs.fontSize)); fs.value = [...fs.options].some(o => o.value == px) ? px : ""; if (fs.value === "" && fs.options[0]) fs.options[0].text = px ? String(px) : "Tam."; }
+        const ff = barra.querySelector('select[data-cmd="fonte"]'); if (ff && document.activeElement !== ff) { const f = cs.fontFamily.split(",")[0].replace(/["']/g, "").trim(); ff.value = [...ff.options].some(o => o.value === f) ? f : ""; }
+      }
+    },
+    fimEdicao() { const st = tela._st(); if (st) st.fimEdicao(); },
+    focar() { const st = tela._st(); if (st) st.palco.focus({ preventScroll: true }); },
+    async _imagens(fs, ref) {
+      for (const f of fs) ref.invokeMethodAsync("ImagemColada", await tela._dataUrl(f));
+    },
+    async _dataUrl(blob) {
+      // PNG/GIF pequenos ficam como estão (mantém transparência); o resto vira JPEG de até 1600 px
+      if (/png|gif|webp/.test(blob.type) && blob.size < 1500000) return await new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.readAsDataURL(blob); });
+      const bmp = await createImageBitmap(blob);
+      const k = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
+      const c = document.createElement("canvas"); c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
+      const g = c.getContext("2d");
+      if (/png|gif|webp/.test(blob.type)) { c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height); return c.toDataURL("image/png"); }
+      g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height); g.drawImage(bmp, 0, 0, c.width, c.height);
+      return c.toDataURL("image/jpeg", 0.86);
+    },
+    imagemDeBytes(bytes, tipo) { return tela._dataUrl(new Blob([bytes], { type: tipo || "image/png" })); },
+    tamanhoImagem(src) { return new Promise(ok => { const i = new Image(); i.onload = () => ok([i.naturalWidth, i.naturalHeight]); i.onerror = () => ok([0, 0]); i.src = src; }); },
+    // escala de um contêiner (--k) para o slide de 960 × 540 caber
+    escalar(el, margem) {
+      if (!el) return;
+      const f = () => { const r = el.getBoundingClientRect(); el.style.setProperty("--k", Math.max(0.05, Math.min((r.width - (margem || 0)) / 960, (r.height - (margem || 0)) / 540))); };
+      if (el._ro) el._ro.disconnect();
+      el._ro = new ResizeObserver(f); el._ro.observe(el); f();
+    },
+    // ---- modo apresentação
+    show(el, ref) {
+      if (!el) return;
+      tela.escalar(el.querySelector(".ss-show-tela") || el, 0);
+      el.querySelectorAll("[data-escala]").forEach(x => tela.escalar(x, 0));
+      const tecla = e => {
+        const k = e.key;
+        if (["ArrowRight", "ArrowDown", "PageDown", " ", "Enter", "n", "N"].includes(k)) { e.preventDefault(); ref.invokeMethodAsync("ShowTecla", "avancar"); }
+        else if (["ArrowLeft", "ArrowUp", "PageUp", "Backspace", "p", "P"].includes(k)) { e.preventDefault(); ref.invokeMethodAsync("ShowTecla", "voltar"); }
+        else if (k === "Escape") { e.preventDefault(); ref.invokeMethodAsync("ShowTecla", "sair"); }
+        else if (k === "Home") { e.preventDefault(); ref.invokeMethodAsync("ShowTecla", "inicio"); }
+        else if (k === "End") { e.preventDefault(); ref.invokeMethodAsync("ShowTecla", "fim"); }
+        else if (k === "b" || k === "B" || k === ".") { e.preventDefault(); ref.invokeMethodAsync("ShowTecla", "preto"); }
+        else if (k === "w" || k === "W" || k === ",") { e.preventDefault(); ref.invokeMethodAsync("ShowTecla", "branco"); }
+        else if (k === "a" || k === "A") { e.preventDefault(); ref.invokeMethodAsync("ShowTecla", "apresentador"); }
+      };
+      const clique = e => { if (e.target.closest("button, a, textarea, input, .ss-show-barra, .ss-ap-lado")) return; if (e.button === 0) ref.invokeMethodAsync("ShowTecla", "avancar"); };
+      const ctx = e => { e.preventDefault(); ref.invokeMethodAsync("ShowTecla", "voltar"); };
+      let tx = null;
+      const ts = e => { tx = e.touches[0].clientX; };
+      const te = e => { if (tx == null) return; const d = e.changedTouches[0].clientX - tx; tx = null; if (Math.abs(d) > 50) ref.invokeMethodAsync("ShowTecla", d < 0 ? "avancar" : "voltar"); };
+      const fsMuda = () => { if (!document.fullscreenElement && el._cheia) { el._cheia = false; ref.invokeMethodAsync("ShowTecla", "saiu-tela-cheia"); } };
+      let tm = null; const mexeu = () => { el.classList.add("mouse"); clearTimeout(tm); tm = setTimeout(() => el.classList.remove("mouse"), 2200); };
+      document.addEventListener("keydown", tecla); el.addEventListener("mousedown", clique); el.addEventListener("contextmenu", ctx);
+      el.addEventListener("touchstart", ts, { passive: true }); el.addEventListener("touchend", te);
+      document.addEventListener("fullscreenchange", fsMuda); el.addEventListener("mousemove", mexeu);
+      el._fim = () => { document.removeEventListener("keydown", tecla); el.removeEventListener("mousedown", clique); el.removeEventListener("contextmenu", ctx); el.removeEventListener("touchstart", ts); el.removeEventListener("touchend", te); document.removeEventListener("fullscreenchange", fsMuda); el.removeEventListener("mousemove", mexeu); };
+      el.focus({ preventScroll: true });
+    },
+    async telaCheia(el, ligar) {
+      try {
+        if (ligar && el && !document.fullscreenElement) { await el.requestFullscreen({ navigationUI: "hide" }); el._cheia = true; }
+        else if (!ligar && document.fullscreenElement) { if (el) el._cheia = false; await document.exitFullscreen(); }
+      } catch { }
+    },
+    fimShow(el) { if (el && el._fim) { el._fim(); el._fim = null; } if (document.fullscreenElement) document.exitFullscreen().catch(() => { }); },
+    // ---- janela da plateia (segunda tela): o apresentador manda o estado por BroadcastChannel
+    _canal: null,
+    canal() { if (!tela._canal && "BroadcastChannel" in window) tela._canal = new BroadcastChannel("qsmart-smart-screen"); return tela._canal; },
+    plateiaAbrir(json) {
+      try { localStorage.setItem("qsmart_ss_plateia", json); } catch { return false; }
+      const u = new URL(document.baseURI); u.searchParams.set("plateia", "1");
+      const w = window.open(u.href, "qsmart-plateia", "popup,width=1280,height=760");
+      return !!w;
+    },
+    plateiaEnviar(estado) { try { localStorage.setItem("qsmart_ss_plateia_estado", JSON.stringify(estado)); } catch { } const c = tela.canal(); if (c) c.postMessage(estado); },
+    plateiaEstado() { try { return localStorage.getItem("qsmart_ss_plateia_estado") || ""; } catch { return ""; } },
+    escalarTodos(el) { if (el) el.querySelectorAll("[data-escala]").forEach(x => tela.escalar(x, 0)); },
+    plateiaOuvir(ref) {
+      const c = tela.canal(); if (!c) return;
+      c.onmessage = ev => ref.invokeMethodAsync("Estado", JSON.stringify(ev.data));
+      c.postMessage({ tipo: "oi" });
+    },
+    plateiaDados() { try { return localStorage.getItem("qsmart_ss_plateia") || ""; } catch { return ""; } },
+    imprimir() {
+      document.body.classList.add("ss-imprimindo");
+      const fim = () => { document.body.classList.remove("ss-imprimindo"); window.removeEventListener("afterprint", fim); };
+      window.addEventListener("afterprint", fim);
+      setTimeout(() => window.print(), 300);
+    },
+  };
   const clicar = el => { if (el) el.click(); };
   nota.ver = (el, html) => { if (el) { el.contentEditable = "false"; el.innerHTML = limpar(html) || ""; } };
   const trocarUrl = (u, titulo) => { try { history.replaceState(history.state, "", u); } catch { } if (titulo) document.title = titulo; };
-  window.qsmart = { kv, cofre, rolar, ia, get, getH, req, reduzirImagem, imagem, nota, doc, grade, lsGet, lsSet, lsDel, colarImagens, clicar, trocarUrl, pasta, baixar, abrir, copiar, abrirUrl, pdfPaginas, pdfJuntar, pdfLinhas, tema, aoOcultar, focar, rolarLinha, pronto };
+  window.qsmart = { kv, cofre, rolar, ia, get, getH, req, reduzirImagem, imagem, nota, doc, grade, tela, lsGet, lsSet, lsDel, colarImagens, clicar, trocarUrl, pasta, baixar, abrir, copiar, abrirUrl, pdfPaginas, pdfJuntar, pdfLinhas, tema, aoOcultar, focar, rolarLinha, pronto };
 })();

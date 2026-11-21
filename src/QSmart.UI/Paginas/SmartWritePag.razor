@@ -173,13 +173,14 @@
 
     async Task Abrir(InputFileChangeEventArgs e)
     {
-        _chaveArq++;
         var f = e.File;
+        using var ms = new MemoryStream();
+        try { await f.OpenReadStream(40_000_000).CopyToAsync(ms); }
+        catch (Exception ex) { _chaveArq++; await J.Erro("Abrir", "Não consegui ler esse arquivo: " + ex.Message); return; }
+        _chaveArq++;   // só depois de ler: trocar o InputFile antes apaga o arquivo escolhido no navegador
         if (!await PodeTrocar()) return;
         try
         {
-            using var ms = new MemoryStream();
-            await f.OpenReadStream(40_000_000).CopyToAsync(ms);
             var bytes = ms.ToArray();
             string html;
             if (f.Name.EndsWith(".txt", StringComparison.OrdinalIgnoreCase))

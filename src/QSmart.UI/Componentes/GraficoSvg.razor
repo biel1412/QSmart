@@ -119,7 +119,10 @@ else
     [Parameter] public XlsxPasta.DadosGrafico? D { get; set; }
     [Parameter] public string Tipo { get; set; } = "colunas";
     const int W = 460, H = 260;
-    static readonly string[] Cores = { "#2563EB", "#10B981", "#F59E0B", "#EF4444", "#8B5CF6", "#EC4899", "#14B8A6", "#F97316" };
+    /// <summary>Cores das séries (o Smart Screen usa as do tema).</summary>
+    [Parameter] public string[]? Paleta { get; set; }
+    string[] Cores => Paleta ?? Padrao;
+    static readonly string[] Padrao = { "#2563EB", "#10B981", "#F59E0B", "#EF4444", "#8B5CF6", "#EC4899", "#14B8A6", "#F97316" };
 
     static string N(double v) => v.ToString("0.##", CultureInfo.InvariantCulture);
     static string Fmt(double v) => Math.Abs(v) >= 1000 ? FormatoPt.Num(v, 0, true) : FormatoPt.Geral(Math.Round(v, 2));

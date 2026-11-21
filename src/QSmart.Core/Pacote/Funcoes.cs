@@ -296,7 +296,7 @@ static class Funcoes
                 {
                     var dt = DateTime.FromOADate(d);
                     var net = fm.Replace("aaaa", "yyyy").Replace("AAAA", "yyyy").Replace("aa", "yy").Replace("mmmm", "MMMM").Replace("mmm", "MMM").Replace("mm", "MM").Replace("dddd", "dddd");
-                    return dt.ToString(net, CultureInfo.GetCultureInfo("pt-BR"));
+                    return dt.ToString(net, FormatoPt.Pt);
                 }
                 int casas = fm.Contains(',') ? fm.Length - fm.LastIndexOf(',') - 1 : 0;
                 casas = Math.Max(0, Math.Min(10, Regex.Replace(casas > 0 ? fm[(fm.LastIndexOf(',') + 1)..] : "", "[^0#]", "").Length));

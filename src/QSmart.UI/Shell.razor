@@ -7,6 +7,10 @@
 {
     <CadernoPublico Token="@_cadernoPublico" />
 }
+else if (_plateia)
+{
+    <SmartScreenPlateia />
+}
 else if (E.Iniciado && !E.Conta.Logado)
 {
     <Acesso />
@@ -142,10 +146,13 @@ else
     bool _menuMovel;
     // link compartilhado do Smart Note (?caderno=...): abre só a leitura, sem login
     string? _cadernoPublico;
+    // janela da plateia do Smart Screen (?plateia=1): mostra só os slides que o apresentador manda
+    bool _plateia;
     protected override void OnParametersSet()
     {
         var q = new Uri(Rotas.Uri).Query.TrimStart('?').Split('&').Select(x => x.Split('=', 2)).FirstOrDefault(x => x.Length == 2 && x[0] == "caderno");
         _cadernoPublico = q != null && q[1].Length >= 20 ? Uri.UnescapeDataString(q[1]) : null;
+        _plateia = new Uri(Rotas.Uri).Query.Contains("plateia=1");
     }
     DotNetObjectReference<Estado>? _ref;
 

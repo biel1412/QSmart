@@ -1,0 +1,80 @@
+@* Janela da plateia do Smart Screen: só o slide, comandado pela janela do apresentador. *@
+@using System.Text.Json.Nodes
+@using Microsoft.JSInterop
+@using QSmart.Core.Pacote
+@inject Estado E
+@implements IDisposable
+
+<div class="ss-show ss-plateia @_tela" tabindex="0" @ref="_el" @ondblclick="TelaCheia">
+    @if (_ap == null)
+    {
+        <div class="ss-show-fim">Abra o modo apresentador no Smart Screen e clique em “Janela da plateia”.</div>
+    }
+    else if (_fim)
+    {
+        <div class="ss-show-fim">@(_encerrou ? "A apresentação terminou. Pode fechar esta janela." : "Fim da apresentação.")</div>
+    }
+    else if (_slide < _vis.Count)
+    {
+        <div class="ss-show-tela" data-escala>
+            <div class="ss-escala ss-escala-show"><SlideVista Ap="@_ap" S="@_vis[_slide]" Passo="@_passo" Animar="@_animar" Classe="@_trans" @key="@($"{_vis[_slide].Id}-{_entradas}")" /></div>
+        </div>
+    }
+    @if (!_cheia) { <button class="ss-plateia-dica" @onclick="TelaCheia"><Icone Nome="tela-cheia" Tamanho="16" /> Clique aqui (ou duas vezes no slide) para tela cheia</button> }
+</div>
+
+@code {
+    ElementReference _el;
+    Apresentacao? _ap;
+    List<Slide> _vis = new();
+    int _slide, _passo, _entradas;
+    bool _animar, _fim, _encerrou, _cheia;
+    string _tela = "", _trans = "";
+    DotNetObjectReference<SmartScreenPlateia>? _ref;
+
+    protected override async Task OnAfterRenderAsync(bool primeira)
+    {
+        if (primeira)
+        {
+            _ref = DotNetObjectReference.Create(this);
+            try
+            {
+                var json = await E.Nav.PlateiaDados();
+                if (json != "") { _ap = Apresentacao.DeJson(json); var v = _ap.Slides.Where(s => !s.Oculto).ToList(); _vis = v.Count > 0 ? v : _ap.Slides; }
+                var est = await E.Nav.PlateiaEstado();
+                if (est != "") Aplicar(est, false);
+            }
+            catch { }
+            await E.Nav.PlateiaOuvir(_ref);
+            StateHasChanged();
+        }
+        await E.Nav.TelaEscalarTodos(_el);
+    }
+
+    [JSInvokable]
+    public void Estado(string json)
+    {
+        Aplicar(json, true);
+        StateHasChanged();
+    }
+
+    void Aplicar(string json, bool animar)
+    {
+        var j = JsonNode.Parse(json);
+        var tipo = j?["tipo"]?.GetValue<string>();
+        if (tipo == "fim") { _fim = true; _encerrou = true; return; }
+        if (tipo != "estado") return;
+        int s = j!["slide"]!.GetValue<int>(), p = j["passo"]!.GetValue<int>();
+        _tela = j["fundo"]?.GetValue<string>() ?? "";
+        _encerrou = false;
+        if (p == -2) { _fim = true; return; }
+        _fim = false;
+        if (s != _slide) { var de = _slide; _slide = s; _entradas++; _animar = false; _trans = animar && s == de + 1 && s < _vis.Count && _vis[s].Transicao != "" ? "ss-tr-" + _vis[s].Transicao : ""; }
+        else { _animar = animar && p > _passo; }
+        _passo = p;
+    }
+
+    async Task TelaCheia() { await E.Nav.TelaCheia(_el, true); _cheia = true; }
+
+    public void Dispose() => _ref?.Dispose();
+}

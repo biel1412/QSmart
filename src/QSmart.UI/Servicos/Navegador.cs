@@ -87,6 +87,29 @@ public sealed class Navegador
     public ValueTask<byte[]> PdfJuntar(List<byte[]> lista) => _js.InvokeAsync<byte[]>("qsmart.pdfJuntar", lista);
     public ValueTask<string[]> PdfLinhas(byte[] bytes) => _js.InvokeAsync<string[]>("qsmart.pdfLinhas", bytes);
 
+    // Smart Screen
+    public const string MimePptx = "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+    public ValueTask TelaMontar(Microsoft.AspNetCore.Components.ElementReference palco, object refNet) => _js.InvokeVoidAsync("qsmart.tela.montar", palco, refNet);
+    public ValueTask TelaDesmontar(Microsoft.AspNetCore.Components.ElementReference palco) => _js.InvokeVoidAsync("qsmart.tela.desmontar", palco);
+    public ValueTask TelaEditar(string id, bool tudo) => _js.InvokeVoidAsync("qsmart.tela.editar", id, tudo);
+    public ValueTask TelaFimEdicao() => _js.InvokeVoidAsync("qsmart.tela.fimEdicao");
+    public ValueTask TelaFocar() => _js.InvokeVoidAsync("qsmart.tela.focar");
+    public ValueTask TelaEstado() => _js.InvokeVoidAsync("qsmart.tela._estado");
+    public ValueTask<string> TelaImagem(byte[] bytes, string tipo) => _js.InvokeAsync<string>("qsmart.tela.imagemDeBytes", bytes, tipo);
+    public ValueTask<int[]> TelaTamanhoImagem(string src) => _js.InvokeAsync<int[]>("qsmart.tela.tamanhoImagem", src);
+    public ValueTask TelaEscalar(Microsoft.AspNetCore.Components.ElementReference el, double margem) => _js.InvokeVoidAsync("qsmart.tela.escalar", el, margem);
+    public ValueTask TelaShow(Microsoft.AspNetCore.Components.ElementReference el, object refNet) => _js.InvokeVoidAsync("qsmart.tela.show", el, refNet);
+    public ValueTask TelaCheia(Microsoft.AspNetCore.Components.ElementReference el, bool ligar) => _js.InvokeVoidAsync("qsmart.tela.telaCheia", el, ligar);
+    public ValueTask TelaFimShow(Microsoft.AspNetCore.Components.ElementReference el) => _js.InvokeVoidAsync("qsmart.tela.fimShow", el);
+    public ValueTask<bool> PlateiaAbrir(string json) => _js.InvokeAsync<bool>("qsmart.tela.plateiaAbrir", json);
+    public ValueTask PlateiaEnviar(int slide, int passo, string fundo, long versao) => _js.InvokeVoidAsync("qsmart.tela.plateiaEnviar", new Dictionary<string, object> { ["tipo"] = "estado", ["slide"] = slide, ["passo"] = passo, ["fundo"] = fundo, ["versao"] = versao });
+    public ValueTask PlateiaFim() => _js.InvokeVoidAsync("qsmart.tela.plateiaEnviar", new Dictionary<string, object> { ["tipo"] = "fim" });
+    public ValueTask PlateiaOuvir(object refNet) => _js.InvokeVoidAsync("qsmart.tela.plateiaOuvir", refNet);
+    public ValueTask<string> PlateiaEstado() => _js.InvokeAsync<string>("qsmart.tela.plateiaEstado");
+    public ValueTask TelaEscalarTodos(Microsoft.AspNetCore.Components.ElementReference el) => _js.InvokeVoidAsync("qsmart.tela.escalarTodos", el);
+    public ValueTask<string> PlateiaDados() => _js.InvokeAsync<string>("qsmart.tela.plateiaDados");
+    public ValueTask TelaImprimir() => _js.InvokeVoidAsync("qsmart.tela.imprimir");
+
     public const string MimeXlsx = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
     public const string MimePdf = "application/pdf";
     public const string MimeCsv = "text/csv";

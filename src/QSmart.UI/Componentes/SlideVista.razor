@@ -1,0 +1,159 @@
+@* Um slide do Smart Screen (960 × 540). Usado no editor, nas miniaturas, no modo apresentação e na impressão. *@
+@using System.Globalization
+@using QSmart.Core.Pacote
+
+@{
+    var t = Ap.T;
+    var (f1, f2) = t.FundoDe(S);
+    var fundo = f2 != "" ? $"background:linear-gradient(135deg,{f1},{f2})" : $"background:{f1}";
+    var escuro = Apresentacao.Escura(f1);
+}
+<div class="ss-slide @(escuro ? "escuro" : "") @Classe" style="@fundo;--ac:@t.Cores[0];--ft:@t.FonteTit;--fc:@t.FonteCorpo" data-slide="@S.Id">
+    @foreach (var (dec, _) in PptxPasta.Enfeites(t, S))
+    {
+        <div class="ss-el ss-enfeite" style="@Caixa(dec)">@Forma(dec, t)</div>
+    }
+    @foreach (var e in S.Elementos)
+    {
+        var oculto = Passo >= 0 && e.Anim != "" && e.Ordem > Passo;
+        var animando = Passo >= 0 && e.Anim != "" && e.Ordem == Passo && Animar;
+        var sel = Sel != null && Sel.Contains(e.Id);
+        var ed = Editando == e.Id;
+        <div class="ss-el ss-@e.Tipo @(sel ? "sel" : "") @(ed ? "edit" : "") @(animando ? "ss-anim-" + e.Anim : "")" @key="e.Id"
+             data-id="@(Editor ? e.Id : null)" style="@(Caixa(e) + (oculto ? OcultoCss : ""))">
+            @switch (e.Tipo)
+            {
+                case "imagem":
+                    if (e.Src != "") { <img src="@e.Src" alt="" draggable="false" /> }
+                    else if (Editor) { <div class="ss-img-vazia"><Icone Nome="imagem" Tamanho="34" /><span>Clique duas vezes para inserir uma imagem</span></div> }
+                    break;
+                case "tabela":
+                    <table class="ss-tab" @key="@(string.Join("\u0001", e.Celulas.Select(l => string.Join("\u0002", l))))" style="font-size:@N(e.Tam > 0 ? e.Tam : 18)px;font-family:@t.FonteCorpo">
+                        @for (int r = 0; r < e.Celulas.Count; r++)
+                        {
+                            var rr = r;
+                            <tr class="@(rr == 0 && e.CabDestaque ? "cab" : rr % 2 == 0 ? "par" : "")">
+                                @for (int c = 0; c < e.Celulas[r].Count; c++)
+                                {
+                                    <td data-r="@rr" data-c="@c" contenteditable="@(ed ? "true" : null)">@e.Celulas[r][c]</td>
+                                }
+                            </tr>
+                        }
+                    </table>
+                    break;
+                case "grafico":
+                    <div class="ss-graf" style="--gt:@(escuro ? "#E5E7EB" : "#374151")">
+                        @if (e.TituloGraf.Trim() != "") { <b style="font-family:@t.FonteCorpo">@e.TituloGraf</b> }
+                        <GraficoSvg D="@Apresentacao.Dados(e)" Tipo="@e.Graf" Paleta="@t.Cores" />
+                    </div>
+                    break;
+                case "forma":
+                    @Forma(e, t)
+                    if (e.Forma != "linha") { @Texto(e, t, ed) }
+                    break;
+                default:
+                    @Texto(e, t, ed)
+                    break;
+            }
+            @if (MostrarOrdem && e.Anim != "") { <span class="ss-ordem">@e.Ordem</span> }
+            @if (Editor && sel && Sel!.Count == 1 && !ed)
+            {
+                @foreach (var h in Alcas(e))
+                {
+                    <span class="ss-h ss-h-@h" data-h="@h"></span>
+                }
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public Apresentacao Ap { get; set; } = null!;
+    [Parameter, EditorRequired] public Slide S { get; set; } = null!;
+    [Parameter] public bool Editor { get; set; }
+    [Parameter] public ICollection<string>? Sel { get; set; }
+    [Parameter] public string? Editando { get; set; }
+    /// <summary>HTML mostrado enquanto o texto está sendo editado (o que se digita fica no navegador).</summary>
+    [Parameter] public string? Congelado { get; set; }
+    /// <summary>-1 = tudo visível; 0, 1, 2… = quantos cliques de animação já foram dados.</summary>
+    [Parameter] public int Passo { get; set; } = -1;
+    [Parameter] public bool Animar { get; set; }
+    [Parameter] public bool MostrarOrdem { get; set; }
+    [Parameter] public string Classe { get; set; } = "";
+
+    const string OcultoCss = "visibility:hidden;";
+    static string N(double v) => v.ToString("0.##", CultureInfo.InvariantCulture);
+
+    static string Caixa(Elemento e) =>
+        $"left:{N(e.X)}px;top:{N(e.Y)}px;width:{N(Math.Max(1, e.W))}px;height:{N(Math.Max(e.Tipo == "forma" && e.Forma == "linha" ? 0 : 1, e.H))}px;" +
+        (e.Rot != 0 ? $"transform:rotate({N(e.Rot)}deg);" : "");
+
+    static IEnumerable<string> Alcas(Elemento e) =>
+        e.Tipo == "forma" && e.Forma == "linha" ? new[] { "w", "e" } : new[] { "nw", "n", "ne", "e", "se", "s", "sw", "w" };
+
+    RenderFragment Texto(Elemento e, Tema t, bool ed) => __b =>
+    {
+        var tam = e.Tam > 0 ? e.Tam : Apresentacao.TamPadrao(e.Papel);
+        var cor = e.Tipo == "forma" && e.Cor == "" ? (e.Preench != "" && Apresentacao.Escura(e.Preench) ? "#FFFFFF" : "#111827") : t.TextoDe(S, e);
+        var html = ed && Congelado != null ? Congelado : e.Html;
+        var vazio = TextoRico.Vazio(e.Html);
+        var av = e.AlinhV switch { "m" => "center", "b" => "flex-end", _ => e.Tipo == "forma" ? "center" : "flex-start" };
+        __b.OpenElement(0, "div");
+        __b.AddAttribute(1, "class", $"ss-txt ss-p-{(e.Papel == "" ? "livre" : e.Papel)}{(e.Tipo == "forma" ? " ss-na-forma" : "")}");
+        __b.AddAttribute(2, "style", $"justify-content:{av};font-size:{N(tam)}px;color:{cor};font-family:{t.FonteDe(e)}");
+        if (Editor && vazio && !ed && e.Papel != "")
+        {
+            __b.OpenElement(3, "span"); __b.AddAttribute(4, "class", "ss-ajuda"); __b.AddContent(5, Apresentacao.Ajuda(S, e)); __b.CloseElement();
+        }
+        __b.OpenElement(6, "div");
+        // a chave muda quando o texto muda: o Blazor recria o bloco em vez de tentar emendar o que foi digitado no navegador
+        __b.SetKey(e.Id + ":" + html);
+        __b.AddAttribute(7, "class", "ss-in");
+        // espaço reservado vazio: não mostra o marcador da lista vazia por cima do texto de ajuda
+        __b.AddContent(8, new MarkupString(vazio && !ed ? "" : Limpo(html)));
+        __b.CloseElement();
+        __b.CloseElement();
+    };
+
+    RenderFragment Forma(Elemento e, Tema t) => __b =>
+    {
+        double w = Math.Max(1, e.W), h = Math.Max(0, e.H);
+        var fill = e.Preench != "" ? e.Preench : "none";
+        var stroke = e.BordaL > 0 || e.Forma == "linha" ? (e.Borda != "" ? e.Borda : e.Preench != "" ? e.Preench : t.Texto) : "none";
+        var sw = e.Forma == "linha" ? Math.Max(1, e.BordaL) : e.BordaL;
+        string forma = e.Forma switch
+        {
+            "elipse" => $"<ellipse cx='{N(w / 2)}' cy='{N(h / 2)}' rx='{N(Math.Max(0, w / 2 - sw / 2))}' ry='{N(Math.Max(0, h / 2 - sw / 2))}'/>",
+            "arred" => $"<rect x='{N(sw / 2)}' y='{N(sw / 2)}' width='{N(Math.Max(0, w - sw))}' height='{N(Math.Max(0, h - sw))}' rx='{N(Math.Min(w, h) * 0.1667)}'/>",
+            "triangulo" => $"<polygon points='{N(w / 2)},0 {N(w)},{N(h)} 0,{N(h)}'/>",
+            "losango" => $"<polygon points='{N(w / 2)},0 {N(w)},{N(h / 2)} {N(w / 2)},{N(h)} 0,{N(h / 2)}'/>",
+            "seta" => Seta(w, h),
+            "estrela" => Estrela(w, h),
+            "linha" => $"<line x1='0' y1='0' x2='{N(w)}' y2='{N(h)}' stroke-linecap='round'/>",
+            _ => $"<rect x='{N(sw / 2)}' y='{N(sw / 2)}' width='{N(Math.Max(0, w - sw))}' height='{N(Math.Max(0, h - sw))}'/>",
+        };
+        __b.AddMarkupContent(0, $"<svg class='ss-geo' width='{N(w)}' height='{N(Math.Max(1, h))}' viewBox='0 0 {N(w)} {N(Math.Max(1, h))}' preserveAspectRatio='none' fill='{fill}' stroke='{stroke}' stroke-width='{N(sw)}' overflow='visible'>{forma}</svg>");
+    };
+
+    static string Seta(double w, double h)
+    {
+        var hl = Math.Min(w, h) * 0.5;
+        return $"<polygon points='0,{N(h * .25)} {N(w - hl)},{N(h * .25)} {N(w - hl)},0 {N(w)},{N(h / 2)} {N(w - hl)},{N(h)} {N(w - hl)},{N(h * .75)} 0,{N(h * .75)}'/>";
+    }
+
+    static string Estrela(double w, double h)
+    {
+        var pts = new List<string>();
+        for (int i = 0; i < 10; i++)
+        {
+            var a = -Math.PI / 2 + i * Math.PI / 5;
+            var r = i % 2 == 0 ? 1 : 0.382;
+            pts.Add($"{N(w / 2 + w / 2 * r * Math.Cos(a))},{N(h / 2 + h / 2 * r * Math.Sin(a) * 1.05 + h * 0.03)}");
+        }
+        return $"<polygon points='{string.Join(" ", pts)}'/>";
+    }
+
+    // o HTML vem do editor (já limpo no navegador) ou de um .pptx (montado por nós); ainda assim tiro qualquer coisa perigosa
+    static readonly System.Text.RegularExpressions.Regex Perigo = new(@"<\s*/?\s*(script|style|iframe|object|embed|link|meta)[^>]*>|\son\w+\s*=\s*(""[^""]*""|'[^']*'|[^\s>]+)|javascript:", System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Compiled);
+    static string Limpo(string html) => Perigo.Replace(html ?? "", "");
+}
