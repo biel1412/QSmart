@@ -323,7 +323,7 @@
 
   // ---------- Smart Note: editor de texto rico ----------
   const PERMITIDAS = new Set(["P","DIV","BR","SPAN","B","STRONG","I","EM","U","S","STRIKE","H1","H2","H3","UL","OL","LI","A","IMG","TABLE","THEAD","TBODY","TR","TD","TH","BLOCKQUOTE","PRE","CODE","HR","FONT","MARK","SUB","SUP"]);
-  const ESTILOS = ["color","background-color","text-align","font-weight","font-style","text-decoration","text-decoration-line","width","margin-left"];
+  const ESTILOS = ["color","background-color","text-align","font-weight","font-style","text-decoration","text-decoration-line","width","margin-left","font-size","font-family","line-height"];
   const limpar = html => {
     const doc = new DOMParser().parseFromString("<div>" + (html || "") + "</div>", "text/html");
     const anda = el => {
@@ -339,8 +339,8 @@
           let ok = false;
           if (nm === "href") ok = /^(https?:|mailto:)/i.test(v.trim());
           else if (nm === "src") ok = /^data:image\/(png|jpe?g|gif|webp);/i.test(v) || /^https:/i.test(v);
-          else if (nm === "class") ok = /^(sn-check|feito)( feito)?$/.test(v);
-          else if (nm === "data-feito" || nm === "colspan" || nm === "rowspan" || nm === "color") ok = true;
+          else if (nm === "class") ok = /^(sn-check|feito|sw-quebra)( feito)?$/.test(v);
+          else if (nm === "data-feito" || nm === "colspan" || nm === "rowspan" || nm === "color" || nm === "face" || nm === "size") ok = true;
           else if (nm === "style") {
             const st = n.style, keep = [];
             for (const k of ESTILOS) { const val = st.getPropertyValue(k); if (val && !/url\(|expression/i.test(val)) keep.push(k + ":" + val); }
@@ -467,8 +467,343 @@
     };
     el.addEventListener("paste", el._colar);
   };
+
+  // ---------- Smart Write: editor de documentos (estilo Word) ----------
+  const DOC_RASCUNHO = "qsmart_sw_rascunho";
+  const docs = new Map();
+  const doc = {
+    montar(el, barra, arq, ref, html, nome) {
+      if (!el) return;
+      doc.desmontar(el);
+      el.innerHTML = limpar(html) || "<p><br></p>";
+      el.contentEditable = "true";
+      try { document.execCommand("styleWithCSS", false, true); } catch { }
+      const st = { ref, nome: nome || "Documento", t: null, tc: null, barra, arq };
+      const contar = () => {
+        clearTimeout(st.tc);
+        st.tc = setTimeout(() => {
+          const txt = el.innerText || "";
+          const palavras = (txt.match(/\S+/g) || []).length;
+          const paginas = Math.max(1, Math.ceil((el.scrollHeight - 40) / 1043) + el.querySelectorAll("hr.sw-quebra").length);
+          ref.invokeMethodAsync("Contagem", palavras, txt.replace(/\s/g, "").length, paginas);
+        }, 300);
+      };
+      const rascunho = () => {
+        clearTimeout(st.t);
+        st.t = setTimeout(() => {
+          try { localStorage.setItem(DOC_RASCUNHO, JSON.stringify({ nome: st.nome, html: el.innerHTML, em: new Date().toISOString() })); ref.invokeMethodAsync("Rascunho", true); }
+          catch { ref.invokeMethodAsync("Rascunho", false); }
+        }, 800);
+      };
+      const mudou = () => { contar(); rascunho(); if (!st.sujo) { st.sujo = true; ref.invokeMethodAsync("Sujo"); } };
+      const imgs = async files => {
+        for (const f of files) {
+          if (!f.type.startsWith("image/")) continue;
+          const url = await imagemDe(f, 1400, 0.85);
+          el.focus(); doc._restaurar(el);
+          document.execCommand("insertHTML", false, `<img src="${url}">`);
+        }
+        mudou();
+      };
+      st.input = mudou;
+      st.paste = e => {
+        const cd = e.clipboardData; if (!cd) return;
+        const fs = [...cd.files].filter(f => f.type.startsWith("image/"));
+        if (fs.length) { e.preventDefault(); imgs(fs); return; }
+        const h = cd.getData("text/html");
+        if (h) { e.preventDefault(); document.execCommand("insertHTML", false, limpar(h)); mudou(); }
+      };
+      st.drop = e => { const fs = [...(e.dataTransfer?.files || [])].filter(f => f.type.startsWith("image/")); if (fs.length) { e.preventDefault(); imgs(fs); } };
+      st.tecla = e => {
+        if (e.key === "Tab") { e.preventDefault(); const li = window.getSelection().anchorNode; const emLista = (li && (li.nodeType === 1 ? li : li.parentElement)?.closest("li"));
+          if (emLista) document.execCommand(e.shiftKey ? "outdent" : "indent"); else document.execCommand("insertText", false, "\t"); mudou(); }
+        if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); doc.cmd(el, "quebra"); }
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") { e.preventDefault(); ref.invokeMethodAsync("AtalhoSalvar"); }
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "p") { e.preventDefault(); doc.imprimir(); }
+      };
+      st.sel = () => { const s = window.getSelection(); if (s.rangeCount && el.contains(s.anchorNode)) { st.faixa = s.getRangeAt(0).cloneRange(); doc._estado(el); } };
+      st.mdown = e => { if (e.target.closest("select, input")) return; e.preventDefault(); };
+      st.bclick = e => {
+        const b = e.target.closest("[data-cmd]"); if (!b || !barra.contains(b) || b.tagName === "SELECT") return;
+        e.preventDefault();
+        if (b.dataset.cmd === "imagem") { arq && arq.click(); return; }
+        doc.cmd(el, b.dataset.cmd, b.dataset.val);
+      };
+      st.bchange = e => {
+        const sel = e.target.closest("select[data-cmd]"); if (!sel) return;
+        doc.cmd(el, sel.dataset.cmd, sel.value);
+        if (sel.dataset.volta !== undefined) sel.value = sel.dataset.volta;
+      };
+      st.arqmuda = () => { if (arq.files?.length) { const f = [...arq.files]; arq.value = ""; imgs(f); } };
+      st.mudou = mudou; st.contar = contar;
+      el.addEventListener("input", st.input); el.addEventListener("paste", st.paste); el.addEventListener("drop", st.drop); el.addEventListener("keydown", st.tecla);
+      document.addEventListener("selectionchange", st.sel);
+      if (barra) { barra.addEventListener("mousedown", st.mdown); barra.addEventListener("click", st.bclick); barra.addEventListener("change", st.bchange); }
+      if (arq) arq.addEventListener("change", st.arqmuda);
+      docs.set(el, st);
+      contar();
+      el.focus();
+    },
+    desmontar(el) {
+      const st = docs.get(el); if (!st) return;
+      clearTimeout(st.t); clearTimeout(st.tc);
+      el.removeEventListener("input", st.input); el.removeEventListener("paste", st.paste); el.removeEventListener("drop", st.drop); el.removeEventListener("keydown", st.tecla);
+      document.removeEventListener("selectionchange", st.sel);
+      if (st.barra) { st.barra.removeEventListener("mousedown", st.mdown); st.barra.removeEventListener("click", st.bclick); st.barra.removeEventListener("change", st.bchange); }
+      if (st.arq) st.arq.removeEventListener("change", st.arqmuda);
+      docs.delete(el);
+    },
+    nome(el, nome) { const st = docs.get(el); if (st) { st.nome = nome; st.mudou(); } },
+    limpo(el) { const st = docs.get(el); if (st) st.sujo = false; },
+    _restaurar(el) { const st = docs.get(el); const s = window.getSelection(); if (st?.faixa && (!s.rangeCount || !el.contains(s.anchorNode))) { s.removeAllRanges(); s.addRange(st.faixa); } },
+    _estado(el) {
+      const st = docs.get(el); if (!st || !st.barra) return;
+      for (const c of ["bold", "italic", "underline", "strikeThrough", "insertUnorderedList", "insertOrderedList", "justifyLeft", "justifyCenter", "justifyRight", "justifyFull"]) {
+        const b = st.barra.querySelector(`[data-cmd="${c}"]`); if (!b) continue;
+        let on = false; try { on = document.queryCommandState(c); } catch { }
+        b.classList.toggle("on", on);
+      }
+      const n = window.getSelection().anchorNode; const e = n && (n.nodeType === 1 ? n : n.parentElement);
+      if (e && el.contains(e)) {
+        const cs = getComputedStyle(e);
+        const fs = st.barra.querySelector('select[data-cmd="tamanho"]'); if (fs && document.activeElement !== fs) { const pt = Math.round(parseFloat(cs.fontSize) * 0.75); fs.value = [...fs.options].some(o => o.value == pt) ? pt : ""; }
+        const ff = st.barra.querySelector('select[data-cmd="fonte"]'); if (ff && document.activeElement !== ff) { const f = cs.fontFamily.split(",")[0].replace(/["']/g, "").trim(); ff.value = [...ff.options].some(o => o.value === f) ? f : ""; }
+        const bl = st.barra.querySelector('select[data-cmd="bloco"]'); if (bl && document.activeElement !== bl) { const b = e.closest("h1,h2,h3,blockquote,pre,p,li,div"); const t = b ? b.tagName.toLowerCase() : "p"; bl.value = ["h1","h2","h3","blockquote","pre"].includes(t) ? t : "p"; }
+      }
+    },
+    cmd(el, nome, valor) {
+      if (!el) return;
+      el.focus(); doc._restaurar(el);
+      const envolver = (estilo) => {
+        // aplica um estilo (font-size/font-family) na seleção usando o truque do fontSize 7
+        document.execCommand("styleWithCSS", false, false);
+        document.execCommand("fontSize", false, "7");
+        const novos = [];
+        for (const f of el.querySelectorAll('font[size="7"]')) { const sp = document.createElement("span"); sp.setAttribute("style", estilo); while (f.firstChild) sp.appendChild(f.firstChild); f.replaceWith(sp); novos.push(sp); }
+        if (novos.length) {   // mantém a seleção nos trechos alterados (para aplicar outro comando em seguida)
+          const r = document.createRange(); r.setStartBefore(novos[0]); r.setEndAfter(novos[novos.length - 1]);
+          const s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
+          const st = docs.get(el); if (st) st.faixa = r.cloneRange();
+        }
+        for (const sp of el.querySelectorAll('span[style*="font-size: xxx-large"], span[style*="font-size:xxx-large"]')) sp.style.fontSize = "";
+        document.execCommand("styleWithCSS", false, true);
+      };
+      switch (nome) {
+        case "bloco": document.execCommand("formatBlock", false, "<" + (valor || "p") + ">"); break;
+        case "fonte": if (valor) { document.execCommand("styleWithCSS", false, true); document.execCommand("fontName", false, valor); } break;
+        case "tamanho": if (valor) envolver(`font-size:${valor}pt`); break;
+        case "quebra": document.execCommand("insertHTML", false, '<hr class="sw-quebra"><p><br></p>'); break;
+        case "link": { const u = prompt("Endereço do link (https://…)", "https://"); if (u && /^(https?:\/\/|mailto:)/i.test(u)) document.execCommand("createLink", false, u); break; }
+        case "tabela": { const n = Math.max(1, Math.min(10, parseInt(valor || "3"))); const lin = "<tr>" + "<td><br></td>".repeat(n) + "</tr>"; document.execCommand("insertHTML", false, "<table><tbody>" + lin.repeat(3) + "</tbody></table><p><br></p>"); break; }
+        case "data": document.execCommand("insertText", false, new Date().toLocaleDateString("pt-BR")); break;
+        case "foreColor": case "hiliteColor": document.execCommand(nome, false, valor); break;
+        default: document.execCommand(nome, false, valor ?? null);
+      }
+      const st = docs.get(el); if (st) { st.mudou(); doc._estado(el); }
+    },
+    carregar(el, html, nome) { const st = docs.get(el); el.innerHTML = limpar(html) || "<p><br></p>"; if (st) { st.nome = nome; st.sujo = false; st.contar(); } el.closest(".sw-mesa")?.scrollTo(0, 0); },
+    html(el) { return el ? el.innerHTML : ""; },
+    rascunho() { try { return localStorage.getItem(DOC_RASCUNHO) || ""; } catch { return ""; } },
+    apagarRascunho() { try { localStorage.removeItem(DOC_RASCUNHO); } catch { } },
+    imprimir() { document.body.classList.add("sw-imprimindo"); setTimeout(() => { window.print(); setTimeout(() => document.body.classList.remove("sw-imprimindo"), 500); }, 50); },
+    // estrutura do documento para gravar o .docx
+    estrutura(el) {
+      if (!el) return "[]";
+      let listaId = 0;
+      const corDe = v => (!v || v === "transparent" || /rgba\(0, 0, 0, 0\)/.test(v)) ? "" : v;
+      const blocos = [];
+      const runsDe = (no, fmt, out) => {
+        for (const n of no.childNodes) {
+          if (n.nodeType === 3) { const x = n.nodeValue.replace(/ /g, " ").replace(/ /g, "\t"); if (x) out.push({ x, ...fmt }); continue; }
+          if (n.nodeType !== 1) continue;
+          const t = n.tagName;
+          if (t === "BR") { out.push({ br: true }); continue; }
+          if (t === "IMG") { out.push({ img: { d: n.src, w: n.width || n.naturalWidth, h: n.height || n.naturalHeight } }); continue; }
+          if (["UL", "OL", "TABLE", "P", "DIV", "H1", "H2", "H3", "BLOCKQUOTE", "PRE", "HR"].includes(t)) continue;
+          const f = { ...fmt }, cs = n.style;
+          if (t === "B" || t === "STRONG" || cs.fontWeight === "bold" || parseInt(cs.fontWeight) >= 600) f.b = true;
+          if (t === "I" || t === "EM" || cs.fontStyle === "italic") f.i = true;
+          if (t === "U" || /underline/.test(cs.textDecoration || cs.textDecorationLine)) f.u = true;
+          if (t === "S" || t === "STRIKE" || /line-through/.test(cs.textDecoration || cs.textDecorationLine)) f.s = true;
+          if (t === "SUP") f.v = "sup"; if (t === "SUB") f.v = "sub";
+          if (t === "A") f.a = n.getAttribute("href") || "";
+          if (t === "FONT") { if (n.color) f.c = n.color; if (n.face) f.fo = n.face; }
+          if (cs.color) f.c = cs.color;
+          if (corDe(cs.backgroundColor)) f.f = cs.backgroundColor;
+          if (cs.fontSize && /pt$/.test(cs.fontSize)) f.z = parseFloat(cs.fontSize); else if (cs.fontSize && /px$/.test(cs.fontSize)) f.z = Math.round(parseFloat(cs.fontSize) * 0.75);
+          if (cs.fontFamily) f.fo = cs.fontFamily;
+          runsDe(n, f, out);
+        }
+        return out;
+      };
+      const alin = n => { const a = (n.style && n.style.textAlign) || n.getAttribute?.("align") || ""; return ["center", "right", "justify"].includes(a) ? a : ""; };
+      const bloco = (n, destino, li) => {
+        if (n.nodeType === 3) { if (n.nodeValue.trim()) destino.push({ t: "p", r: [{ x: n.nodeValue }] }); return; }
+        if (n.nodeType !== 1) return;
+        const t = n.tagName;
+        if (t === "HR") { destino.push({ t: n.classList.contains("sw-quebra") ? "quebra" : "linha" }); return; }
+        if (t === "UL" || t === "OL") {
+          const id = li ? li.id : "l" + (++listaId); const nivel = li ? li.n + 1 : 0;
+          const check = n.classList.contains("sn-check");
+          for (const item of n.children) {
+            if (item.tagName !== "LI") { bloco(item, destino, li); continue; }
+            const r = [];
+            if (check) r.push({ x: item.classList.contains("feito") ? "☑ " : "☐ " });
+            runsDe(item, {}, r);
+            destino.push({ t: "p", li: { id: li ? id : id, tipo: t === "OL" ? "ol" : "ul", n: nivel }, a: alin(item), r });
+            for (const sub of item.children) if (sub.tagName === "UL" || sub.tagName === "OL") bloco(sub, destino, { id: id + "_" + nivel + "_" + (++listaId), n: nivel });
+          }
+          return;
+        }
+        if (t === "TABLE") {
+          const l = [];
+          for (const tr of n.querySelectorAll(":scope > tbody > tr, :scope > thead > tr, :scope > tr")) {
+            const cels = [];
+            for (const td of tr.children) { const b = []; let temBloco = false;
+              for (const c of td.childNodes) if (c.nodeType === 1 && ["P", "DIV", "H1", "H2", "H3", "UL", "OL", "BLOCKQUOTE"].includes(c.tagName)) { temBloco = true; bloco(c, b); }
+              if (!temBloco) b.push({ t: "p", r: runsDe(td, {}, []) });
+              cels.push({ b, span: td.colSpan || 1 }); }
+            l.push(cels);
+          }
+          destino.push({ t: "tabela", l }); return;
+        }
+        if (t === "DIV" && [...n.children].some(c => ["P", "DIV", "H1", "H2", "H3", "UL", "OL", "TABLE", "BLOCKQUOTE", "HR"].includes(c.tagName))) { for (const c of n.childNodes) bloco(c, destino, li); return; }
+        const s = { H1: "h1", H2: "h2", H3: "h3", BLOCKQUOTE: "citacao", PRE: "codigo" }[t] || "p";
+        destino.push({ t: "p", s, a: alin(n), r: runsDe(n, {}, []) });
+        for (const c of n.children) if (["UL", "OL", "TABLE"].includes(c.tagName)) bloco(c, destino, li);
+      };
+      // texto solto no topo vira parágrafo
+      let solto = null;
+      for (const n of el.childNodes) {
+        const inline = n.nodeType === 3 || (n.nodeType === 1 && !["P", "DIV", "H1", "H2", "H3", "UL", "OL", "TABLE", "BLOCKQUOTE", "PRE", "HR"].includes(n.tagName));
+        if (inline) { if (!solto) { solto = document.createElement("p"); } solto.appendChild(n.cloneNode(true)); continue; }
+        if (solto) { bloco(solto, blocos); solto = null; }
+        bloco(n, blocos);
+      }
+      if (solto) bloco(solto, blocos);
+      return JSON.stringify(blocos);
+    },
+  };
+
+  // ---------- Smart Math: teclado, área de transferência e largura das colunas ----------
+  const grades = new Map();
+  const grade = {
+    montar(el, ref) {
+      if (!el) return;
+      grade.desmontar(el);
+      const st = { ref };
+      st.tecla = e => {
+        const t = e.target;
+        const ctrl = e.ctrlKey || e.metaKey;
+        if (t && t.classList && t.classList.contains("sm-ed")) {
+          // editando dentro da célula
+          if (e.key === "Enter" || e.key === "Tab" || e.key === "Escape") { e.preventDefault(); ref.invokeMethodAsync("TeclaEdicao", e.key, e.shiftKey, t.value); }
+          return;
+        }
+        if (t && (t.tagName === "INPUT" || t.tagName === "SELECT" || t.tagName === "TEXTAREA")) return;
+        const k = e.key;
+        // a caixa de edição ainda está sendo criada: guarda o que for digitado para não perder letras
+        if (st.buf != null) {
+          if (k.length === 1 && !ctrl && !e.altKey) { e.preventDefault(); st.buf += k; return; }
+          if (k === "Backspace") { e.preventDefault(); st.buf = st.buf.slice(0, -1); return; }
+          if (k === "Enter" || k === "Tab" || k === "Escape") { e.preventDefault(); st.fim = { key: k, shift: e.shiftKey }; return; }
+        }
+        const mov = { ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1] }[k];
+        if (mov) { e.preventDefault(); ref.invokeMethodAsync("Mover", mov[0], mov[1], e.shiftKey, ctrl); return; }
+        if (k === "Enter") { e.preventDefault(); ref.invokeMethodAsync("Mover", e.shiftKey ? -1 : 1, 0, false, false); return; }
+        if (k === "Tab") { e.preventDefault(); ref.invokeMethodAsync("Mover", 0, e.shiftKey ? -1 : 1, false, false); return; }
+        if (k === "PageDown" || k === "PageUp") { e.preventDefault(); ref.invokeMethodAsync("Mover", k === "PageDown" ? 20 : -20, 0, e.shiftKey, false); return; }
+        if (k === "Home") { e.preventDefault(); ref.invokeMethodAsync("Inicio", ctrl); return; }
+        if (k === "F2") { e.preventDefault(); ref.invokeMethodAsync("Editar", null); return; }
+        if (k === "Delete" || k === "Backspace") { e.preventDefault(); ref.invokeMethodAsync("Apagar"); return; }
+        if (ctrl) {
+          const c = k.toLowerCase();
+          if (c === "z") { e.preventDefault(); ref.invokeMethodAsync("Desfazer"); return; }
+          if (c === "y") { e.preventDefault(); ref.invokeMethodAsync("Refazer"); return; }
+          if (c === "b" || c === "n") { e.preventDefault(); ref.invokeMethodAsync("Atalho", "n"); return; }
+          if (c === "i") { e.preventDefault(); ref.invokeMethodAsync("Atalho", "i"); return; }
+          if (c === "u" || c === "s" && e.shiftKey) { e.preventDefault(); ref.invokeMethodAsync("Atalho", "s"); return; }
+          if (c === "s") { e.preventDefault(); ref.invokeMethodAsync("Atalho", "salvar"); return; }
+          if (c === "d") { e.preventDefault(); ref.invokeMethodAsync("Atalho", "baixo"); return; }
+          if (c === "a") { e.preventDefault(); ref.invokeMethodAsync("Atalho", "tudo"); return; }
+          if (c === "c" || c === "x") { e.preventDefault(); ref.invokeMethodAsync("Copiar", c === "x").then(t => { try { navigator.clipboard.writeText(t); } catch { } }); return; }
+          return;   // Ctrl+V: deixa o evento "paste" acontecer
+        }
+        if (k.length === 1 && !e.altKey) {
+          e.preventDefault(); st.buf = k; st.fim = null;
+          clearTimeout(st.bufT); st.bufT = setTimeout(() => { st.buf = null; st.fim = null; }, 2000);
+          ref.invokeMethodAsync("Editar", k);
+        }
+      };
+      st.colar = e => {
+        const t = e.target; if (t && t.classList && (t.classList.contains("sm-ed") || t.tagName === "INPUT")) return;
+        const txt = e.clipboardData?.getData("text/plain"); if (txt == null) return;
+        e.preventDefault(); ref.invokeMethodAsync("Colar", txt);
+      };
+      // arrastar a borda do cabeçalho para mudar a largura da coluna
+      st.rz = e => {
+        const h = e.target.closest && e.target.closest(".sm-rz"); if (!h) return;
+        e.preventDefault(); e.stopPropagation();
+        const col = parseInt(h.dataset.col), cel = el.querySelector(`col[data-col="${col}"]`);
+        const x0 = e.clientX, w0 = cel ? parseFloat(cel.style.width) : 96;
+        const mv = ev => { const w = Math.max(28, Math.min(800, w0 + ev.clientX - x0)); if (cel) cel.style.width = w + "px"; };
+        const up = ev => { document.removeEventListener("mousemove", mv); document.removeEventListener("mouseup", up); const w = Math.max(28, Math.min(800, w0 + ev.clientX - x0)); ref.invokeMethodAsync("Largura", col, w); };
+        document.addEventListener("mousemove", mv); document.addEventListener("mouseup", up);
+      };
+      st.solta = () => ref.invokeMethodAsync("Soltou");
+      st.espelho = e => { const t = e.target; if (t && t.classList && t.classList.contains("sm-ed") && t.closest("td")) { const bar = document.querySelector(".sm-fx-campo > input"); if (bar) bar.value = t.value; } };
+      document.addEventListener("input", st.espelho, true);
+      st.barra = e => { const t = e.target;
+        if (t && t.classList && t.classList.contains("sm-nome") && e.key === "Enter") { setTimeout(() => el.focus({ preventScroll: true }), 30); return; } if (t && t.classList && t.classList.contains("sm-ed") && t.closest(".sm-fx") && (e.key === "Enter" || e.key === "Tab" || e.key === "Escape")) { e.preventDefault(); ref.invokeMethodAsync("TeclaEdicao", e.key, e.shiftKey, t.value); } };
+      document.addEventListener("keydown", st.barra, true);
+      // botões da faixa e das abas não tiram o foco da grade (assim Ctrl+Z e as setas continuam funcionando)
+      st.manter = e => { if (e.target.closest && e.target.closest(".sm-faixa button, .sm-faixa .sw-cor, .sm-abas button")) e.preventDefault(); };
+      document.addEventListener("mousedown", st.manter, true);
+      el.addEventListener("keydown", st.tecla); el.addEventListener("paste", st.colar); el.addEventListener("mousedown", st.rz, true);
+      document.addEventListener("mouseup", st.solta);
+      grades.set(el, st);
+    },
+    desmontar(el) {
+      const st = grades.get(el); if (!st) return;
+      el.removeEventListener("keydown", st.tecla); el.removeEventListener("paste", st.colar); el.removeEventListener("mousedown", st.rz, true);
+      document.removeEventListener("mouseup", st.solta); document.removeEventListener("input", st.espelho, true); document.removeEventListener("keydown", st.barra, true); document.removeEventListener("mousedown", st.manter, true);
+      grades.delete(el);
+    },
+    focar(el) {
+      const a = document.activeElement;
+      // não rouba o foco de outros campos (título do gráfico, nome do arquivo); a barra de fórmulas e a caixa da célula podem
+      if (el && !(a && /^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName) && !a.closest(".sm-fx") && !a.classList.contains("sm-ed"))) el.focus({ preventScroll: true });
+    },
+    focarEdicao(cursorFim) {
+      const i = document.querySelector(".sm-ed"); if (!i) return;
+      i.focus({ preventScroll: true });
+      const st = [...grades.values()].find(x => x.buf != null);
+      if (st) {
+        const buf = st.buf, fim = st.fim; st.buf = null; st.fim = null; clearTimeout(st.bufT);
+        if (i.value !== buf) { i.value = buf; i.dispatchEvent(new Event("input", { bubbles: true })); }
+        if (fim) { st.ref.invokeMethodAsync("TeclaEdicao", fim.key, fim.shift, i.value); return; }
+      }
+      if (cursorFim) { const n = i.value.length; i.setSelectionRange(n, n); }
+    },
+    barra(txt) { const bar = document.querySelector(".sm-fx-campo > input"); if (bar && document.activeElement !== bar) bar.value = txt || ""; },
+    valor(txt) {
+      const a = document.activeElement;
+      const i = a && a.classList && a.classList.contains("sm-ed") ? a : document.querySelector(".sm-ed"); if (!i) return;
+      i.value = txt; i.focus({ preventScroll: true }); i.setSelectionRange(txt.length, txt.length);
+      const bar = document.querySelector(".sm-fx-campo > input"); if (bar && bar !== i) bar.value = txt;
+    },
+    rolarPara(el, r, c) {
+      const td = el && el.querySelector(`td[data-k="${r}_${c}"]`);
+      if (td) { td.scrollIntoView({ block: "nearest", inline: "nearest" }); return; }
+      // linha ainda não desenhada (virtualização): rola pela altura
+      if (el) { const alvo = r * 25; if (alvo < el.scrollTop || alvo > el.scrollTop + el.clientHeight - 60) el.scrollTop = Math.max(0, alvo - el.clientHeight / 2); }
+    },
+  };
+  const lsGet = k => { try { return localStorage.getItem(k) || ""; } catch { return ""; } };
+  const lsSet = (k, v) => { try { localStorage.setItem(k, v); return true; } catch { return false; } };
+  const lsDel = k => { try { localStorage.removeItem(k); } catch { } };
   const clicar = el => { if (el) el.click(); };
   nota.ver = (el, html) => { if (el) { el.contentEditable = "false"; el.innerHTML = limpar(html) || ""; } };
   const trocarUrl = (u, titulo) => { try { history.replaceState(history.state, "", u); } catch { } if (titulo) document.title = titulo; };
-  window.qsmart = { kv, cofre, rolar, ia, get, getH, req, reduzirImagem, imagem, nota, colarImagens, clicar, trocarUrl, pasta, baixar, abrir, copiar, abrirUrl, pdfPaginas, pdfJuntar, pdfLinhas, tema, aoOcultar, focar, rolarLinha, pronto };
+  window.qsmart = { kv, cofre, rolar, ia, get, getH, req, reduzirImagem, imagem, nota, doc, grade, lsGet, lsSet, lsDel, colarImagens, clicar, trocarUrl, pasta, baixar, abrir, copiar, abrirUrl, pdfPaginas, pdfJuntar, pdfLinhas, tema, aoOcultar, focar, rolarLinha, pronto };
 })();

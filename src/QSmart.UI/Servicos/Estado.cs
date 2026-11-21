@@ -653,7 +653,7 @@ public sealed class Estado
         Notificar();
     }
 
-    public bool AbaAtiva(string chave) => !Prefs.AbasOff.Contains(chave);
+    public bool AbaAtiva(string chave) => !Prefs.AbasOff.Contains(Abas.PaiDe(chave) ?? chave);
 
     public async Task SalvarPrefs()
     {

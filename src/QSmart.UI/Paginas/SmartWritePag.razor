@@ -1,0 +1,239 @@
+@page "/smart-write"
+@inherits PaginaBase
+@using Microsoft.JSInterop
+@using QSmart.Core.Pacote
+
+<div class="sw">
+    <header class="sw-app">
+        <a class="sw-volta" href="pacote-smart" title="Voltar ao Pacote Smart"><Icone Nome="esquerda" Tamanho="18" /></a>
+        <span class="sw-logo"><Icone Nome="documento" Tamanho="20" /></span>
+        <div class="sw-nome">
+            <input value="@_nome" @onchange="MudarNome" title="Nome do arquivo" spellcheck="false" />
+            <small>@(_sujo ? (_rascunhoOk ? "alterações guardadas neste navegador · salve para gerar o .docx" : "alterações não salvas") : _status)</small>
+        </div>
+        <span class="mola"></span>
+        <button class="sw-bt" @onclick="Novo" title="Documento em branco"><Icone Nome="mais" Tamanho="16" /> Novo</button>
+        <label class="sw-bt" title="Abrir um arquivo do Word (.docx) ou de texto (.txt) do seu computador">
+            <Icone Nome="upload" Tamanho="16" /> Abrir
+            <InputFile OnChange="Abrir" accept=".docx,.txt" @key="_chaveArq" />
+        </label>
+        <button class="sw-bt" @onclick="Imprimir" title="Imprimir ou salvar em PDF (Ctrl+P)"><Icone Nome="pdf" Tamanho="16" /> Imprimir / PDF</button>
+        <button class="sw-bt pri" @onclick="Salvar" disabled="@_salvando" title="Baixar como arquivo do Word (Ctrl+S)"><Icone Nome="download" Tamanho="16" /> @(_salvando ? "Gerando…" : "Salvar .docx")</button>
+    </header>
+
+    @if (_recuperar != null)
+    {
+        <div class="sw-aviso">
+            <Icone Nome="info" Tamanho="16" />
+            <span>Você tem um documento que não foi salvo: <b>@_recuperar.Value.nome</b>, editado @_recuperar.Value.quando.</span>
+            <button class="btn btn-pri btn-peq" @onclick="Recuperar">Recuperar</button>
+            <button class="btn btn-sec btn-peq" @onclick="Descartar">Descartar</button>
+        </div>
+    }
+
+    <div class="sw-faixa" @ref="_barra">
+        <button data-cmd="undo" title="Desfazer (Ctrl+Z)"><Icone Nome="desfazer" Tamanho="16" /></button>
+        <button data-cmd="redo" title="Refazer (Ctrl+Y)"><Icone Nome="refazer" Tamanho="16" /></button>
+        <i></i>
+        <select data-cmd="bloco" title="Estilo do parágrafo" class="sw-sel larga">
+            <option value="p">Texto normal</option><option value="h1">Título 1</option><option value="h2">Título 2</option><option value="h3">Título 3</option>
+            <option value="blockquote">Citação</option><option value="pre">Código</option>
+        </select>
+        <select data-cmd="fonte" title="Fonte" class="sw-sel larga">
+            <option value="">Fonte</option>
+            @foreach (var f in Fontes) { <option value="@f" style="font-family:'@f'">@f</option> }
+        </select>
+        <select data-cmd="tamanho" title="Tamanho da fonte" class="sw-sel">
+            <option value="">—</option>
+            @foreach (var t in Tamanhos) { <option value="@t">@t</option> }
+        </select>
+        <i></i>
+        <button data-cmd="bold" class="tx b" title="Negrito (Ctrl+B)">N</button>
+        <button data-cmd="italic" class="tx it" title="Itálico (Ctrl+I)">I</button>
+        <button data-cmd="underline" class="tx u" title="Sublinhado (Ctrl+U)">S</button>
+        <button data-cmd="strikeThrough" class="tx s" title="Tachado">abc</button>
+        <button data-cmd="superscript" class="tx" title="Sobrescrito">x²</button>
+        <button data-cmd="subscript" class="tx" title="Subscrito">x₂</button>
+        <span class="sw-cor" title="Cor da fonte"><Icone Nome="cor-texto" Tamanho="16" />
+            <span class="sw-paleta">@foreach (var c in CoresTexto) { <button data-cmd="foreColor" data-val="@c" style="background:@c"></button> }</span></span>
+        <span class="sw-cor" title="Realce"><Icone Nome="marca-texto" Tamanho="16" />
+            <span class="sw-paleta">@foreach (var c in CoresRealce) { <button data-cmd="hiliteColor" data-val="@c" style="background:@c"></button> }</span></span>
+        <i></i>
+        <button data-cmd="insertUnorderedList" title="Marcadores"><Icone Nome="lista" Tamanho="16" /></button>
+        <button data-cmd="insertOrderedList" title="Numeração"><Icone Nome="lista-num" Tamanho="16" /></button>
+        <button data-cmd="outdent" title="Diminuir recuo"><Icone Nome="desrecuo" Tamanho="16" /></button>
+        <button data-cmd="indent" title="Aumentar recuo"><Icone Nome="recuo" Tamanho="16" /></button>
+        <i></i>
+        <button data-cmd="justifyLeft" title="Alinhar à esquerda"><Icone Nome="alinhar-esq" Tamanho="16" /></button>
+        <button data-cmd="justifyCenter" title="Centralizar"><Icone Nome="alinhar-centro" Tamanho="16" /></button>
+        <button data-cmd="justifyRight" title="Alinhar à direita"><Icone Nome="alinhar-dir" Tamanho="16" /></button>
+        <button data-cmd="justifyFull" title="Justificar"><Icone Nome="alinhar-just" Tamanho="16" /></button>
+        <i></i>
+        <button data-cmd="imagem" title="Imagem (ou cole com Ctrl+V)"><Icone Nome="imagem" Tamanho="16" /></button>
+        <button data-cmd="link" title="Link"><Icone Nome="link" Tamanho="16" /></button>
+        <select data-cmd="tabela" data-volta="" title="Inserir tabela" class="sw-sel">
+            <option value="">Tabela</option>
+            @for (int n = 2; n <= 6; n++) { <option value="@n">@n colunas</option> }
+        </select>
+        <button data-cmd="quebra" title="Quebra de página (Ctrl+Enter)"><Icone Nome="quebra-pagina" Tamanho="16" /></button>
+        <button data-cmd="insertHorizontalRule" title="Linha divisória"><Icone Nome="linha" Tamanho="16" /></button>
+        <button data-cmd="removeFormat" title="Limpar formatação"><Icone Nome="borracha" Tamanho="16" /></button>
+    </div>
+    <input type="file" accept="image/*" multiple hidden @ref="_arq" />
+
+    <div class="sw-mesa">
+        <div class="sw-folha" style="zoom:@(_zoom / 100.0)">
+            <div class="sw-texto" @ref="_ed" spellcheck="true" lang="pt-BR"></div>
+        </div>
+    </div>
+
+    <footer class="sw-status">
+        <span>@(_paginas == 1 ? "1 página" : $"{_paginas} páginas")</span>
+        <span>@Fmt(_palavras) palavras</span>
+        <span>@Fmt(_caracteres) caracteres</span>
+        <span class="mola"></span>
+        <span class="sw-dica">Ctrl+Enter: nova página · Ctrl+S: salvar · Ctrl+P: imprimir</span>
+        <button @onclick="() => Zoom(-10)" title="Diminuir zoom">−</button>
+        <input type="range" min="50" max="200" step="10" value="@_zoom" @oninput="@(e => _zoom = int.Parse(e.Value?.ToString() ?? "100"))" />
+        <button @onclick="() => Zoom(10)" title="Aumentar zoom">+</button>
+        <b>@_zoom%</b>
+    </footer>
+</div>
+
+@code {
+    protected override string Chave => "smartwrite";
+
+    static readonly string[] Fontes = { "Calibri", "Arial", "Aptos", "Cambria", "Georgia", "Times New Roman", "Verdana", "Tahoma", "Trebuchet MS", "Segoe UI", "Courier New" };
+    static readonly int[] Tamanhos = { 8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48, 72 };
+    static readonly string[] CoresTexto = { "#000000", "#404040", "#7F7F7F", "#C00000", "#FF0000", "#FFC000", "#00B050", "#0070C0", "#002060", "#7030A0", "#2563EB", "#DB2777" };
+    static readonly string[] CoresRealce = { "#FFFF00", "#00FF00", "#00FFFF", "#FF99CC", "#FFC000", "#C9C9FF", "transparent" };
+
+    ElementReference _ed, _barra, _arq;
+    DotNetObjectReference<SmartWritePag>? _ref;
+    string _nome = "Documento sem título", _status = "documento novo";
+    bool _sujo, _rascunhoOk, _salvando, _montado;
+    int _palavras, _caracteres, _paginas = 1, _zoom = 100, _chaveArq;
+    (string nome, string html, string quando)? _recuperar;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _ref = DotNetObjectReference.Create(this);
+        try
+        {
+            var r = await E.Nav.DocRascunho();
+            if (!string.IsNullOrEmpty(r))
+            {
+                var j = System.Text.Json.Nodes.JsonNode.Parse(r);
+                var html = j?["html"]?.GetValue<string>() ?? "";
+                var texto = System.Text.RegularExpressions.Regex.Replace(html, "<[^>]+>", "").Trim();
+                if (texto.Length > 0 || html.Contains("<img"))
+                {
+                    var em = DateTime.TryParse(j?["em"]?.GetValue<string>(), null, System.Globalization.DateTimeStyles.RoundtripKind, out var d) ? d.ToLocalTime() : DateTime.Now;
+                    _recuperar = (j?["nome"]?.GetValue<string>() ?? "Documento", html, em.Date == DateTime.Today ? $"hoje às {em:HH:mm}" : em.ToString("dd/MM 'às' HH:mm"));
+                }
+            }
+        }
+        catch { }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool primeira)
+    {
+        if (primeira) { await E.Nav.DocMontar(_ed, _barra, _arq, _ref!, "", _nome); _montado = true; }
+    }
+
+    [JSInvokable] public void Contagem(int palavras, int caracteres, int paginas) { _palavras = palavras; _caracteres = caracteres; _paginas = paginas; StateHasChanged(); }
+    [JSInvokable] public void Rascunho(bool ok) { if (_rascunhoOk != ok) { _rascunhoOk = ok; StateHasChanged(); } }
+    [JSInvokable] public void Sujo() { _sujo = true; StateHasChanged(); }
+    [JSInvokable] public async Task AtalhoSalvar() => await Salvar();
+
+    void Zoom(int d) => _zoom = Math.Clamp(_zoom + d, 50, 200);
+
+    async Task MudarNome(ChangeEventArgs e)
+    {
+        var n = (e.Value?.ToString() ?? "").Trim();
+        if (n.EndsWith(".docx", StringComparison.OrdinalIgnoreCase)) n = n[..^5];
+        _nome = n == "" ? "Documento sem título" : n;
+        await E.Nav.DocNome(_ed, _nome);
+    }
+
+    async Task<bool> PodeTrocar()
+    {
+        if (!_sujo) return true;
+        return await J.Pergunta("Smart Write", "O documento atual tem alterações que não foram salvas em .docx. Continuar mesmo assim?");
+    }
+
+    async Task Novo()
+    {
+        if (!await PodeTrocar()) return;
+        _nome = "Documento sem título"; _status = "documento novo"; _sujo = false;
+        await E.Nav.DocCarregar(_ed, "", _nome);
+        await E.Nav.DocLimpo(_ed);
+        _sujo = false;
+    }
+
+    async Task Abrir(InputFileChangeEventArgs e)
+    {
+        _chaveArq++;
+        var f = e.File;
+        if (!await PodeTrocar()) return;
+        try
+        {
+            using var ms = new MemoryStream();
+            await f.OpenReadStream(40_000_000).CopyToAsync(ms);
+            var bytes = ms.ToArray();
+            string html;
+            if (f.Name.EndsWith(".txt", StringComparison.OrdinalIgnoreCase))
+            {
+                var txt = System.Text.Encoding.UTF8.GetString(bytes).Replace("\r", "");
+                html = string.Concat(txt.Split('\n').Select(l => $"<p>{(l.Length == 0 ? "<br>" : System.Net.WebUtility.HtmlEncode(l))}</p>"));
+            }
+            else html = Docx.ParaHtml(bytes);
+            _nome = Path.GetFileNameWithoutExtension(f.Name);
+            await E.Nav.DocCarregar(_ed, html, _nome);
+            await E.Nav.DocLimpo(_ed);
+            _sujo = false; _status = $"aberto de {f.Name}";
+            _recuperar = null;
+            _ = E.Conta.Registrar("write.abrir", true);
+        }
+        catch (Exception ex) { await J.Erro("Abrir documento", "Não consegui abrir esse arquivo: " + ex.Message); }
+    }
+
+    async Task Salvar()
+    {
+        if (_salvando) return;
+        _salvando = true; StateHasChanged();
+        try
+        {
+            var json = await E.Nav.DocEstrutura(_ed);
+            var bytes = Docx.Gravar(System.Text.Json.Nodes.JsonNode.Parse(json), _nome);
+            await E.Nav.Baixar(NomeArquivo(_nome) + ".docx", bytes, Navegador.MimeDocx);
+            await E.Nav.DocLimpo(_ed);
+            _sujo = false; _status = $"salvo em Downloads às {DateTime.Now:HH:mm}";
+            await E.Nav.DocApagarRascunho();
+            _ = E.Conta.Registrar("write.salvar", true);
+        }
+        catch (Exception ex) { await J.Erro("Salvar .docx", "Não consegui gerar o arquivo: " + ex.Message); }
+        finally { _salvando = false; }
+    }
+
+    static string NomeArquivo(string n) => string.Concat(n.Select(c => Path.GetInvalidFileNameChars().Contains(c) ? '_' : c)).Trim() is { Length: > 0 } x ? x : "Documento";
+
+    async Task Imprimir() => await E.Nav.DocImprimir();
+
+    async Task Recuperar()
+    {
+        if (_recuperar is not { } r) return;
+        _nome = r.nome;
+        await E.Nav.DocCarregar(_ed, r.html, _nome);
+        _recuperar = null; _sujo = true; _status = "";
+    }
+
+    async Task Descartar() { _recuperar = null; await E.Nav.DocApagarRascunho(); }
+
+    public override void Dispose()
+    {
+        base.Dispose();
+        if (_montado) { try { _ = E.Nav.DocDesmontar(_ed); } catch { } }
+        _ = Task.Delay(3000).ContinueWith(_ => _ref?.Dispose());
+    }
+}

@@ -1,0 +1,1132 @@
+@page "/smart-math"
+@inherits PaginaBase
+@using Microsoft.JSInterop
+@using QSmart.Core.Pacote
+@using Folha = QSmart.Core.Pacote.Folha
+@using Celula = QSmart.Core.Pacote.Celula
+@using Formula = QSmart.Core.Pacote.Formula
+
+<div class="sm">
+    <header class="sw-app sm-app">
+        <a class="sw-volta" href="pacote-smart" title="Voltar ao Pacote Smart"><Icone Nome="esquerda" Tamanho="18" /></a>
+        <span class="sw-logo sm-logo"><Icone Nome="grade-planilha" Tamanho="20" /></span>
+        <div class="sw-nome">
+            <input value="@_nome" @onchange="MudarNome" title="Nome do arquivo" spellcheck="false" />
+            <small>@(_sujo ? (_rascunhoOk ? "alterações guardadas neste navegador · salve para gerar o .xlsx" : "alterações não salvas") : _status)</small>
+        </div>
+        <span class="mola"></span>
+        <button class="sw-bt" @onclick="Nova" title="Planilha em branco"><Icone Nome="mais" Tamanho="16" /> Nova</button>
+        <label class="sw-bt" title="Abrir uma planilha do Excel (.xlsx) ou um .csv do seu computador">
+            <Icone Nome="upload" Tamanho="16" /> Abrir
+            <InputFile OnChange="Abrir" accept=".xlsx,.xlsm,.csv" @key="_chaveArq" />
+        </label>
+        <button class="sw-bt @(_painelGraf ? "on" : "")" @onclick="() => _painelGraf = !_painelGraf" title="Gráficos desta aba"><Icone Nome="evolucao" Tamanho="16" /> Gráficos @(F.Graficos.Count > 0 ? $"({F.Graficos.Count})" : "")</button>
+        <button class="sw-bt pri" @onclick="Salvar" disabled="@_salvando" title="Baixar como arquivo do Excel (Ctrl+S)"><Icone Nome="download" Tamanho="16" /> @(_salvando ? "Gerando…" : "Salvar .xlsx")</button>
+    </header>
+
+    @if (_recuperar != null)
+    {
+        <div class="sw-aviso">
+            <Icone Nome="info" Tamanho="16" />
+            <span>Você tem uma planilha que não foi salva: <b>@_recuperar.Value.nome</b>, editada @_recuperar.Value.quando.</span>
+            <button class="btn btn-pri btn-peq" @onclick="Recuperar">Recuperar</button>
+            <button class="btn btn-sec btn-peq" @onclick="Descartar">Descartar</button>
+        </div>
+    }
+
+    @* ---------- faixa de ferramentas ---------- *@
+    <div class="sw-faixa sm-faixa">
+        <button @onclick="Desfazer" title="Desfazer (Ctrl+Z)" disabled="@(_desfazer.Count == 0)"><Icone Nome="desfazer" Tamanho="16" /></button>
+        <button @onclick="Refazer" title="Refazer (Ctrl+Y)" disabled="@(_refazer.Count == 0)"><Icone Nome="refazer" Tamanho="16" /></button>
+        <i></i>
+        <button class="tx b @(Ativa?.E.N == true ? "on" : "")" @onclick='() => Estilo("n")' title="Negrito (Ctrl+B)">N</button>
+        <button class="tx it @(Ativa?.E.I == true ? "on" : "")" @onclick='() => Estilo("i")' title="Itálico (Ctrl+I)">I</button>
+        <button class="tx s @(Ativa?.E.S == true ? "on" : "")" @onclick='() => Estilo("s")' title="Tachado">abc</button>
+        <span class="sw-cor" title="Cor da fonte"><Icone Nome="cor-texto" Tamanho="16" />
+            <span class="sw-paleta">@foreach (var c in CoresTexto) { <button style="background:@(c == "" ? "transparent" : c)" @onclick="() => Cor(c)"></button> }</span></span>
+        <span class="sw-cor" title="Cor de preenchimento"><Icone Nome="balde" Tamanho="16" />
+            <span class="sw-paleta">@foreach (var c in CoresFundo) { <button style="background:@(c == "" ? "transparent" : c)" @onclick="() => Fundo(c)"></button> }</span></span>
+        <i></i>
+        <button class="@(Ativa?.E.Alinh == "esq" ? "on" : "")" @onclick='() => Alinhar("esq")' title="Alinhar à esquerda"><Icone Nome="alinhar-esq" Tamanho="16" /></button>
+        <button class="@(Ativa?.E.Alinh == "centro" ? "on" : "")" @onclick='() => Alinhar("centro")' title="Centralizar"><Icone Nome="alinhar-centro" Tamanho="16" /></button>
+        <button class="@(Ativa?.E.Alinh == "dir" ? "on" : "")" @onclick='() => Alinhar("dir")' title="Alinhar à direita"><Icone Nome="alinhar-dir" Tamanho="16" /></button>
+        <i></i>
+        <select class="sw-sel larga" value="@(Ativa?.E.Formato ?? "geral")" @onchange="MudarFormato" title="Formato do número">
+            <option value="geral">Geral</option><option value="num">Número</option><option value="int">Inteiro</option><option value="moeda">Moeda (R$)</option>
+            <option value="pct">Porcentagem</option><option value="data">Data</option><option value="texto">Texto</option>
+        </select>
+        <button @onclick="() => Casas(-1)" title="Diminuir casas decimais">,0←</button>
+        <button @onclick="() => Casas(1)" title="Aumentar casas decimais">,00→</button>
+        <i></i>
+        <button @onclick="AutoSoma" title="Soma automática"><b class="sm-sigma">Σ</b></button>
+        <button @onclick="() => Ordenar(true)" title="Classificar de A a Z (menor para maior)"><Icone Nome="ordenar-cresc" Tamanho="16" /></button>
+        <button @onclick="() => Ordenar(false)" title="Classificar de Z a A (maior para menor)"><Icone Nome="ordenar-decresc" Tamanho="16" /></button>
+        <button class="@(F.Filtro != null ? "on" : "")" @onclick="AlternarFiltro" title="Filtro (setas no cabeçalho)"><Icone Nome="filtro" Tamanho="16" /></button>
+        <i></i>
+        <select class="sw-sel" value="" @onchange="LinhasColunas" @key="@($"lc{_chaveSel}")" title="Inserir ou excluir linhas e colunas">
+            <option value="">Linhas/colunas</option>
+            <option value="il">Inserir linha acima</option><option value="ic">Inserir coluna à esquerda</option>
+            <option value="el">Excluir linha(s)</option><option value="ec">Excluir coluna(s)</option>
+        </select>
+        <select class="sw-sel" value="" @onchange="NovoGrafico" @key="@($"ng{_chaveSel}")" title="Criar gráfico com as células selecionadas">
+            <option value="">+ Gráfico</option><option value="colunas">Colunas</option><option value="barras">Barras</option><option value="linhas">Linhas</option><option value="pizza">Pizza</option>
+        </select>
+        <button @onclick="LimparFormatos" title="Limpar formatação"><Icone Nome="borracha" Tamanho="16" /></button>
+    </div>
+
+    @* ---------- barra de fórmulas ---------- *@
+    <div class="sm-fx">
+        <input class="sm-nome" value="@NomeSel" @onchange="IrPara" title="Célula ou intervalo selecionado (digite um endereço e Enter para ir)" spellcheck="false" />
+        <span class="sm-fx-ic">fx</span>
+        <div class="sm-fx-campo">
+            <input class="@(_editando && _pelaBarra ? "sm-ed" : "")" value="@(_editando ? _txtVisto : Ativa?.Entrada ?? "")" spellcheck="false"
+                   @onfocus="FocoBarra" @oninput="DigitouBarra" placeholder="Digite um valor ou uma fórmula, ex.: =SOMA(A1:A10)" />
+            @if (_editando && Sugestoes() is { Count: > 0 } sg)
+            {
+                <div class="sm-sug">
+                    @foreach (var fn in sg) { <button @onmousedown:preventDefault="true" @onclick="() => InserirFuncao(fn)"><b>@fn</b>(</button> }
+                </div>
+            }
+        </div>
+        @if (_erroFormula != null) { <span class="sm-fx-erro"><Icone Nome="alerta" Tamanho="14" /> @_erroFormula</span> }
+    </div>
+
+    <div class="sm-corpo">
+        @* ---------- grade ---------- *@
+        <div class="sm-rolar" tabindex="0" @ref="_grade" @onmouseleave="() => { }">
+            <table class="sm-grade" style="width:@N(46 + Enumerable.Range(0, _cols).Sum(c => F.Largura(c)))px">
+                <colgroup>
+                    <col style="width:46px" />
+                    @for (int c = 0; c < _cols; c++) { <col data-col="@c" style="width:@N(F.Largura(c))px" /> }
+                </colgroup>
+                <thead>
+                    <tr>
+                        <th class="sm-canto" @onclick="SelecionarTudo" title="Selecionar tudo"></th>
+                        @for (int c = 0; c < _cols; c++)
+                        {
+                            var cc = c;
+                            <th class="@(cc >= _s.c1 && cc <= _s.c2 ? "sel" : "")" @onmousedown="e => CabecalhoCol(cc, e)">
+                                @Ender.Col(cc)
+                                @if (F.Filtro is { } fl && cc >= fl.C1 && cc <= fl.C2) { }
+                                <span class="sm-rz" data-col="@cc"></span>
+                            </th>
+                        }
+                    </tr>
+                </thead>
+                <tbody>
+                    <Virtualize Items="_visiveis" ItemSize="25" OverscanCount="12" SpacerElement="tr" Context="r">
+                        <tr @key="r">
+                            <th class="@(r >= _s.r1 && r <= _s.r2 ? "sel" : "")" @onmousedown="e => CabecalhoLin(r, e)">@(r + 1)</th>
+                            @for (int c = 0; c < _cols; c++)
+                            {
+                                var cc = c;
+                                var cel = F.Get(r, c);
+                                bool ativa = r == _ar && c == _ac;
+                                if (ativa && _editando && !_pelaBarra)
+                                {
+                                    <td class="sm-c ativa edit" data-k="@($"{r}_{c}")">
+                                        <input class="sm-ed" value="@_txtVisto" @oninput="DigitouCelula" spellcheck="false" style="@EstiloEd(cel)" />
+                                    </td>
+                                }
+                                else
+                                {
+                                    var v = _calc.Valor(F, r, c);
+                                    var txt = cel == null && v == null ? "" : FormatoPt.Exibir(v, cel?.E ?? Padrao);
+                                    bool filtroAqui = F.Filtro is { } fl2 && r == fl2.Linha && c >= fl2.C1 && c <= fl2.C2;
+                                    <td class="@ClasseCel(r, c, v, cel, ativa)" style="@EstiloCel(cel, v)" data-k="@($"{r}_{c}")"
+                                        @onmousedown="e => Baixo(r, cc, e)" @onmouseover="e => Sobre(r, cc, e)" @ondblclick="() => Editar(null)" title="@(v is ErroF ? Dica(v) : null)">
+                                        @txt
+                                        @if (filtroAqui)
+                                        {
+                                            <button class="sm-filtro-bt @(F.Filtro!.Escondidos.ContainsKey(cc) ? "on" : "")" @onmousedown:stopPropagation="true" @onclick="() => AbrirFiltro(cc)" title="Filtrar e classificar"><Icone Nome="direita" Tamanho="10" /></button>
+                                        }
+                                    </td>
+                                }
+                            }
+                        </tr>
+                    </Virtualize>
+                </tbody>
+            </table>
+        </div>
+
+        @* ---------- painel de gráficos ---------- *@
+        @if (_painelGraf)
+        {
+            <aside class="sm-graf">
+                <div class="sm-graf-cab">
+                    <b>Gráficos · @F.Nome</b>
+                    <button class="sn-mais" @onclick="() => _painelGraf = false" title="Fechar"><Icone Nome="x" Tamanho="16" /></button>
+                </div>
+                @if (F.Graficos.Count == 0)
+                {
+                    <div class="sm-graf-vazio">
+                        <span class="vazio-ic"><Icone Nome="evolucao" Tamanho="28" /></span>
+                        <p>Selecione uma tabela (títulos na primeira linha, nomes na primeira coluna e números ao lado) e escolha <b>+ Gráfico</b> na barra.</p>
+                    </div>
+                }
+                @foreach (var g in F.Graficos)
+                {
+                    var gg = g;
+                    <div class="sm-graf-card">
+                        <div class="sm-graf-lin">
+                            <input class="sm-graf-tit" value="@g.Titulo" placeholder="Título do gráfico" @onchange="e => TituloGrafico(gg, e)" />
+                            <button class="sn-mais" title="Excluir gráfico" @onclick="() => ExcluirGrafico(gg)"><Icone Nome="lixo" Tamanho="15" /></button>
+                        </div>
+                        @if (!string.IsNullOrWhiteSpace(g.Titulo)) { <div class="sm-graf-h">@g.Titulo</div> }
+                        <GraficoSvg D="@XlsxPasta.Dados(_calc, F, g.Faixa)" Tipo="@g.Tipo" />
+                        <div class="sm-graf-lin">
+                            <select class="sw-sel" value="@g.Tipo" @onchange="e => TipoGrafico(gg, e)">
+                                <option value="colunas">Colunas</option><option value="barras">Barras</option><option value="linhas">Linhas</option><option value="pizza">Pizza</option>
+                            </select>
+                            <input class="sm-graf-faixa" value="@g.Faixa" title="Intervalo de dados (ex.: A1:C10)" @onchange="e => MudarFaixa(gg, e)" />
+                            <button class="btn btn-sec btn-peq" @onclick="() => UsarSelecao(gg)" title="Usar as células selecionadas">Usar seleção</button>
+                        </div>
+                    </div>
+                }
+            </aside>
+        }
+    </div>
+
+    @* ---------- abas e status ---------- *@
+    <footer class="sm-pe">
+        <div class="sm-abas">
+            @for (int i = 0; i < _p.Folhas.Count; i++)
+            {
+                var ii = i;
+                <button class="@(i == _fi ? "on" : "")" @onclick="() => TrocarFolha(ii)" @ondblclick="() => RenomearFolha(ii)" title="Clique duas vezes para renomear">
+                    @_p.Folhas[i].Nome
+                    @if (i == _fi) { <span class="sm-aba-menu" @onclick:stopPropagation="true" @onclick="() => MenuFolha(ii)" title="Opções da aba">⋯</span> }
+                </button>
+            }
+            <button class="sm-aba-mais" @onclick="NovaFolha" title="Nova aba"><Icone Nome="mais" Tamanho="14" /></button>
+        </div>
+        <span class="mola"></span>
+        @{ var (soma, media, cont, nums) = Resumo(); }
+        @if (cont > 1)
+        {
+            @if (nums > 0) { <span>Média: <b>@FormatoPt.Geral(Math.Round(media, 6))</b></span> }
+            <span>Contagem: <b>@cont</b></span>
+            @if (nums > 0) { <span>Soma: <b>@FormatoPt.Geral(Math.Round(soma, 6))</b></span> }
+        }
+    </footer>
+
+    @* ---------- filtro ---------- *@
+    @if (_filtroCol is int fc && F.Filtro is { } flt)
+    {
+        <div class="sn-comp-fundo" @onclick="() => _filtroCol = null"></div>
+        <div class="sm-filtro">
+            <b>Coluna @Ender.Col(fc)@(Cab(fc) is { Length: > 0 } nomeCab ? $" · {nomeCab}" : "")</b>
+            <div class="sm-filtro-ord">
+                <button class="btn btn-sec btn-peq" @onclick="() => OrdenarColFiltro(fc, true)"><Icone Nome="ordenar-cresc" Tamanho="14" /> A → Z</button>
+                <button class="btn btn-sec btn-peq" @onclick="() => OrdenarColFiltro(fc, false)"><Icone Nome="ordenar-decresc" Tamanho="14" /> Z → A</button>
+            </div>
+            <input class="campo" placeholder="Buscar valor…" @bind="_filtroBusca" @bind:event="oninput" />
+            <label class="sm-filtro-todos"><input type="checkbox" checked="@(_filtroMarc.Count == _filtroVals.Count)" @onchange="e => MarcarTodos(e.Value is true)" /> (Selecionar tudo)</label>
+            <div class="sm-filtro-lista">
+                @foreach (var v in _filtroVals.Where(v => _filtroBusca == "" || v.Contains(_filtroBusca, StringComparison.CurrentCultureIgnoreCase)))
+                {
+                    var vv = v;
+                    <label><input type="checkbox" checked="@_filtroMarc.Contains(vv)" @onchange="e => { if (e.Value is true) _filtroMarc.Add(vv); else _filtroMarc.Remove(vv); }" /> @(vv == "" ? "(Vazias)" : vv)</label>
+                }
+            </div>
+            <div class="sm-filtro-pe">
+                <button class="btn btn-sec btn-peq" @onclick="() => _filtroCol = null">Cancelar</button>
+                <button class="btn btn-pri btn-peq" @onclick="AplicarFiltro">Aplicar</button>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    protected override string Chave => "smartmath";
+    const string Rascunho = "qsmart_sm_rascunho";
+    static readonly EstiloCel Padrao = new();
+    static readonly string[] CoresTexto = { "", "#000000", "#595959", "#C00000", "#FF0000", "#ED7D31", "#00B050", "#0070C0", "#2563EB", "#7030A0", "#DB2777", "#FFFFFF" };
+    static readonly string[] CoresFundo = { "", "#FFFF00", "#FFF2CC", "#FCE4D6", "#E2EFDA", "#DDEBF7", "#EDE9FE", "#F2F2F2", "#BFBFBF", "#FFC7CE", "#C6EFCE", "#1F2937" };
+
+    Pasta _p = new();
+    int _fi;
+    Folha F => _p.Folhas[Math.Min(_fi, _p.Folhas.Count - 1)];
+    Formula.Calc _calc = null!;
+    ElementReference _grade;
+    DotNetObjectReference<SmartMathPag>? _ref;
+
+    // seleção
+    int _ar, _ac, _anR, _anC;
+    (int r1, int c1, int r2, int c2) _s;
+    bool _arrastando, _montado;
+    // edição
+    bool _editando, _pelaBarra;
+    string _txt = "";
+    // o que foi mandado para a tela; só muda quando o próprio Smart Math mexe no texto (o que o usuário digita fica no navegador,
+    // senão a ida e volta ao servidor apagaria letras digitadas rápido)
+    string _txtVisto = "";
+    string? _erroFormula;
+    (int r, int c, int pos, int len)? _refInserida;   // referência colocada na fórmula com clique
+    // visual
+    int _linhas = 80, _cols = 26, _chaveArq, _chaveSel;
+    List<int> _visiveis = new();
+    bool _painelGraf;
+    // arquivo
+    string _nome = "Planilha sem título", _status = "planilha nova";
+    bool _sujo, _rascunhoOk, _salvando;
+    (string nome, string json, string quando)? _recuperar;
+    // desfazer
+    readonly List<(int fi, Folha f)> _desfazer = new(), _refazer = new();
+    // área de transferência interna (com fórmulas)
+    (string tsv, int r1, int c1, List<(int dr, int dc, Celula cel)> cels, bool recortar, Folha origem)? _clip;
+    // filtro
+    int? _filtroCol;
+    List<string> _filtroVals = new();
+    HashSet<string> _filtroMarc = new();
+    string _filtroBusca = "";
+
+    Celula? Ativa => F.Get(_ar, _ac);
+    string NomeSel => _s.r1 == _s.r2 && _s.c1 == _s.c2 ? Ender.Cel(_ar, _ac) : Ender.Faixa(_s.r1, _s.c1, _s.r2, _s.c2);
+    static string N(double v) => v.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+
+    protected override async Task OnInitializedAsync()
+    {
+        _ref = DotNetObjectReference.Create(this);
+        _calc = new Formula.Calc(_p);
+        Selecionar(0, 0, false);
+        Recontar();
+        try
+        {
+            var r = await E.Nav.LsGet(Rascunho);
+            if (!string.IsNullOrEmpty(r))
+            {
+                var j = System.Text.Json.Nodes.JsonNode.Parse(r);
+                var json = j?["pasta"]?.GetValue<string>() ?? "";
+                if (json.Contains("\"cel\":[[") || json.Contains("\"graf\":[{"))
+                {
+                    var em = DateTime.TryParse(j?["em"]?.GetValue<string>(), null, System.Globalization.DateTimeStyles.RoundtripKind, out var d) ? d.ToLocalTime() : DateTime.Now;
+                    _recuperar = (j?["nome"]?.GetValue<string>() ?? "Planilha", json, em.Date == DateTime.Today ? $"hoje às {em:HH:mm}" : em.ToString("dd/MM 'às' HH:mm"));
+                }
+            }
+        }
+        catch { }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool primeira)
+    {
+        if (primeira) { await E.Nav.GradeMontar(_grade, _ref!); _montado = true; await E.Nav.GradeFocar(_grade); }
+    }
+
+    // ====================================================== util
+    void Recontar()
+    {
+        _linhas = Math.Max(80, Math.Max(F.UltLinha, _s.r2) + 40);
+        _cols = Math.Max(26, Math.Max(F.UltColuna, _s.c2) + 4);
+        var esc = Escondidas();
+        _visiveis = Enumerable.Range(0, _linhas).Where(r => !esc.Contains(r)).ToList();
+    }
+
+    HashSet<int> Escondidas()
+    {
+        var h = new HashSet<int>();
+        if (F.Filtro is not { } fl || fl.Escondidos.Count == 0) return h;
+        int ult = F.UltLinha;
+        for (int r = fl.Linha + 1; r <= ult; r++)
+            foreach (var (c, vals) in fl.Escondidos)
+                if (vals.Contains(Texto(r, c))) { h.Add(r); break; }
+        return h;
+    }
+
+    string Texto(int r, int c) { var cel = F.Get(r, c); var v = _calc.Valor(F, r, c); return cel == null && v == null ? "" : FormatoPt.Exibir(v, cel?.E ?? Padrao); }
+    string Cab(int c) => F.Filtro is { } fl ? Texto(fl.Linha, c) : "";
+
+    void Mudou()
+    {
+        _calc.Limpar();
+        Recontar();
+        if (!_sujo) _sujo = true;
+        _ = GuardarRascunho();
+    }
+
+    System.Threading.CancellationTokenSource? _cts;
+    async Task GuardarRascunho()
+    {
+        _cts?.Cancel(); var cts = _cts = new();
+        try { await Task.Delay(900, cts.Token); } catch { return; }
+        var j = new System.Text.Json.Nodes.JsonObject { ["nome"] = _nome, ["em"] = DateTime.UtcNow.ToString("o"), ["pasta"] = XlsxPasta.ParaJson(_p) };
+        _rascunhoOk = await E.Nav.LsSet(Rascunho, j.ToJsonString());
+        StateHasChanged();
+    }
+
+    void Guardar()
+    {
+        _desfazer.Add((_fi, F.Clonar()));
+        if (_desfazer.Count > 60) _desfazer.RemoveAt(0);
+        _refazer.Clear();
+    }
+
+    [JSInvokable] public void Desfazer()
+    {
+        if (_desfazer.Count == 0) return;
+        var (fi, f) = _desfazer[^1]; _desfazer.RemoveAt(_desfazer.Count - 1);
+        if (fi >= _p.Folhas.Count) return;
+        _refazer.Add((fi, _p.Folhas[fi].Clonar()));
+        _p.Folhas[fi] = f; _fi = fi;
+        Mudou(); StateHasChanged();
+    }
+
+    [JSInvokable] public void Refazer()
+    {
+        if (_refazer.Count == 0) return;
+        var (fi, f) = _refazer[^1]; _refazer.RemoveAt(_refazer.Count - 1);
+        if (fi >= _p.Folhas.Count) return;
+        _desfazer.Add((fi, _p.Folhas[fi].Clonar()));
+        _p.Folhas[fi] = f; _fi = fi;
+        Mudou(); StateHasChanged();
+    }
+
+    // ====================================================== seleção
+    void Selecionar(int r, int c, bool estender)
+    {
+        r = Math.Max(0, r); c = Math.Max(0, Math.Min(16383, c));
+        _ar = r; _ac = c;
+        if (!estender) { _anR = r; _anC = c; }
+        _s = (Math.Min(_anR, r), Math.Min(_anC, c), Math.Max(_anR, r), Math.Max(_anC, c));
+        if (r >= _linhas - 5 || c >= _cols - 2) Recontar();
+    }
+
+    void Baixo(int r, int c, MouseEventArgs e)
+    {
+        if (e.Button != 0) return;
+        if (_editando && _txt.StartsWith("=") && PodeInserirRef())
+        {
+            InserirRef(r, c, r, c);
+            _arrastando = true; _anR = r; _anC = c;
+            return;
+        }
+        if (_editando) Confirmar();
+        if (_editando) return;
+        Selecionar(r, c, e.ShiftKey);
+        _arrastando = true;
+        _ = E.Nav.GradeFocar(_grade);
+    }
+
+    void Sobre(int r, int c, MouseEventArgs e)
+    {
+        if (!_arrastando) return;
+        if (e.Buttons == 0) { _arrastando = false; return; }
+        if (_refInserida != null) { InserirRef(Math.Min(_anR, r), Math.Min(_anC, c), Math.Max(_anR, r), Math.Max(_anC, c)); return; }
+        Selecionar(r, c, true);
+    }
+
+    [JSInvokable] public void Soltou() { if (_arrastando) { _arrastando = false; if (_refInserida != null) _refInserida = null; StateHasChanged(); } }
+
+    void CabecalhoCol(int c, MouseEventArgs e)
+    {
+        if (_editando) Confirmar();
+        _anR = e.ShiftKey ? _anR : 0; _anC = e.ShiftKey ? _anC : c;
+        _ar = 0; _ac = c;
+        _s = (0, Math.Min(_anC, c), Math.Max(F.UltLinha, _linhas - 1), Math.Max(_anC, c));
+        _ = E.Nav.GradeFocar(_grade);
+    }
+
+    void CabecalhoLin(int r, MouseEventArgs e)
+    {
+        if (_editando) Confirmar();
+        _anR = e.ShiftKey ? _anR : r; _anC = 0;
+        _ar = r; _ac = 0;
+        _s = (Math.Min(_anR, r), 0, Math.Max(_anR, r), Math.Max(F.UltColuna, _cols - 1));
+        _ = E.Nav.GradeFocar(_grade);
+    }
+
+    void SelecionarTudo() { _anR = 0; _anC = 0; _ar = 0; _ac = 0; _s = (0, 0, Math.Max(0, F.UltLinha), Math.Max(0, F.UltColuna)); }
+
+    [JSInvokable]
+    public async Task Mover(int dr, int dc, bool estender, bool ctrl)
+    {
+        if (_editando) return;
+        MoverJa(dr, dc, estender, ctrl);
+        StateHasChanged();
+        await E.Nav.GradeBarra(Ativa?.Entrada);
+        await E.Nav.GradeRolar(_grade, _ar, _ac);
+    }
+
+    /// <summary>Parte síncrona do movimento: nada de await aqui, para que a próxima tecla já encontre a nova célula ativa.</summary>
+    void MoverJa(int dr, int dc, bool estender, bool ctrl)
+    {
+        int r = estender ? (_s.r1 == _anR ? _s.r2 : _s.r1) : _ar, c = estender ? (_s.c1 == _anC ? _s.c2 : _s.c1) : _ac;
+        if (estender) { r = _ar; c = _ac; }
+        if (ctrl)
+        {
+            // pula até a borda dos dados (como o Ctrl+seta do Excel)
+            bool Cheia(int rr, int cc) => rr >= 0 && cc >= 0 && !string.IsNullOrEmpty(F.Get(rr, cc)?.Entrada);
+            int lim = Math.Max(_linhas, F.UltLinha + 1) + 1000;
+            int nr = r, nc = c;
+            bool inicioCheio = Cheia(nr, nc) && Cheia(nr + dr, nc + dc);
+            while (nr + dr >= 0 && nc + dc >= 0 && nr + dr < lim && nc + dc < 16384)
+            {
+                nr += dr; nc += dc;
+                if (inicioCheio ? !Cheia(nr + dr, nc + dc) : Cheia(nr, nc)) break;
+                if (!inicioCheio && nr > F.UltLinha + 1 && dr > 0) break;
+                if (!inicioCheio && nc > F.UltColuna + 1 && dc > 0) break;
+            }
+            r = nr; c = nc;
+        }
+        else
+        {
+            // pula linhas escondidas pelo filtro
+            r += dr; c += dc;
+            var esc = dr != 0 ? Escondidas() : null;
+            while (esc != null && esc.Contains(r) && r > 0) r += Math.Sign(dr);
+        }
+        if (estender) { _ar = Math.Max(0, r); _ac = Math.Max(0, c); _s = (Math.Min(_anR, _ar), Math.Min(_anC, _ac), Math.Max(_anR, _ar), Math.Max(_anC, _ac)); if (_ar >= _linhas - 5 || _ac >= _cols - 2) Recontar(); }
+        else Selecionar(r, c, false);
+    }
+
+    [JSInvokable] public void Inicio(bool ctrl) { Selecionar(ctrl ? 0 : _ar, 0, false); StateHasChanged(); }
+
+    async Task IrPara(ChangeEventArgs e)
+    {
+        var t = (e.Value?.ToString() ?? "").Trim().ToUpperInvariant();
+        if (Ender.LerFaixa(t, out var r1, out var c1, out var r2, out var c2))
+        {
+            _anR = r1; _anC = c1; _ar = r1; _ac = c1; _s = (r1, c1, r2, c2); Recontar();
+            await E.Nav.GradeRolar(_grade, r1, c1);
+        }
+        await E.Nav.GradeFocar(_grade);
+    }
+
+    // ====================================================== edição
+    [JSInvokable]
+    public async Task Editar(string? primeira)
+    {
+        if (_editando) return;
+        _editando = true; _pelaBarra = false; _erroFormula = null; _refInserida = null;
+        _txt = _txtVisto = primeira ?? (Ativa?.Entrada ?? "");
+        StateHasChanged();
+        await Task.Delay(1);
+        await E.Nav.GradeFocarEdicao(true);
+    }
+
+    void FocoBarra()
+    {
+        if (_editando) { _pelaBarra = true; return; }
+        _editando = true; _pelaBarra = true; _erroFormula = null; _txt = _txtVisto = Ativa?.Entrada ?? "";
+    }
+
+    void DigitouCelula(ChangeEventArgs e) { _txt = e.Value?.ToString() ?? ""; _refInserida = null; _erroFormula = null; }
+    void DigitouBarra(ChangeEventArgs e) { _txt = e.Value?.ToString() ?? ""; _refInserida = null; _erroFormula = null; }
+
+    [JSInvokable]
+    public async Task TeclaEdicao(string tecla, bool shift, string valor)
+    {
+        _txt = valor;
+        if (tecla == "Escape") { _editando = false; _erroFormula = null; StateHasChanged(); await E.Nav.GradeFocar(_grade); await E.Nav.GradeBarra(Ativa?.Entrada); return; }
+        if (tecla == "Tab" && Sugestoes() is { Count: > 0 } sg && SufixoFuncao() != null) { InserirFuncao(sg[0]); StateHasChanged(); return; }
+        if (!Confirmar()) { StateHasChanged(); return; }
+        if (tecla == "Enter") MoverJa(shift ? -1 : 1, 0, false, false);
+        else MoverJa(0, shift ? -1 : 1, false, false);
+        StateHasChanged();
+        await E.Nav.GradeFocar(_grade);
+        await E.Nav.GradeBarra(Ativa?.Entrada);
+        await E.Nav.GradeRolar(_grade, _ar, _ac);
+    }
+
+    /// <summary>Grava o que foi digitado na célula ativa. Devolve falso se a fórmula estiver com erro.</summary>
+    bool Confirmar()
+    {
+        if (!_editando) return true;
+        var t = _txt;
+        if (t.StartsWith("=") && t.Length > 1)
+        {
+            // fecha parênteses esquecidos, como o Excel
+            int abre = t.Count(ch => ch == '('), fecha = t.Count(ch => ch == ')');
+            if (abre > fecha && !t.Contains('"')) t += new string(')', abre - fecha);
+            if (!Formula.Valida(t[1..])) { _erroFormula = "Fórmula com erro: confira parênteses, ; entre os argumentos e aspas nos textos."; return false; }
+        }
+        _editando = false; _pelaBarra = false; _erroFormula = null; _refInserida = null;
+        var atual = Ativa?.Entrada ?? "";
+        if (t == atual) return true;
+        Guardar();
+        var cel = F.Pegar(_ar, _ac);
+        cel.Entrada = t;
+        if (cel.E.Formato == "geral" && !t.StartsWith("=")) { FormatoPt.Valor(t, out var sug); if (sug != "") { cel.E.Formato = sug; if (sug == "pct" && !t.Contains(',')) cel.E.Casas = 0; } }
+        if (t == "" && cel.E.Padrao) F.Limpar(_ar, _ac);
+        Mudou();
+        return true;
+    }
+
+    bool PodeInserirRef()
+    {
+        var t = _txt.TrimEnd();
+        if (_refInserida != null) return true;
+        return t.Length > 0 && "=(;+-*/^&<>:,".Contains(t[^1]);
+    }
+
+    void InserirRef(int r1, int c1, int r2, int c2)
+    {
+        var refTxt = Ender.Faixa(r1, c1, r2, c2);
+        if (_refInserida is { } ri && ri.pos + ri.len <= _txt.Length) _txt = _txt[..ri.pos] + refTxt + _txt[(ri.pos + ri.len)..];
+        else { _refInserida = (r1, c1, _txt.Length, 0); _txt += refTxt; }
+        _refInserida = (r1, c1, _refInserida!.Value.pos, refTxt.Length);
+        _ = Empurrar();
+        StateHasChanged();
+    }
+
+    /// <summary>Manda para a caixa de edição um texto que o próprio Smart Math mudou (referência clicada, função escolhida).</summary>
+    async Task Empurrar() { _txtVisto = _txt; await E.Nav.GradeValor(_txt); }
+
+    string? SufixoFuncao()
+    {
+        if (!_txt.StartsWith("=")) return null;
+        var m = System.Text.RegularExpressions.Regex.Match(_txt, @"([A-Za-zÀ-ú][A-Za-zÀ-ú.0-9]*)$");
+        if (!m.Success || m.Value.Length < 1) return null;
+        if (System.Text.RegularExpressions.Regex.IsMatch(m.Value, @"^[A-Za-z]{1,3}\d+$")) return null;
+        return m.Value;
+    }
+
+    List<string> Sugestoes()
+    {
+        var s = SufixoFuncao();
+        if (s == null) return new();
+        var u = s.ToUpperInvariant();
+        string Sem(string x) => new string(x.Normalize(System.Text.NormalizationForm.FormD).Where(ch => System.Globalization.CharUnicodeInfo.GetUnicodeCategory(ch) != System.Globalization.UnicodeCategory.NonSpacingMark).ToArray());
+        return Formula.FuncoesPt.Where(f => Sem(f).StartsWith(Sem(u))).Take(7).ToList();
+    }
+
+    void InserirFuncao(string fn)
+    {
+        var s = SufixoFuncao();
+        if (s != null) _txt = _txt[..^s.Length];
+        _txt += fn + "(";
+        _ = Empurrar();
+    }
+
+    static string EstiloEd(Celula? cel) => cel == null ? "" : (cel.E.N ? "font-weight:700;" : "") + (cel.E.I ? "font-style:italic;" : "");
+
+    [JSInvokable]
+    public void Apagar()
+    {
+        Guardar();
+        for (int r = _s.r1; r <= Math.Min(_s.r2, F.UltLinha); r++)
+            for (int c = _s.c1; c <= Math.Min(_s.c2, F.UltColuna); c++)
+                if (F.Get(r, c) is { } cel) { cel.Entrada = ""; if (cel.E.Padrao) F.Limpar(r, c); }
+        Mudou(); StateHasChanged();
+    }
+
+    // ====================================================== formatação
+    IEnumerable<Celula> CelulasSel(bool criar = true)
+    {
+        int r2 = Math.Min(_s.r2, Math.Max(_s.r1, F.UltLinha + 1)), c2 = Math.Min(_s.c2, Math.Max(_s.c1, F.UltColuna + 1));
+        if (_s.r2 - _s.r1 < 2000) r2 = _s.r2;
+        if (_s.c2 - _s.c1 < 60) c2 = _s.c2;
+        for (int r = _s.r1; r <= r2; r++)
+            for (int c = _s.c1; c <= c2; c++)
+                yield return criar ? F.Pegar(r, c) : F.Get(r, c)!;
+    }
+
+    void Formatar(Action<EstiloCel> f) { Guardar(); foreach (var c in CelulasSel()) f(c.E); Mudou(); _ = E.Nav.GradeFocar(_grade); }
+
+    void Estilo(string qual)
+    {
+        bool on = qual switch { "n" => !(Ativa?.E.N ?? false), "i" => !(Ativa?.E.I ?? false), _ => !(Ativa?.E.S ?? false) };
+        Formatar(e => { if (qual == "n") e.N = on; else if (qual == "i") e.I = on; else e.S = on; });
+    }
+
+    [JSInvokable]
+    public async Task Atalho(string qual)
+    {
+        switch (qual)
+        {
+            case "n": case "i": case "s": Estilo(qual); break;
+            case "salvar": await Salvar(); break;
+            case "baixo": PreencherAbaixo(); break;
+            case "tudo": SelecionarTudo(); break;
+        }
+        StateHasChanged();
+    }
+
+    void Cor(string c) => Formatar(e => e.Cor = c);
+    void Fundo(string c) => Formatar(e => e.Fundo = c);
+    void Alinhar(string a) { var novo = Ativa?.E.Alinh == a ? "" : a; Formatar(e => e.Alinh = novo); }
+    void MudarFormato(ChangeEventArgs ev) { var f = ev.Value?.ToString() ?? "geral"; Formatar(e => { e.Formato = f; if (f == "pct" && e.Casas > 2) e.Casas = 2; }); }
+    void Casas(int d) => Formatar(e => { if (e.Formato is "geral" or "int") e.Formato = "num"; e.Casas = Math.Clamp(e.Casas + d, 0, 10); });
+    void LimparFormatos() => Formatar(e => { e.N = e.I = e.S = false; e.Cor = e.Fundo = e.Alinh = ""; e.Formato = "geral"; e.Casas = 2; });
+
+    string ClasseCel(int r, int c, object? v, Celula? cel, bool ativa)
+    {
+        var cl = "sm-c";
+        if (r >= _s.r1 && r <= _s.r2 && c >= _s.c1 && c <= _s.c2) { cl += " sel"; if (r == _s.r1) cl += " bt"; if (r == _s.r2) cl += " bb"; if (c == _s.c1) cl += " bl"; if (c == _s.c2) cl += " br"; }
+        if (ativa) cl += " ativa";
+        if (v is ErroF) cl += " erro";
+        if (_editando && _txt.StartsWith("=") && RefsEdicao().Any(x => r >= x.r1 && r <= x.r2 && c >= x.c1 && c <= x.c2)) cl += " ref";
+        if (F.Filtro is { } fl && r == fl.Linha && c >= fl.C1 && c <= fl.C2) cl += " cab-filtro";
+        return cl;
+    }
+
+    List<(int r1, int c1, int r2, int c2)>? _refsCache; string? _refsDe;
+    List<(int r1, int c1, int r2, int c2)> RefsEdicao()
+    {
+        if (_refsDe == _txt && _refsCache != null) return _refsCache;
+        _refsDe = _txt;
+        try { _refsCache = Formula.Referencias(_txt[1..]).Where(x => x.folha == null || string.Equals(x.folha, F.Nome, StringComparison.OrdinalIgnoreCase)).Select(x => (x.r1, x.c1, x.r2, x.c2)).ToList(); }
+        catch { _refsCache = new(); }
+        return _refsCache;
+    }
+
+    static string EstiloCel(Celula? cel, object? v)
+    {
+        var e = cel?.E;
+        var al = e?.Alinh is "esq" ? "left" : e?.Alinh is "centro" ? "center" : e?.Alinh is "dir" ? "right" : v is double ? "right" : v is bool or ErroF ? "center" : "left";
+        var s = $"text-align:{al};";
+        if (e == null) return s;
+        if (e.N) s += "font-weight:700;";
+        if (e.I) s += "font-style:italic;";
+        if (e.S) s += "text-decoration:line-through;";
+        if (e.Cor != "") s += $"color:{e.Cor};";
+        if (e.Fundo != "") s += $"background:{e.Fundo};";
+        return s;
+    }
+
+    static string? Dica(object? v) => (v as ErroF)?.Cod switch
+    {
+        "#DIV/0!" => "Divisão por zero", "#NOME?" => "Função ou nome que o Smart Math não conhece", "#REF!" => "Referência inválida (célula excluída?)",
+        "#N/D" => "Valor não encontrado", "#CIRC!" => "Referência circular: a fórmula depende dela mesma", "#VALOR!" => "Tipo de valor errado (texto onde deveria ter número?)", _ => null,
+    };
+
+    (double soma, double media, int cont, int nums) Resumo()
+    {
+        double s = 0; int n = 0, cont = 0;
+        if ((long)(_s.r2 - _s.r1 + 1) * (_s.c2 - _s.c1 + 1) > 50000) return (0, 0, 0, 0);
+        int r2 = Math.Min(_s.r2, F.UltLinha), c2 = Math.Min(_s.c2, F.UltColuna);
+        for (int r = _s.r1; r <= r2; r++)
+            for (int c = _s.c1; c <= c2; c++)
+            {
+                var v = _calc.Valor(F, r, c);
+                if (v == null) continue;
+                cont++;
+                if (v is double d) { s += d; n++; }
+            }
+        return (s, n == 0 ? 0 : s / n, cont, n);
+    }
+
+    // ====================================================== copiar / colar / preencher
+    [JSInvokable]
+    public string Copiar(bool recortar)
+    {
+        int r2 = Math.Min(_s.r2, Math.Max(_s.r1, F.UltLinha)), c2 = Math.Min(_s.c2, Math.Max(_s.c1, F.UltColuna));
+        var cels = new List<(int, int, Celula)>();
+        var sb = new System.Text.StringBuilder();
+        for (int r = _s.r1; r <= r2; r++)
+        {
+            for (int c = _s.c1; c <= c2; c++)
+            {
+                if (c > _s.c1) sb.Append('\t');
+                sb.Append(Texto(r, c).Replace("\t", " ").Replace("\n", " "));
+                if (F.Get(r, c) is { } cel) cels.Add((r - _s.r1, c - _s.c1, cel.Clonar()));
+            }
+            if (r < r2) sb.Append("\r\n");
+        }
+        _clip = (sb.ToString(), _s.r1, _s.c1, cels, recortar, F);
+        return sb.ToString();
+    }
+
+    [JSInvokable]
+    public void Colar(string texto)
+    {
+        Guardar();
+        var norm = texto.Replace("\r\n", "\n").TrimEnd('\n');
+        if (_clip is { } cp && cp.tsv.Replace("\r\n", "\n").TrimEnd('\n') == norm)
+        {
+            // de dentro do Smart Math: cola com fórmulas (ajustando as referências) e formatos
+            var tsvLinhas = norm.Split('\n');
+            int h = tsvLinhas.Length, w = tsvLinhas.Max(l => l.Split('\t').Length);
+            // como no Excel: se a seleção for múltipla do que foi copiado, repete para preencher toda a seleção
+            int selH = _s.r2 - _s.r1 + 1, selW = _s.c2 - _s.c1 + 1;
+            int repV = !cp.recortar && selH > h && selH % h == 0 && selH <= 5000 ? selH / h : 1;
+            int repH = !cp.recortar && selW > w && selW % w == 0 && selW <= 500 ? selW / w : 1;
+            int r0b = _s.r1, c0b = _s.c1;
+            if (cp.recortar) foreach (var (r0, c0, _) in cp.cels) cp.origem.Limpar(cp.r1 + r0, cp.c1 + c0);
+            for (int iv = 0; iv < repV; iv++)
+                for (int ih = 0; ih < repH; ih++)
+                {
+                    int br = r0b + iv * h, bc = c0b + ih * w;
+                    for (int rr = 0; rr < h; rr++) for (int cc = 0; cc < w; cc++) F.Limpar(br + rr, bc + cc);
+                    foreach (var (r0, c0, cel) in cp.cels)
+                    {
+                        var nova = cel.Clonar();
+                        if (nova.Entrada.StartsWith("=") && !cp.recortar) nova.Entrada = "=" + Formula.Deslocar(nova.Entrada[1..], br - cp.r1, bc - cp.c1);
+                        F.Cel[Folha.K(br + r0, bc + c0)] = nova;
+                    }
+                }
+            _ar = r0b; _ac = c0b; _anR = r0b; _anC = c0b; _s = (r0b, c0b, r0b + h * repV - 1, c0b + w * repH - 1);
+            if (cp.recortar) _clip = null;
+        }
+        else
+        {
+            var linhas = norm.Split('\n');
+            for (int i = 0; i < linhas.Length; i++)
+            {
+                var cols = linhas[i].Split('\t');
+                for (int j = 0; j < cols.Length; j++)
+                {
+                    var v = cols[j].Trim();
+                    if (v.Length > 1 && v.StartsWith("\"") && v.EndsWith("\"")) v = v[1..^1].Replace("\"\"", "\"");
+                    var cel = F.Pegar(_ar + i, _ac + j);
+                    cel.Entrada = v;
+                    if (cel.E.Formato == "geral") { FormatoPt.Valor(v, out var sug); if (sug != "") cel.E.Formato = sug; }
+                }
+            }
+            _anR = _ar; _anC = _ac; _s = (_ar, _ac, _ar + linhas.Length - 1, _ac + linhas.Max(l => l.Split('\t').Length) - 1);
+        }
+        Mudou(); StateHasChanged();
+    }
+
+    void PreencherAbaixo()
+    {
+        if (_s.r2 <= _s.r1) return;
+        Guardar();
+        for (int c = _s.c1; c <= _s.c2; c++)
+        {
+            var origem = F.Get(_s.r1, c);
+            for (int r = _s.r1 + 1; r <= _s.r2; r++)
+            {
+                if (origem == null) { F.Limpar(r, c); continue; }
+                var n = origem.Clonar();
+                if (n.Entrada.StartsWith("=")) n.Entrada = "=" + Formula.Deslocar(n.Entrada[1..], r - _s.r1, 0);
+                F.Cel[Folha.K(r, c)] = n;
+            }
+        }
+        Mudou();
+    }
+
+    // ====================================================== Σ, ordenar, filtro
+    async Task AutoSoma()
+    {
+        if (_editando) Confirmar();
+        if (_s.r1 == _s.r2 && _s.c1 == _s.c2)
+        {
+            // procura números acima (ou à esquerda) da célula ativa
+            int r = _ar - 1; while (r >= 0 && _calc.Valor(F, r, _ac) is double) r--;
+            string faixa;
+            if (r < _ar - 1) faixa = Ender.Faixa(r + 1, _ac, _ar - 1, _ac);
+            else { int c = _ac - 1; while (c >= 0 && _calc.Valor(F, _ar, c) is double) c--; faixa = c < _ac - 1 ? Ender.Faixa(_ar, c + 1, _ar, _ac - 1) : ""; }
+            _editando = true; _pelaBarra = false; _txt = _txtVisto = $"=SOMA({faixa})";
+            StateHasChanged(); await Task.Delay(1); await E.Nav.GradeFocarEdicao(true);
+            return;
+        }
+        Guardar();
+        int ult = Math.Min(_s.r2, F.UltLinha);
+        for (int c = _s.c1; c <= Math.Min(_s.c2, F.UltColuna); c++)
+        {
+            int dest = ult + 1;
+            var cel = F.Pegar(dest, c);
+            cel.Entrada = $"=SOMA({Ender.Faixa(_s.r1, c, ult, c)})"; cel.E.N = true;
+        }
+        Mudou();
+    }
+
+    /// <summary>A região de dados em volta da célula ativa (como o Excel faz ao classificar).</summary>
+    (int r1, int c1, int r2, int c2) Regiao()
+    {
+        if (_s.r2 > _s.r1 || _s.c2 > _s.c1) return (_s.r1, _s.c1, Math.Min(_s.r2, F.UltLinha), Math.Min(_s.c2, F.UltColuna));
+        bool Cheia(int r, int c) => r >= 0 && c >= 0 && !string.IsNullOrEmpty(F.Get(r, c)?.Entrada);
+        int r1 = _ar, r2 = _ar, c1 = _ac, c2 = _ac;
+        bool mudou = true;
+        while (mudou)
+        {
+            mudou = false;
+            if (Enumerable.Range(c1, c2 - c1 + 1).Any(c => Cheia(r1 - 1, c))) { r1--; mudou = true; }
+            if (Enumerable.Range(c1, c2 - c1 + 1).Any(c => Cheia(r2 + 1, c))) { r2++; mudou = true; }
+            if (Enumerable.Range(r1, r2 - r1 + 1).Any(r => Cheia(r, c1 - 1))) { c1--; mudou = true; }
+            if (Enumerable.Range(r1, r2 - r1 + 1).Any(r => Cheia(r, c2 + 1))) { c2++; mudou = true; }
+        }
+        return (r1, c1, r2, c2);
+    }
+
+    bool TemCabecalho(int r1, int c1, int c2, int r2) =>
+        r2 > r1 && Enumerable.Range(c1, c2 - c1 + 1).All(c => _calc.Valor(F, r1, c) is string or null) &&
+        Enumerable.Range(c1, c2 - c1 + 1).Any(c => _calc.Valor(F, r1 + 1, c) is double) || (r2 > r1 && Enumerable.Range(c1, c2 - c1 + 1).Any(c => F.Get(r1, c)?.E.N == true));
+
+    void Ordenar(bool cresc)
+    {
+        if (_editando) Confirmar();
+        if (F.Filtro is { } fl) { OrdenarFaixa(fl.Linha + 1, fl.C1, SemTotais(fl.Linha + 1, fl.C1, Math.Max(fl.Linha + 1, F.UltLinha), fl.C2), fl.C2, _ac, cresc); return; }
+        var (r1, c1, r2, c2) = Regiao();
+        if (r2 <= r1) return;
+        if (TemCabecalho(r1, c1, c2, r2)) r1++;
+        r2 = SemTotais(r1, c1, r2, c2);
+        OrdenarFaixa(r1, c1, r2, c2, Math.Clamp(_ac, c1, c2), cresc);
+    }
+
+    /// <summary>Tira do fim da faixa as linhas de total (fórmulas que somam as linhas de cima), para não embaralhar o total junto.</summary>
+    int SemTotais(int r1, int c1, int r2, int c2)
+    {
+        while (r2 > r1)
+        {
+            bool total = false;
+            for (int c = c1; c <= c2 && !total; c++)
+            {
+                var e = F.Get(r2, c)?.Entrada ?? "";
+                if (!e.StartsWith("=")) continue;
+                try { total = Formula.Referencias(e[1..]).Any(x => x.folha == null && x.r2 > x.r1 && x.r1 >= r1 - 1 && x.r2 < r2); } catch { }
+            }
+            if (!total) break;
+            r2--;
+        }
+        return r2;
+    }
+
+    void OrdenarFaixa(int r1, int c1, int r2, int c2, int chave, bool cresc)
+    {
+        Guardar();
+        var linhas = Enumerable.Range(r1, r2 - r1 + 1).Select(r => (r, v: _calc.Valor(F, r, chave))).ToList();
+        var ord = linhas.OrderBy(x => x.v == null ? 1 : 0).ThenBy(x => x.v, Comparer<object?>.Create((a, b) => cresc ? Formula.Comparar(a, b) : Formula.Comparar(b, a))).Select(x => x.r).ToList();
+        var copia = new Dictionary<(int, int), Celula?>();
+        foreach (var r in ord) for (int c = c1; c <= c2; c++) copia[(r, c)] = F.Get(r, c)?.Clonar();
+        for (int i = 0; i < ord.Count; i++)
+        {
+            int de = ord[i], para = r1 + i;
+            for (int c = c1; c <= c2; c++)
+            {
+                var cel = copia[(de, c)];
+                if (cel == null) { F.Limpar(para, c); continue; }
+                if (cel.Entrada.StartsWith("=") && para != de) cel.Entrada = "=" + Formula.Deslocar(cel.Entrada[1..], para - de, 0);
+                F.Cel[Folha.K(para, c)] = cel;
+            }
+        }
+        Mudou();
+    }
+
+    void AlternarFiltro()
+    {
+        Guardar();
+        if (F.Filtro != null) { F.Filtro = null; Mudou(); return; }
+        var (r1, c1, _, c2) = Regiao();
+        F.Filtro = new Filtro { Linha = r1, C1 = c1, C2 = c2 };
+        Mudou();
+    }
+
+    void AbrirFiltro(int c)
+    {
+        var fl = F.Filtro!;
+        var vals = new SortedSet<string>(StringComparer.CurrentCultureIgnoreCase);
+        for (int r = fl.Linha + 1; r <= F.UltLinha; r++) { vals.Add(Texto(r, c)); if (vals.Count > 1000) break; }
+        _filtroVals = vals.ToList();
+        var esc = fl.Escondidos.GetValueOrDefault(c) ?? new HashSet<string>();
+        _filtroMarc = _filtroVals.Where(v => !esc.Contains(v)).ToHashSet();
+        _filtroBusca = ""; _filtroCol = c;
+    }
+
+    void MarcarTodos(bool on) => _filtroMarc = on ? _filtroVals.ToHashSet() : new();
+
+    void AplicarFiltro()
+    {
+        if (_filtroCol is not int c || F.Filtro is not { } fl) return;
+        var esc = _filtroVals.Where(v => !_filtroMarc.Contains(v)).ToHashSet();
+        if (esc.Count == 0) fl.Escondidos.Remove(c); else fl.Escondidos[c] = esc;
+        _filtroCol = null;
+        Recontar();
+    }
+
+    void OrdenarColFiltro(int c, bool cresc)
+    {
+        var fl = F.Filtro!;
+        _filtroCol = null;
+        OrdenarFaixa(fl.Linha + 1, fl.C1, SemTotais(fl.Linha + 1, fl.C1, Math.Max(fl.Linha + 1, F.UltLinha), fl.C2), fl.C2, c, cresc);
+    }
+
+    // ====================================================== linhas e colunas
+    async Task LinhasColunas(ChangeEventArgs e)
+    {
+        var op = e.Value?.ToString() ?? "";
+        _chaveSel++;
+        if (op == "") return;
+        if (_editando) Confirmar();
+        bool linhas = op[1] == 'l';
+        bool inserir = op[0] == 'i';
+        int pos = linhas ? _s.r1 : _s.c1;
+        int n = inserir ? 1 : (linhas ? _s.r2 - _s.r1 + 1 : _s.c2 - _s.c1 + 1);
+        if (!inserir && n > 500) { await J.Aviso("Smart Math", "Selecione menos linhas/colunas para excluir de uma vez."); return; }
+        Guardar();
+        var delta = inserir ? n : -n;
+        var novo = new Dictionary<long, Celula>();
+        foreach (var (k, cel) in F.Cel)
+        {
+            var (r, c) = Folha.DeK(k);
+            int v = linhas ? r : c;
+            if (!inserir && v >= pos && v < pos + n) continue;
+            if (v >= pos) v += delta;
+            novo[linhas ? Folha.K(v, c) : Folha.K(r, v)] = cel;
+        }
+        F.Cel = novo;
+        if (!linhas)
+            F.Larg = F.Larg.Where(x => inserir || x.Key < pos || x.Key >= pos + n).ToDictionary(x => x.Key >= pos ? x.Key + delta : x.Key, x => x.Value);
+        // ajusta as fórmulas de todas as abas e as faixas dos gráficos
+        foreach (var fo in _p.Folhas)
+        {
+            foreach (var cel in fo.Cel.Values.Where(x => x.Entrada.StartsWith("=")))
+                cel.Entrada = "=" + Formula.Ajustar(cel.Entrada[1..], fo.Nome, F.Nome, linhas, pos, delta);
+            foreach (var g in fo.Graficos.Where(_ => fo == F))
+                g.Faixa = Formula.Ajustar(g.Faixa, F.Nome, F.Nome, linhas, pos, delta).Replace("#REF!", g.Faixa);
+        }
+        if (F.Filtro is { } fl && linhas && fl.Linha >= pos) fl.Linha = Math.Max(0, fl.Linha + delta);
+        Mudou();
+    }
+
+    // ====================================================== gráficos
+    void NovoGrafico(ChangeEventArgs e)
+    {
+        var tipo = e.Value?.ToString() ?? "";
+        _chaveSel++;
+        if (tipo == "") return;
+        if (_editando) Confirmar();
+        var (r1, c1, r2, c2) = Regiao();
+        Guardar();
+        var titulo = c2 == c1 + 1 ? Texto(r1, c1 + 1) : c2 == c1 ? Texto(r1, c1) : "";
+        F.Graficos.Add(new Grafico { Tipo = tipo, Faixa = Ender.Faixa(r1, c1, r2, c2), Titulo = titulo });
+        _painelGraf = true;
+        Mudou();
+        _ = E.Conta.Registrar("math.grafico", true);
+    }
+
+    void TituloGrafico(Grafico g, ChangeEventArgs e) { Guardar(); g.Titulo = e.Value?.ToString() ?? ""; Mudou(); }
+    void TipoGrafico(Grafico g, ChangeEventArgs e) { Guardar(); g.Tipo = e.Value?.ToString() ?? g.Tipo; Mudou(); }
+    void ExcluirGrafico(Grafico g) { Guardar(); F.Graficos.Remove(g); Mudou(); }
+    void MudarFaixa(Grafico g, ChangeEventArgs e) { var t = (e.Value?.ToString() ?? "").Trim().ToUpperInvariant().Replace(" ", ""); if (Ender.LerFaixa(t, out _, out _, out _, out _)) { Guardar(); g.Faixa = t; Mudou(); } }
+    void UsarSelecao(Grafico g) { var (r1, c1, r2, c2) = Regiao(); Guardar(); g.Faixa = Ender.Faixa(r1, c1, r2, c2); Mudou(); }
+
+    // ====================================================== abas
+    void TrocarFolha(int i) { if (_editando) Confirmar(); _fi = i; _anR = _anC = _ar = _ac = 0; _s = (0, 0, 0, 0); _filtroCol = null; _calc.Limpar(); Recontar(); _ = E.Nav.GradeFocar(_grade); }
+
+    void NovaFolha()
+    {
+        int n = _p.Folhas.Count + 1;
+        while (_p.Folha($"Planilha{n}") != null) n++;
+        _p.Folhas.Add(new Folha { Nome = $"Planilha{n}" });
+        TrocarFolha(_p.Folhas.Count - 1);
+        Mudou();
+    }
+
+    async Task RenomearFolha(int i)
+    {
+        var f = _p.Folhas[i];
+        var novo = (await J.Entrada("Renomear aba", "Nome da aba", f.Nome))?.Trim();
+        if (string.IsNullOrEmpty(novo) || novo == f.Nome) return;
+        if (_p.Folha(novo) != null) { await J.Aviso("Renomear aba", "Já existe uma aba com esse nome."); return; }
+        novo = string.Concat(novo.Where(ch => !"[]:*?/\\".Contains(ch)));
+        var antigo = f.Nome;
+        foreach (var fo in _p.Folhas) foreach (var cel in fo.Cel.Values.Where(x => x.Entrada.StartsWith("="))) cel.Entrada = "=" + Formula.RenomearFolha(cel.Entrada[1..], antigo, novo);
+        f.Nome = novo;
+        Mudou();
+    }
+
+    async Task MenuFolha(int i)
+    {
+        var op = await J.Um(_p.Folhas[i].Nome, new[] { ("ren", "Renomear"), ("dup", "Duplicar"), ("esq", "Mover para a esquerda"), ("dir", "Mover para a direita"), ("exc", "Excluir aba") }, "", "O que fazer com esta aba?", "");
+        switch (op)
+        {
+            case "ren": await RenomearFolha(i); break;
+            case "dup":
+            {
+                var c = _p.Folhas[i].Clonar(); int n = 2; while (_p.Folha($"{c.Nome} ({n})") != null) n++; c.Nome = $"{c.Nome} ({n})";
+                foreach (var g in c.Graficos) g.Id = Guid.NewGuid().ToString("N")[..8];
+                _p.Folhas.Insert(i + 1, c); TrocarFolha(i + 1); Mudou(); break;
+            }
+            case "esq" when i > 0: (_p.Folhas[i - 1], _p.Folhas[i]) = (_p.Folhas[i], _p.Folhas[i - 1]); _fi = i - 1; Mudou(); break;
+            case "dir" when i < _p.Folhas.Count - 1: (_p.Folhas[i + 1], _p.Folhas[i]) = (_p.Folhas[i], _p.Folhas[i + 1]); _fi = i + 1; Mudou(); break;
+            case "exc":
+                if (_p.Folhas.Count == 1) { await J.Aviso("Excluir aba", "A planilha precisa ter pelo menos uma aba."); break; }
+                if (!await J.Pergunta("Excluir aba", $"Excluir a aba “{_p.Folhas[i].Nome}” e tudo o que está nela?")) break;
+                _p.Folhas.RemoveAt(i); _desfazer.Clear(); _refazer.Clear(); TrocarFolha(Math.Max(0, i - 1)); Mudou(); break;
+        }
+    }
+
+    [JSInvokable] public void Largura(int col, double px) { Guardar(); F.Larg[col] = Math.Round(px); Mudou(); StateHasChanged(); }
+
+    // ====================================================== arquivo
+    async Task MudarNome(ChangeEventArgs e)
+    {
+        var n = (e.Value?.ToString() ?? "").Trim();
+        if (n.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase)) n = n[..^5];
+        _nome = n == "" ? "Planilha sem título" : n;
+        await GuardarRascunho();
+    }
+
+    async Task<bool> PodeTrocar() => !_sujo || await J.Pergunta("Smart Math", "A planilha atual tem alterações que não foram salvas em .xlsx. Continuar mesmo assim?");
+
+    void Carregar(Pasta p, string nome, string status)
+    {
+        _p = p; _fi = 0; _calc = new Formula.Calc(_p);
+        _nome = nome; _status = status; _sujo = false;
+        _desfazer.Clear(); _refazer.Clear(); _clip = null; _filtroCol = null; _editando = false;
+        _anR = _anC = _ar = _ac = 0; _s = (0, 0, 0, 0);
+        _painelGraf = _p.Folhas.Any(f => f.Graficos.Count > 0);
+        Recontar();
+    }
+
+    async Task Nova()
+    {
+        if (!await PodeTrocar()) return;
+        Carregar(new Pasta(), "Planilha sem título", "planilha nova");
+        await E.Nav.LsDel(Rascunho);
+    }
+
+    async Task Abrir(InputFileChangeEventArgs e)
+    {
+        _chaveArq++;
+        var f = e.File;
+        if (!await PodeTrocar()) return;
+        try
+        {
+            using var ms = new MemoryStream();
+            await f.OpenReadStream(60_000_000).CopyToAsync(ms);
+            var bytes = ms.ToArray();
+            Pasta p;
+            if (f.Name.EndsWith(".csv", StringComparison.OrdinalIgnoreCase))
+            {
+                var txt = System.Text.Encoding.UTF8.GetString(bytes).Replace("\r", "");
+                var sep = txt.Split('\n').FirstOrDefault()?.Count(ch => ch == ';') >= txt.Split('\n').FirstOrDefault()?.Count(ch => ch == ',') ? ';' : ',';
+                p = new Pasta(); var fo = p.Folhas[0]; fo.Nome = Path.GetFileNameWithoutExtension(f.Name);
+                var linhas = txt.TrimEnd('\n').Split('\n');
+                for (int i = 0; i < linhas.Length; i++) { var cs = linhas[i].Split(sep); for (int j = 0; j < cs.Length; j++) if (cs[j].Trim('"') != "") fo.Pegar(i, j).Entrada = cs[j].Trim().Trim('"'); }
+            }
+            else p = XlsxPasta.Ler(bytes);
+            Carregar(p, Path.GetFileNameWithoutExtension(f.Name), $"aberto de {f.Name}");
+            _recuperar = null;
+            _ = E.Conta.Registrar("math.abrir", true);
+        }
+        catch (Exception ex) { await J.Erro("Abrir planilha", "Não consegui abrir esse arquivo: " + ex.Message); }
+    }
+
+    async Task Salvar()
+    {
+        if (_salvando) return;
+        if (_editando && !Confirmar()) return;
+        _salvando = true; StateHasChanged();
+        try
+        {
+            var bytes = XlsxPasta.Gravar(_p);
+            var nome = string.Concat(_nome.Select(c => Path.GetInvalidFileNameChars().Contains(c) ? '_' : c)).Trim();
+            await E.Nav.Baixar((nome == "" ? "Planilha" : nome) + ".xlsx", bytes, Navegador.MimeXlsx);
+            _sujo = false; _status = $"salvo em Downloads às {DateTime.Now:HH:mm}";
+            await E.Nav.LsDel(Rascunho);
+            _ = E.Conta.Registrar("math.salvar", true);
+        }
+        catch (Exception ex) { await J.Erro("Salvar .xlsx", "Não consegui gerar o arquivo: " + ex.Message); }
+        finally { _salvando = false; }
+    }
+
+    async Task Recuperar()
+    {
+        if (_recuperar is not { } r) return;
+        try { Carregar(XlsxPasta.DeJson(r.json), r.nome, ""); _sujo = true; }
+        catch { await J.Aviso("Smart Math", "Não consegui recuperar a planilha."); }
+        _recuperar = null;
+    }
+
+    async Task Descartar() { _recuperar = null; await E.Nav.LsDel(Rascunho); }
+
+    public override void Dispose()
+    {
+        base.Dispose();
+        if (_montado) { try { _ = E.Nav.GradeDesmontar(_grade); } catch { } }
+        _ = Task.Delay(3000).ContinueWith(_ => _ref?.Dispose());
+    }
+}

@@ -1,0 +1,142 @@
+@* Gráfico do Smart Math (colunas, barras, linhas ou pizza) desenhado em SVG a partir de uma faixa da planilha. *@
+@using System.Globalization
+@using QSmart.Core.Pacote
+
+@if (D == null)
+{
+    <div class="gs-vazio">Faixa sem números para desenhar. Selecione uma tabela com títulos na primeira linha e números nas colunas.</div>
+}
+else if (Tipo == "pizza")
+{
+    var s = D.Series[0];
+    var vals = s.v.Select(x => Math.Max(0, x ?? 0)).ToList();
+    var tot = vals.Sum();
+    <svg viewBox="0 0 @W @H" class="gs">
+        @if (tot <= 0) { <g><text x="@N(W / 2)" y="@N(H / 2)" class="gs-eixo" text-anchor="middle">Sem valores positivos</text></g> }
+        else
+        {
+            double a = -Math.PI / 2, cx = 150, cy = H / 2.0, r = Math.Min(120, H / 2.0 - 16);
+            for (int i = 0; i < vals.Count; i++)
+            {
+                var fr = vals[i] / tot; var b = a + fr * 2 * Math.PI;
+                var cor = Cores[i % Cores.Length];
+                if (fr >= 0.9999) { <circle cx="@N(cx)" cy="@N(cy)" r="@N(r)" fill="@cor"><title>@D.Categorias[i]: @Fmt(vals[i]) (100%)</title></circle> }
+                else if (fr > 0)
+                {
+                    <path d="@Fatia(cx, cy, r, a, b)" fill="@cor" stroke="var(--surface)" stroke-width="2"><title>@($"{D.Categorias[i]}: {Fmt(vals[i])} ({fr * 100:0.#}%)")</title></path>
+                    if (fr > 0.05)
+                    {
+                        var m = (a + b) / 2;
+                        <g><text x="@N(cx + r * 0.62 * Math.Cos(m))" y="@N(cy + r * 0.62 * Math.Sin(m) + 4)" class="gs-pct">@($"{fr * 100:0}%")</text></g>
+                    }
+                }
+                a = b;
+            }
+            <g>
+                @for (int i = 0; i < Math.Min(vals.Count, 10); i++)
+                {
+                    <rect x="300" y="@N(30 + i * 22)" width="12" height="12" rx="3" fill="@Cores[i % Cores.Length]" />
+                    <g><text x="318" y="@N(40 + i * 22)" class="gs-leg">@Curto(D.Categorias[i], 22)</text></g>
+                }
+            </g>
+        }
+    </svg>
+}
+else
+{
+    var todos = D.Series.SelectMany(x => x.v).Where(x => x != null).Select(x => x!.Value).DefaultIfEmpty(0).ToList();
+    double max = Math.Max(0, todos.Max()), min = Math.Min(0, todos.Min());
+    var (e0, e1, passo) = Escala(min, max);
+    bool hor = Tipo == "barras";
+    double x0 = hor ? 96 : 52, y0 = 16, x1 = W - 14, y1 = H - (D.Series.Count > 1 ? 54 : 34);
+    double Pv(double v) => hor ? x0 + (v - e0) / (e1 - e0) * (x1 - x0) : y1 - (v - e0) / (e1 - e0) * (y1 - y0);
+    int n = D.Categorias.Count, ns = D.Series.Count;
+    double banda = (hor ? (y1 - y0) : (x1 - x0)) / Math.Max(1, n);
+    <svg viewBox="0 0 @W @H" class="gs">
+        @for (double v = e0; v <= e1 + passo / 2; v += passo)
+        {
+            var p = Pv(v);
+            if (hor) { <line x1="@N(p)" x2="@N(p)" y1="@N(y0)" y2="@N(y1)" class="gs-grade" /> <g><text x="@N(p)" y="@N(y1 + 14)" class="gs-eixo" text-anchor="middle">@Curto(Fmt(v), 8)</text></g> }
+            else { <line x1="@N(x0)" x2="@N(x1)" y1="@N(p)" y2="@N(p)" class="gs-grade" /> <g><text x="@N(x0 - 6)" y="@N(p + 4)" class="gs-eixo" text-anchor="end">@Curto(Fmt(v), 8)</text></g> }
+        }
+        @for (int i = 0; i < n; i++)
+        {
+            var centro = (hor ? y0 : x0) + banda * (i + 0.5);
+            var rot = Curto(D.Categorias[i], hor ? 12 : Math.Max(3, (int)(banda / 6.5)));
+            if (hor) { <g><text x="@N(x0 - 6)" y="@N(centro + 4)" class="gs-eixo" text-anchor="end">@rot</text></g> }
+            else if (n <= 24 || i % (int)Math.Ceiling(n / 24.0) == 0) { <g><text x="@N(centro)" y="@N(y1 + 15)" class="gs-eixo" text-anchor="middle">@rot</text></g> }
+        }
+        @if (Tipo == "linhas")
+        {
+            for (int s = 0; s < ns; s++)
+            {
+                var pts = new List<string>();
+                for (int i = 0; i < n; i++) if (D.Series[s].v[i] is double v) pts.Add($"{N(x0 + banda * (i + 0.5))},{N(Pv(v))}");
+                var cor = Cores[s % Cores.Length];
+                <polyline points="@string.Join(" ", pts)" fill="none" stroke="@cor" stroke-width="2.5" stroke-linejoin="round" />
+                for (int i = 0; i < n; i++)
+                {
+                    if (D.Series[s].v[i] is double v)
+                    {
+                        <circle cx="@N(x0 + banda * (i + 0.5))" cy="@N(Pv(v))" r="3.5" fill="@cor"><title>@($"{D.Series[s].nome} · {D.Categorias[i]}: {Fmt(v)}")</title></circle>
+                    }
+                }
+            }
+        }
+        else
+        {
+            var larg = banda * 0.78 / ns;
+            for (int i = 0; i < n; i++)
+                for (int s = 0; s < ns; s++)
+                {
+                    if (D.Series[s].v[i] is not double v) continue;
+                    var ini = (hor ? y0 : x0) + banda * i + banda * 0.11 + larg * s;
+                    var a = Pv(Math.Max(0, Math.Min(v, e1))); var b = Pv(Math.Min(0, Math.Max(v, e0)));
+                    if (v < 0) (a, b) = (Pv(0), Pv(v));
+                    var cor = Cores[s % Cores.Length];
+                    if (hor) { <rect x="@N(Math.Min(a, Pv(0)))" y="@N(ini)" width="@N(Math.Abs(Pv(v) - Pv(0)))" height="@N(Math.Max(1, larg - 2))" rx="3" fill="@cor"><title>@($"{D.Series[s].nome} · {D.Categorias[i]}: {Fmt(v)}")</title></rect> }
+                    else { <rect x="@N(ini)" y="@N(Math.Min(Pv(v), Pv(0)))" width="@N(Math.Max(1, larg - 2))" height="@N(Math.Abs(Pv(v) - Pv(0)))" rx="3" fill="@cor"><title>@($"{D.Series[s].nome} · {D.Categorias[i]}: {Fmt(v)}")</title></rect> }
+                }
+        }
+        <line x1="@N(hor ? Pv(0) : x0)" x2="@N(hor ? Pv(0) : x1)" y1="@N(hor ? y0 : Pv(0))" y2="@N(hor ? y1 : Pv(0))" class="gs-zero" />
+        @if (ns > 1)
+        {
+            <g>
+                @{ double lx = x0; }
+                @for (int s = 0; s < ns; s++)
+                {
+                    var nome = Curto(D.Series[s].nome, 16);
+                    <rect x="@N(lx)" y="@N(H - 16)" width="12" height="12" rx="3" fill="@Cores[s % Cores.Length]" />
+                    <g><text x="@N(lx + 17)" y="@N(H - 6)" class="gs-leg">@nome</text></g>
+                    lx += 34 + nome.Length * 6.5;
+                }
+            </g>
+        }
+    </svg>
+}
+
+@code {
+    [Parameter] public XlsxPasta.DadosGrafico? D { get; set; }
+    [Parameter] public string Tipo { get; set; } = "colunas";
+    const int W = 460, H = 260;
+    static readonly string[] Cores = { "#2563EB", "#10B981", "#F59E0B", "#EF4444", "#8B5CF6", "#EC4899", "#14B8A6", "#F97316" };
+
+    static string N(double v) => v.ToString("0.##", CultureInfo.InvariantCulture);
+    static string Fmt(double v) => Math.Abs(v) >= 1000 ? FormatoPt.Num(v, 0, true) : FormatoPt.Geral(Math.Round(v, 2));
+    static string Curto(string s, int n) => s.Length > n ? s[..Math.Max(1, n - 1)] + "…" : s;
+
+    static (double, double, double) Escala(double min, double max)
+    {
+        if (max - min < 1e-12) { max = min + 1; }
+        var bruto = (max - min) / 5;
+        var mag = Math.Pow(10, Math.Floor(Math.Log10(bruto)));
+        var passo = new[] { 1, 2, 2.5, 5, 10 }.Select(x => x * mag).First(x => x >= bruto);
+        return (Math.Floor(min / passo) * passo, Math.Ceiling(max / passo) * passo, passo);
+    }
+
+    static string Fatia(double cx, double cy, double r, double a, double b)
+    {
+        int g = b - a > Math.PI ? 1 : 0;
+        return $"M{N(cx)},{N(cy)} L{N(cx + r * Math.Cos(a))},{N(cy + r * Math.Sin(a))} A{N(r)},{N(r)} 0 {g} 1 {N(cx + r * Math.Cos(b))},{N(cy + r * Math.Sin(b))} Z";
+    }
+}

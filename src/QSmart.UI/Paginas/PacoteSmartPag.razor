@@ -1,0 +1,37 @@
+@page "/pacote-smart"
+@inherits PaginaBase
+
+<Pagina Titulo="Pacote Smart" Grupo="@A.Grupo" Sub="Textos, planilhas e cadernos no próprio QSmart. Escolha um aplicativo para começar.">
+    <ChildContent>
+        <div class="pk">
+            @foreach (var (ap, cor, cor2, rotulo, itens, onde) in Apps)
+            {
+                var a = Abas.Por(ap)!;
+                <a class="pk-app" href="@a.Rota" style="--c:@cor;--c2:@cor2">
+                    <div class="pk-topo">
+                        <span class="pk-ic"><Icone Nome="@a.Icone" Tamanho="34" /></span>
+                        <span class="pk-rot">@rotulo</span>
+                    </div>
+                    <h2>@a.Nome</h2>
+                    <p>@a.Descricao</p>
+                    <ul>@foreach (var i in itens) { <li><Icone Nome="check" Tamanho="14" /> @i</li> }</ul>
+                    <div class="pk-pe">
+                        <span class="pk-onde"><Icone Nome="@(onde == "conta" ? "cadeado" : "download")" Tamanho="13" /> @(onde == "conta" ? "salvo na sua conta" : "arquivos no seu computador")</span>
+                        <span class="pk-abrir">Abrir <Icone Nome="seta" Tamanho="15" /></span>
+                    </div>
+                </a>
+            }
+        </div>
+    </ChildContent>
+</Pagina>
+
+@code {
+    protected override string Chave => "pacote";
+
+    static readonly (string ap, string cor, string cor2, string rotulo, string[] itens, string onde)[] Apps =
+    {
+        ("smartwrite", "#2563EB", "#60A5FA", "Textos", new[] { "Página A4, fontes, títulos e estilos", "Listas, tabelas, imagens e quebra de página", "Abre e salva .docx do Word", "Imprime e gera PDF" }, "arquivo"),
+        ("smartmath", "#059669", "#34D399", "Planilhas", new[] { "Fórmulas em português: SOMA, SE, PROCV…", "Várias abas, formatação, filtro e ordenar", "Gráficos de barra, linha e pizza", "Abre e salva .xlsx do Excel" }, "arquivo"),
+        ("smartnote", "#7C3AED", "#C084FC", "Cadernos", new[] { "Cadernos, páginas e subpáginas", "Imagens coladas e listas de tarefas", "Compartilha com a equipe ou por link", "O Mr. Smart IA responde com base neles" }, "conta"),
+    };
+}

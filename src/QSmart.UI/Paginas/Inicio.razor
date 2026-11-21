@@ -48,7 +48,7 @@
                         <span><Icone Nome="selo" Tamanho="15" /> Serviços 3069 analisado pelo Mr. Smart</span>
                         <span><Icone Nome="estrategia" Tamanho="15" /> Mr. Smart escreve a estratégia do dia</span>
                         <span><Icone Nome="conversa" Tamanho="15" /> One a One da coordenação</span>
-                        <span><Icone Nome="caderno" Tamanho="15" /> Smart Note: seus cadernos na conta</span>
+                        <span><Icone Nome="pacote" Tamanho="15" /> Pacote Smart: Write, Math e Note</span>
                         <span><Icone Nome="feed" Tamanho="15" /> Feed do QSmart, com curtidas e comentários</span>
                     </div>
                 </div>
@@ -171,7 +171,7 @@
         ("corredor", "Une vários compilados num só, tira as linhas repetidas e ainda junta PDFs na ordem que você escolher."),
         ("pareceres", "Confere as justificativas com os pareceres padrão e aponta o que está diferente."),
         ("ferias", "Férias cadastradas por liderança: acha quem fica fora junto, sugere novas datas e mostra quanto o impacto diminuiu."),
-        ("smartnote", "Cadernos, páginas e subpáginas como no OneNote: texto formatado, listas de tarefas, tabelas e imagens coladas com Ctrl+V, salvos na sua conta."),
+        ("pacote", "Smart Write para textos (.docx), Smart Math para planilhas com fórmulas e gráficos (.xlsx) e Smart Note para os cadernos."),
         ("pontos", "Calcula a média diária de ações por usuário e permite justificar quem ficou abaixo da meta."),
         ("servicos3069", "O Mr. Smart confere a nossa resposta para a 3069 antes de ir pelo Teams: se responde, se é objetiva e o que pode ser contestado, com nota e sugestões."),
         ("oneaone", "Mostra numa esteira quem está em dia, chegando ou atrasado no 1:1 com a coordenação, por liderança."),
@@ -277,8 +277,8 @@
     static int Indice(string g) => Abas.Cor(g);
 
     // ---- Cartas em destaque ----
-    static readonly HashSet<string> Novos = new() { "smartnote", "radar360", "servicos3069", "oneaone" };
-    static readonly string[] Destaques = { "oneaone", "smartnote", "radar360", "servicos3069", "ferias" };
+    static readonly HashSet<string> Novos = new() { "pacote", "radar360", "servicos3069", "oneaone" };
+    static readonly string[] Destaques = { "oneaone", "pacote", "radar360", "servicos3069", "ferias" };
     string? _area;
     void EscolherArea(string? g) => _area = g;
     static string NomeArea(string g) => g == "Relacionamento e cooperativas" ? "Relacionamento" : g;
@@ -297,7 +297,7 @@
         "radar360" => "#EC4899", "servicos3069" => "#C026D3", "oneaone" => "#14B8A6", "ferias" => "#0EA5E9", "pontos" => "#0D9488",
         "estrategia" => "#F59E0B", "volume" => "#F97316", "monitor" => "#EAB308", "corredor" => "#D97706",
         "resumo" => "#10B981", "usuarios" => "#059669", "evolucao" => "#0EA5E9", "inspecao" => "#3B82F6", "historico" => "#6366F1",
-        "pareceres" => "#8B5CF6", "smartnote" => "#7C3AED", _ => "#64748B",
+        "pareceres" => "#8B5CF6", "pacote" => "#2563EB", _ => "#64748B",
     };
 
     static string Frase(Aba a) => a.Chave switch
@@ -318,7 +318,7 @@
         "monitor" => "O tempo ocioso, dia a dia.",
         "corredor" => "Compilados e PDFs num arquivo só.",
         "depurador" => "O que foi lido da planilha.",
-        "smartnote" => "Seus cadernos, páginas e imagens num lugar só.",
+        "pacote" => "Textos, planilhas e cadernos num lugar só.",
         _ => "Abre em uma nova aba.",
     };
 
@@ -330,6 +330,7 @@
         "Operação" => "volume, ociosidade, consolidação de arquivos e estratégia do dia",
         "Coordenação" => "férias, 1:1 e produtividade do mês",
         "Relacionamento e cooperativas" => "",
+        "Extensão" => "utilidades do QSmart: o Pacote Smart com textos, planilhas e cadernos",
         _ => "diagnóstico das planilhas e outros sistemas da Insi",
     };
 

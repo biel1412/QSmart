@@ -175,17 +175,17 @@ else
     void ContarUso()
     {
         var rel = Rotas.ToBaseRelativePath(Rotas.Uri).Split('?', '#')[0].Trim('/');
-        if (Abas.Todas.FirstOrDefault(a => a.Rota == rel) is { } aba) _ = E.Conta.Registrar(aba.Chave);
+        if (Abas.PorRota(rel) is { } aba) _ = E.Conta.Registrar(aba.Chave);
     }
 
-    static readonly string[] ChavesFerramentas = Abas.Todas.Where(a => !a.Externo).Select(a => a.Chave).ToArray();
+    static readonly string[] ChavesFerramentas = Abas.Todas.Concat(Abas.Internas).Where(a => !a.Externo).Select(a => a.Chave).ToArray();
     QSmart.Core.Conta.ResumoConta Nivel() => QSmart.Core.Conta.Conquistas.Calcular(E.Conta.Uso, E.Conta.Dias, ChavesFerramentas, DateOnly.FromDateTime(DateTime.Today));
 
     /// <summary>Página de uma aba desativada volta para o início (aplicar_abas do original).</summary>
     void Proteger()
     {
         var rel = Rotas.ToBaseRelativePath(Rotas.Uri).Split('?', '#')[0].Trim('/');
-        var aba = Abas.Todas.FirstOrDefault(a => a.Rota == rel);
+        var aba = Abas.PorRota(rel);
         if (aba != null && E.Iniciado && !E.AbaAtiva(aba.Chave)) Rotas.NavigateTo("");
     }
 

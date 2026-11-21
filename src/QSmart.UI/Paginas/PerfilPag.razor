@@ -129,7 +129,7 @@
     string _atual = "", _nova = "", _nova2 = "";
     bool _enviando;
     List<UsuarioAdmin>? _usuarios;
-    static readonly string[] Ferramentas = Abas.Todas.Where(a => !a.Externo).Select(a => a.Chave).ToArray();
+    static readonly string[] Ferramentas = Abas.Todas.Concat(Abas.Internas).Where(a => !a.Externo).Select(a => a.Chave).ToArray();
 
     protected override async Task OnInitializedAsync()
     {

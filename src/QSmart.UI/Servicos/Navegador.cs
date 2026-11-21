@@ -53,6 +53,28 @@ public sealed class Navegador
     public ValueTask NotaDescartar(Microsoft.AspNetCore.Components.ElementReference el) => _js.InvokeVoidAsync("qsmart.nota.descartar", el);
     public ValueTask NotaVer(Microsoft.AspNetCore.Components.ElementReference el, string html) => _js.InvokeVoidAsync("qsmart.nota.ver", el, html);
     public ValueTask TrocarUrl(string url, string? titulo = null) => _js.InvokeVoidAsync("qsmart.trocarUrl", url, titulo);
+    // Smart Write
+    public ValueTask DocMontar(Microsoft.AspNetCore.Components.ElementReference el, Microsoft.AspNetCore.Components.ElementReference barra, Microsoft.AspNetCore.Components.ElementReference arq, object refNet, string html, string nome) => _js.InvokeVoidAsync("qsmart.doc.montar", el, barra, arq, refNet, html, nome);
+    public ValueTask DocDesmontar(Microsoft.AspNetCore.Components.ElementReference el) => _js.InvokeVoidAsync("qsmart.doc.desmontar", el);
+    public ValueTask DocCarregar(Microsoft.AspNetCore.Components.ElementReference el, string html, string nome) => _js.InvokeVoidAsync("qsmart.doc.carregar", el, html, nome);
+    public ValueTask DocNome(Microsoft.AspNetCore.Components.ElementReference el, string nome) => _js.InvokeVoidAsync("qsmart.doc.nome", el, nome);
+    public ValueTask DocLimpo(Microsoft.AspNetCore.Components.ElementReference el) => _js.InvokeVoidAsync("qsmart.doc.limpo", el);
+    public ValueTask<string> DocEstrutura(Microsoft.AspNetCore.Components.ElementReference el) => _js.InvokeAsync<string>("qsmart.doc.estrutura", el);
+    public ValueTask<string> DocRascunho() => _js.InvokeAsync<string>("qsmart.doc.rascunho");
+    public ValueTask DocApagarRascunho() => _js.InvokeVoidAsync("qsmart.doc.apagarRascunho");
+    public ValueTask DocImprimir() => _js.InvokeVoidAsync("qsmart.doc.imprimir");
+    // Smart Math
+    public ValueTask GradeMontar(Microsoft.AspNetCore.Components.ElementReference el, object refNet) => _js.InvokeVoidAsync("qsmart.grade.montar", el, refNet);
+    public ValueTask GradeDesmontar(Microsoft.AspNetCore.Components.ElementReference el) => _js.InvokeVoidAsync("qsmart.grade.desmontar", el);
+    public ValueTask GradeFocar(Microsoft.AspNetCore.Components.ElementReference el) => _js.InvokeVoidAsync("qsmart.grade.focar", el);
+    public ValueTask GradeFocarEdicao(bool fim) => _js.InvokeVoidAsync("qsmart.grade.focarEdicao", fim);
+    public ValueTask GradeBarra(string? txt) => _js.InvokeVoidAsync("qsmart.grade.barra", txt);
+    public ValueTask GradeValor(string txt) => _js.InvokeVoidAsync("qsmart.grade.valor", txt);
+    public ValueTask GradeRolar(Microsoft.AspNetCore.Components.ElementReference el, int r, int c) => _js.InvokeVoidAsync("qsmart.grade.rolarPara", el, r, c);
+    public ValueTask<string> LsGet(string k) => _js.InvokeAsync<string>("qsmart.lsGet", k);
+    public ValueTask<bool> LsSet(string k, string v) => _js.InvokeAsync<bool>("qsmart.lsSet", k, v);
+    public ValueTask LsDel(string k) => _js.InvokeVoidAsync("qsmart.lsDel", k);
+    public const string MimeDocx = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
     public ValueTask Clicar(Microsoft.AspNetCore.Components.ElementReference el) => _js.InvokeVoidAsync("qsmart.clicar", el);
     public ValueTask<string> ReduzirImagem(byte[] dados, int max) => _js.InvokeAsync<string>("qsmart.reduzirImagem", dados, max);
     public ValueTask<RespostaHttp> GetH(string url, Dictionary<string, string>? cabecalhos = null, int ms = 25000) => _js.InvokeAsync<RespostaHttp>("qsmart.getH", url, cabecalhos ?? new(), ms);

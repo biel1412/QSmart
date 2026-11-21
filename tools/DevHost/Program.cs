@@ -1,7 +1,7 @@
 using QSmart.UI.Servicos;
 
 var b = WebApplication.CreateBuilder(args);
-b.Services.AddRazorComponents().AddInteractiveServerComponents()
+b.Services.AddRazorComponents().AddInteractiveServerComponents(o => o.DetailedErrors = true)
     .AddHubOptions(o => o.MaximumReceiveMessageSize = 256 * 1024 * 1024);
 b.Services.AddQSmart();
 var app = b.Build();

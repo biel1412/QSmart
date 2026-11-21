@@ -41,8 +41,8 @@ public static class Abas
             "Analisa a nossa resposta para a 3069 antes de ir pelo Teams: se responde a pergunta, objetividade, discordância, pontos que podem ser contestados e tom.", "servicos-3069"),
         new("radar360", "Radar Smart360", "Radar Smart360", "radar", "Relacionamento e cooperativas",
             "Ficha 360 de um CNPJ (cadastro, sócios, linha do tempo, Junta Comercial e checagens públicas) e análise de CPF com finalidade, sem salvar nada.", "radar-smart360"),
-        new("smartnote", "Smart Note", "Smart Note", "caderno", "Relacionamento e cooperativas",
-            "Seus cadernos de anotações, como no OneNote: cadernos, páginas e subpáginas, texto formatado, listas de tarefas, tabelas e imagens coladas. Só você vê.", "smart-note"),
+        new("pacote", "Pacote Smart", "Pacote Smart", "pacote", "Extensão",
+            "Smart Write (textos, como o Word), Smart Math (planilhas com fórmulas e gráficos, como o Excel) e Smart Note (cadernos, como o OneNote) num lugar só.", "pacote-smart"),
         new("depurador", "Depurador de leitura", "Depurador", "depurador", "Ferramentas",
             "Mostra, linha a linha, o que o sistema lê de uma planilha e o que fica de fora.", "depurador"),
         new("insitalent", "InsiTalent", "InsiTalent", "talento", "Ferramentas",
@@ -51,16 +51,32 @@ public static class Abas
             "Abre o Pulso · Mesa de Inspeção em uma nova aba.", "https://biel1412.github.io/healthcoop/"),
     };
 
-    /// <summary>Ordem da lista de abas nas Configurações (igual ao original).</summary>
-    public static readonly string[] OrdemConfig = { "resumo", "usuarios", "evolucao", "inspecao", "volume", "monitor", "corredor", "estrategia", "historico", "pareceres", "ferias", "pontos", "oneaone", "servicos3069", "radar360", "smartnote", "depurador", "insitalent", "mesa" };
+    /// <summary>Ferramentas que vivem dentro de outra (o Pacote Smart): não aparecem no menu, abrem pela tela do pacote.</summary>
+    public static readonly Aba[] Internas =
+    {
+        new("smartwrite", "Smart Write", "Smart Write", "documento", "Extensão",
+            "Editor de textos como o Word: abre e salva arquivos .docx no seu computador.", "smart-write"),
+        new("smartmath", "Smart Math", "Smart Math", "grade-planilha", "Extensão",
+            "Planilhas como o Excel: fórmulas, várias abas, formatação, filtro e gráficos; abre e salva .xlsx no seu computador.", "smart-math"),
+        new("smartnote", "Smart Note", "Smart Note", "caderno", "Extensão",
+            "Seus cadernos de anotações, como no OneNote: cadernos, páginas e subpáginas, texto formatado, listas de tarefas, tabelas e imagens coladas.", "smart-note"),
+    };
 
-    public static readonly string[] Grupos = { "Decisões", "Inspeção", "Conformidade", "Operação", "Coordenação", "Relacionamento e cooperativas", "Ferramentas" };
+    /// <summary>A ferramenta “mãe” de uma interna (para ligar/desligar e para o menu marcar o item certo).</summary>
+    public static string? PaiDe(string chave) => Internas.Any(a => a.Chave == chave) ? "pacote" : null;
+
+    public static Aba? PorRota(string rota) => Todas.FirstOrDefault(a => a.Rota == rota) ?? Internas.FirstOrDefault(a => a.Rota == rota);
+
+    /// <summary>Ordem da lista de abas nas Configurações (igual ao original).</summary>
+    public static readonly string[] OrdemConfig = { "resumo", "usuarios", "evolucao", "inspecao", "volume", "monitor", "corredor", "estrategia", "historico", "pareceres", "ferias", "pontos", "oneaone", "servicos3069", "radar360", "pacote", "depurador", "insitalent", "mesa" };
+
+    public static readonly string[] Grupos = { "Decisões", "Inspeção", "Conformidade", "Operação", "Coordenação", "Relacionamento e cooperativas", "Extensão", "Ferramentas" };
 
     /// <summary>Cor de cada grupo (classe g-N no CSS).</summary>
     public static int Cor(string grupo) => grupo switch
     {
-        "Decisões" => 0, "Inspeção" => 1, "Conformidade" => 2, "Operação" => 3, "Ferramentas" => 4, "Coordenação" => 5, "Relacionamento e cooperativas" => 6, _ => 4,
+        "Decisões" => 0, "Inspeção" => 1, "Conformidade" => 2, "Operação" => 3, "Ferramentas" => 4, "Coordenação" => 5, "Relacionamento e cooperativas" => 6, "Extensão" => 7, _ => 4,
     };
 
-    public static Aba? Por(string chave) => Todas.FirstOrDefault(a => a.Chave == chave);
+    public static Aba? Por(string chave) => Todas.FirstOrDefault(a => a.Chave == chave) ?? Internas.FirstOrDefault(a => a.Chave == chave);
 }
