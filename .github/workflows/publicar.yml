@@ -43,6 +43,9 @@ jobs:
           if [ "${GITHUB_REF_NAME}" = "main" ]; then ALVO=""; else ALVO="teste/"; fi
           BASE="/${REPO}/${ALVO}"
           sed -i "s|<base href=\"/\" />|<base href=\"${BASE}\" />|" publicado/wwwroot/index.html
+          # versão no endereço do CSS e do JS: o navegador nunca mistura arquivo velho (em cache) com programa novo
+          VER="${GITHUB_SHA::8}"
+          sed -i -E "s#(_content/QSmart\.UI/(css/qsmart\.css|js/qsmart\.js))\"#\1?v=${VER}\"#g" publicado/wwwroot/index.html
 
           # site atual (para manter a parte que não está sendo publicada agora)
           mkdir site atual
