@@ -1,0 +1,154 @@
+@* Visão radial do Resumo: taxa de aprovação no centro; anéis com aprovação × reprovação, motivos e segmentos. *@
+@using System.Globalization
+
+@if (Aprov + Reprov == 0)
+{
+    <div class="rr-vazio">@Vazio</div>
+}
+else
+{
+    var motivos = Motivos();
+    var segs = Segs();
+    <div class="rr @(_foco != null ? "com-foco" : "")">
+        <div class="rr-graf">
+            <svg viewBox="0 0 600 600" role="img" aria-label="Resumo em anéis">
+                @* anel de fora: aprovadas × reprovadas *@
+                @{ double a = -Math.PI / 2; double tot = Aprov + Reprov; }
+                @foreach (var (nome, v, cor) in new[] { ("ap", (double)Aprov, "#10B981"), ("rp", (double)Reprov, "#EF4444") })
+                {
+                    if (v <= 0) continue;
+                    var b = a + 2 * Math.PI * v / tot;
+                    var chave = nome;
+                    <path d="@Arco(272, 290, a, b, .012)" fill="@cor" class="rr-p @(Foco(chave))" @onmouseover="() => _foco = chave" @onmouseout="() => _foco = null">
+                        <title>@(nome == "ap" ? $"Aprovações: {Fmt(Aprov)} ({F1(Pct(Aprov, tot))}%)" : $"Reprovações: {Fmt(Reprov)} ({F1(Pct(Reprov, tot))}%)")</title>
+                    </path>
+                    a = b;
+                }
+                @* anel do meio: motivos *@
+                @{ a = -Math.PI / 2; double tm = motivos.Sum(m => m.v); }
+                @for (int i = 0; i < motivos.Count; i++)
+                {
+                    var (n, v, cor) = motivos[i];
+                    var b = a + 2 * Math.PI * v / tm;
+                    var chave = "m" + i; var meio = (a + b) / 2;
+                    <path d="@Arco(190, 260, a, b, .012)" fill="@cor" class="rr-p @(Foco(chave))" @onmouseover="() => _foco = chave" @onmouseout="() => _foco = null">
+                        <title>@($"{n}: {Fmt(v)} ({F1(Pct(v, Reprov))}% das reprovações)")</title>
+                    </path>
+                    if ((b - a) > 0.28)
+                    {
+                        <g><text x="@N(300 + 225 * Math.Cos(meio))" y="@N(300 + 225 * Math.Sin(meio) + 5)" class="rr-num">@Fmt(v)</text></g>
+                    }
+                    a = b;
+                }
+                @* anel de dentro: segmentos *@
+                @{ a = -Math.PI / 2; double ts = segs.Sum(s => s.v); }
+                @for (int i = 0; i < segs.Count; i++)
+                {
+                    var (n, v, cor) = segs[i];
+                    var b = a + 2 * Math.PI * v / ts;
+                    var chave = "s" + i; var meio = (a + b) / 2;
+                    <path d="@Arco(120, 178, a, b, .015)" fill="@cor" class="rr-p @(Foco(chave))" @onmouseover="() => _foco = chave" @onmouseout="() => _foco = null">
+                        <title>@($"{n}: {Fmt(v)} ({F1(Pct(v, Reprov))}% das devolutivas)")</title>
+                    </path>
+                    if ((b - a) > 0.38)
+                    {
+                        <g><text x="@N(300 + 149 * Math.Cos(meio))" y="@N(300 + 149 * Math.Sin(meio) + 5)" class="rr-num pq">@($"{Math.Round(Pct(v, ts)):0}%")</text></g>
+                    }
+                    a = b;
+                }
+                <circle cx="300" cy="300" r="106" class="rr-centro" />
+                @{ var (rot, val, sub, cls) = Centro(motivos, segs); }
+                <text x="300" y="276" class="rr-rot">@rot</text>
+                <text x="300" y="326" class="rr-val @cls">@val</text>
+                <text x="300" y="354" class="rr-sub">@sub</text>
+            </svg>
+        </div>
+        <div class="rr-leg">
+            <div class="rr-chips">
+                <span class="rr-chip @(Foco("ap"))" @onmouseover="@(() => _foco = "ap")" @onmouseout="() => _foco = null"><i style="background:#10B981"></i> Aprovadas <b>@Fmt(Aprov)</b></span>
+                <span class="rr-chip @(Foco("rp"))" @onmouseover="@(() => _foco = "rp")" @onmouseout="() => _foco = null"><i style="background:#EF4444"></i> Reprovadas <b>@Fmt(Reprov)</b></span>
+            </div>
+            <div class="rr-tit">Anel do meio <span>· motivos de reprovação</span></div>
+            @if (motivos.Count == 0) { <p class="muted pequeno">Sem reprovações.</p> }
+            @for (int i = 0; i < motivos.Count; i++)
+            {
+                var (n, v, cor) = motivos[i]; var chave = "m" + i;
+                <div class="rr-lin @(Foco(chave))" @onmouseover="() => _foco = chave" @onmouseout="() => _foco = null">
+                    <i style="background:@cor"></i><span>@n</span><b>@Fmt(v)</b><small>@F1(Pct(v, Reprov))%</small>
+                </div>
+            }
+            <div class="rr-tit">Anel de dentro <span>· devolutivas por segmento</span></div>
+            @if (segs.Count == 0) { <p class="muted pequeno">Sem devolutivas.</p> }
+            @for (int i = 0; i < segs.Count; i++)
+            {
+                var (n, v, cor) = segs[i]; var chave = "s" + i;
+                <div class="rr-lin @(Foco(chave))" @onmouseover="() => _foco = chave" @onmouseout="() => _foco = null">
+                    <i class="redondo" style="background:@cor"></i><span>@n</span><b>@Fmt(v)</b><small>@F1(Pct(v, Reprov))%</small>
+                </div>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public long Aprov { get; set; }
+    [Parameter] public long Reprov { get; set; }
+    [Parameter] public List<(string nome, long qtd)> Tipos { get; set; } = new();
+    [Parameter] public List<(string nome, long qtd)> Segmentos { get; set; } = new();
+    [Parameter] public string[] CoresMotivos { get; set; } = Array.Empty<string>();
+    [Parameter] public string Vazio { get; set; } = "";
+
+    static readonly string[] CoresSeg = { "#14B8A6", "#0EA5E9", "#8B5CF6", "#EC4899", "#F59E0B", "#22C55E", "#F97316", "#6366F1" };
+    const string CorOutros = "#475569";
+    const int MaxMotivos = 8, MaxSegs = 7;
+    string? _foco;
+
+    string Foco(string chave) => _foco == null ? "" : _foco == chave ? "foco" : "apagado";
+
+    List<(string n, long v, string cor)> Motivos()
+    {
+        var l = Tipos.Where(t => t.qtd > 0).OrderByDescending(t => t.qtd).ToList();
+        var r = l.Take(MaxMotivos).Select((t, i) => (t.nome, t.qtd, CoresMotivos.Length > 0 ? CoresMotivos[i % CoresMotivos.Length] : CoresSeg[i % CoresSeg.Length])).ToList();
+        var resto = l.Skip(MaxMotivos).Sum(t => t.qtd);
+        if (resto > 0) r.Add(($"Outros motivos ({l.Count - MaxMotivos})", resto, CorOutros));
+        return r;
+    }
+
+    List<(string n, long v, string cor)> Segs()
+    {
+        var l = Segmentos.Where(t => t.qtd > 0).OrderByDescending(t => t.qtd).ToList();
+        var r = l.Take(MaxSegs).Select((t, i) => (t.nome, t.qtd, CoresSeg[i % CoresSeg.Length])).ToList();
+        var resto = l.Skip(MaxSegs).Sum(t => t.qtd);
+        if (resto > 0) r.Add(($"Outros segmentos ({l.Count - MaxSegs})", resto, CorOutros));
+        return r;
+    }
+
+    /// <summary>O centro mostra o que está em foco; sem foco, a taxa de aprovação.</summary>
+    (string rot, string val, string sub, string cls) Centro(List<(string n, long v, string cor)> m, List<(string n, long v, string cor)> s)
+    {
+        double tot = Aprov + Reprov;
+        if (_foco == "rp") return ("REPROVAÇÕES", $"{F1(Pct(Reprov, tot))}%", $"{Fmt(Reprov)} decisões", "verm");
+        if (_foco is { Length: > 1 } f && int.TryParse(f[1..], out var i))
+        {
+            if (f[0] == 'm' && i < m.Count) return (Curto(m[i].n), Fmt(m[i].v), $"{F1(Pct(m[i].v, Reprov))}% das reprovações", "");
+            if (f[0] == 's' && i < s.Count) return (Curto(s[i].n), Fmt(s[i].v), $"{F1(Pct(s[i].v, Reprov))}% das devolutivas", "");
+        }
+        return ("TAXA DE APROVAÇÃO", $"{F1(Pct(Aprov, tot))}%", $"{Fmt(Reprov)} reprovações", "verde");
+    }
+
+    static string Curto(string n) => (n.Length > 20 ? n[..19].TrimEnd() + "…" : n).ToUpperInvariant();
+    static double Pct(double v, double t) => t <= 0 ? 0 : v / t * 100;
+    static string F1(double v) => v.ToString("0.0", CultureInfo.InvariantCulture);
+    static string Fmt(double v) => ((long)Math.Round(v)).ToString("#,0", CultureInfo.InvariantCulture).Replace(',', '.');
+    static string N(double v) => v.ToString("0.##", CultureInfo.InvariantCulture);
+
+    static string Arco(double r1, double r2, double a0, double a1, double folga)
+    {
+        if (a1 - a0 > 2 * folga + 0.002) { a0 += folga; a1 -= folga; }
+        if (a1 - a0 >= 2 * Math.PI - 0.0005) a1 = a0 + 2 * Math.PI - 0.0005;   // círculo inteiro
+        double cx = 300, cy = 300;
+        string P(double r, double a) => $"{N(cx + r * Math.Cos(a))},{N(cy + r * Math.Sin(a))}";
+        int grande = a1 - a0 > Math.PI ? 1 : 0;
+        return $"M{P(r2, a0)} A{N(r2)},{N(r2)} 0 {grande} 1 {P(r2, a1)} L{P(r1, a1)} A{N(r1)},{N(r1)} 0 {grande} 0 {P(r1, a0)} Z";
+    }
+}

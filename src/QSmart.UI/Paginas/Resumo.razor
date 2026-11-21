@@ -45,11 +45,27 @@
                 <button class="btn btn-sec @(n > 0 ? "ativo" : "")" @onclick="() => Escolher(chave, rot)"><Icone Nome="filtro" Tamanho="15" /> @(n > 0 ? $"{rot} ({n})" : rot)</button>
             }
             <button class="btn btn-sec" disabled="@(!E.FiltrosResumo.Algum)" @onclick="Limpar">Limpar filtros</button>
+            <span class="mola"></span>
+            <div class="rs-vista" role="tablist" aria-label="Forma de ver">
+                <button class="@(_vista == "mosaico" ? "on" : "")" @onclick="@(() => Vista("mosaico"))" title="Blocos com área proporcional"><Icone Nome="mosaico" Tamanho="15" /> Mosaico</button>
+                <button class="@(_vista == "radial" ? "on" : "")" @onclick="@(() => Vista("radial"))" title="Tudo num círculo: taxa de aprovação, motivos e segmentos"><Icone Nome="radial" Tamanho="15" /> Radial</button>
+            </div>
         </div>
         @if (!string.IsNullOrEmpty(E.Resultado?.FiltrosTexto))
         {
             <p class="muted">Filtros ativos: @E.Resultado.FiltrosTexto</p>
         }
+        @if (_vista == "radial")
+        {
+            <Painel Titulo="Visão radial" Nota="por fora: aprovação × reprovação · no meio: motivos · por dentro: segmentos · passe o mouse para destacar">
+                <ResumoRadial Aprov="@(E.Resultado?.Aprov ?? 0)" Reprov="@(E.Resultado?.Reprov ?? 0)"
+                              Tipos="@(E.Resultado?.Tipos.Select(t => (Texto.Rotulo(t.tipo), t.qtd)).ToList() ?? new())"
+                              Segmentos="@(E.Resultado?.Segmentos.Where(x => x.Dev > 0).Select(x => (x.Nome, x.Dev)).ToList() ?? new())"
+                              CoresMotivos="CoresMotivos" Vazio="@(E.Resultado == null ? "Abra uma planilha para começar" : "Sem decisões nesta seleção")" />
+            </Painel>
+        }
+        else
+        {
         <div class="grade-2">
             <Painel Titulo="Tipos de reprovação" Nota="área = quantidade · % das reprovações">
                 <MapaAreas Itens="@Tipos().Select(t => (t.Item1, t.Item2)).ToList()" Total="@(E.Resultado?.Reprov ?? 0)" Cores="CoresMotivos"
@@ -60,11 +76,25 @@
                            Vazio="@(E.Resultado == null ? "Abra uma planilha para começar" : "Sem devolutivas")" />
             </Painel>
         </div>
+        }
     </ChildContent>
 </Pagina>
 
 @code {
     protected override string Chave => "resumo";
+    string _vista = "mosaico";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await base.OnInitializedAsync();
+        try { if (await E.Nav.Ler("resumo_vista") is "radial") _vista = "radial"; } catch { }
+    }
+
+    async Task Vista(string v)
+    {
+        _vista = v;
+        try { await E.Nav.Gravar("resumo_vista", v); } catch { }
+    }
     static readonly string[] CoresMotivos = { "#F43F5E", "#FB7185", "#F97316", "#FB923C", "#F59E0B", "#EAB308", "#A855F7", "#8B5CF6", "#C084FC", "#E879F9" };
 
     List<(string, long, string?)> Tipos() => E.Resultado == null ? new() :
