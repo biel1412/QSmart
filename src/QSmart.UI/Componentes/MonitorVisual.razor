@@ -1,0 +1,230 @@
+@* Monitor de ociosidade: Mapa de calor (colaborador × dia) e Relógio do time. Só exibição: usa o resultado já calculado. *@
+@using System.Globalization
+@using QSmart.Core
+
+@if (R == null || R.PorCol.Count == 0)
+{
+    <div class="mv-vazio">@Vazio</div>
+}
+else if (Vista == "relogio")
+{
+    @Relogio()
+}
+else
+{
+    @Mapa()
+}
+
+@code {
+    [Parameter] public ResultadoMonitor? R { get; set; }
+    [Parameter] public string Vista { get; set; } = "mapa";
+    [Parameter] public string Vazio { get; set; } = "";
+    /// <summary>Clique num colaborador: a página mostra as pausas dele nas tabelas.</summary>
+    [Parameter] public EventCallback<string> AoEscolher { get; set; }
+
+    static readonly string[] Paleta = { "#0EA5E9", "#8B5CF6", "#EC4899", "#F59E0B", "#10B981", "#6366F1", "#14B8A6", "#F97316" };
+    static string Cor(string n) { int h = 0; foreach (var ch in n) h = unchecked(h * 31 + ch); return Paleta[(int)((uint)h % Paleta.Length)]; }
+    static string Ini(string n) { var p = n.Split(' ', '.', '_').Where(x => x != "").ToArray(); return (p.Length == 0 ? "?" : p.Length == 1 ? p[0][..Math.Min(2, p[0].Length)] : $"{p[0][0]}{p[^1][0]}").ToUpperInvariant(); }
+    static string Curto(string n) { var p = n.Split(' ', StringSplitOptions.RemoveEmptyEntries); return p.Length > 1 ? $"{p[0]} {p[^1]}" : n; }
+    static string N(double v) => v.ToString("0.##", CultureInfo.InvariantCulture);
+    static string P0(double v) => $"{Math.Round(v):0}%";
+    static string P1(double v) => v.ToString("0.0", CultureInfo.InvariantCulture) + "%";
+
+    /// <summary>Cor relativa à média do próprio time: verde abaixo, vermelho acima (sem meta fixa).</summary>
+    string Fundo(double pct, double media, double amp)
+    {
+        var d = pct - media;
+        if (amp <= 0) return "color-mix(in srgb, var(--surface2) 100%, transparent)";
+        var a = Math.Clamp(Math.Abs(d) / amp, 0, 1);
+        return d <= 0
+            ? $"color-mix(in srgb, #10B981 {N(12 + a * 48)}%, var(--surface))"
+            : $"color-mix(in srgb, #EF4444 {N(12 + a * 78)}%, var(--surface))";
+    }
+    static bool Escuro(double pct, double media, double amp) => amp > 0 && pct - media > 0 && (pct - media) / amp > 0.55;
+
+    // ======================= Mapa de calor =======================
+    RenderFragment Mapa() => __builder =>
+    {
+        var r = R!;
+        var media = r.Pct;
+        var cels = r.DiasL.ToDictionary(x => (x.Chave, x.Dia));
+        var amp = r.DiasL.Select(x => Math.Abs(x.Pct - media)).DefaultIfEmpty(0).Max();
+        var cols = r.PorCol.Where(c => c.Dias > 0).OrderByDescending(c => c.Pct).ToList();
+        // minutos de pausa por hora do dia (somando todos)
+        var porHora = new SortedDictionary<int, double>();
+        foreach (var p in r.Pausas)
+        {
+            var t = p.De;
+            while (t < p.Ate)
+            {
+                var fimH = new DateTime(t.Year, t.Month, t.Day, t.Hour, 0, 0).AddHours(1);
+                var ate = fimH < p.Ate ? fimH : p.Ate;
+                porHora[t.Hour] = porHora.GetValueOrDefault(t.Hour) + (ate - t).TotalMinutes;
+                t = ate;
+            }
+        }
+        var maxH = porHora.Values.DefaultIfEmpty(0).Max();
+        var pico = porHora.Count > 0 ? porHora.MaxBy(x => x.Value).Key : -1;
+        var maior = r.Pausas.MaxBy(x => x.Min);
+        var diaPior = r.PorDia.Count > 1 ? r.PorDia.MaxBy(x => x.media) : default;
+        <div class="mv-grade">
+            <div class="mv-card">
+                <div class="mv-tit"><b>Ociosidade por colaborador e dia</b>
+                    <span>cor comparada com a média do time (@P1(media)): <i class="mv-leg verde"></i> abaixo · <i class="mv-leg verm"></i> acima · clique para ver as pausas</span></div>
+                <div class="mv-mapa-rolar">
+                    <div class="mv-mapa" style="grid-template-columns: minmax(130px, 170px) repeat(@r.Dias.Count, minmax(58px, 1fr)) 76px">
+                        <div></div>
+                        @foreach (var d in r.Dias) { <div class="mv-cab" title="@Texto.DiaSemana(d)">@Texto.Dm(d)<small>@Texto.DiaSemana(d)[..3].ToLowerInvariant()</small></div> }
+                        <div class="mv-cab forte">Média</div>
+                        @foreach (var c in cols)
+                        {
+                            var chave = c.Chave;
+                            <button class="mv-nome" title="@c.Colaborador" @onclick="() => AoEscolher.InvokeAsync(chave)"><span class="mv-av" style="background:@Cor(c.Colaborador)">@Ini(c.Colaborador)</span>@Curto(c.Colaborador)</button>
+                            @foreach (var d in r.Dias)
+                            {
+                                if (cels.TryGetValue((c.Chave, d), out var x))
+                                {
+                                    <button class="mv-cel @(Escuro(x.Pct, media, amp) ? "esc" : "")" style="background:@Fundo(x.Pct, media, amp)" @onclick="() => AoEscolher.InvokeAsync(chave)"
+                                            title="@($"{c.Colaborador} · {Texto.Dmy(d)}\nOcioso: {Texto.FmtMin(x.Liquido)} ({P0(x.Pct)})\nPausas: {x.Pausas} · {x.Atividades} atividades\nDe {Texto.Hm(x.Primeira)} a {Texto.Hm(x.Ultima)}")">
+                                        <b>@Texto.FmtMin(x.Liquido)</b><small>@P0(x.Pct)</small>
+                                    </button>
+                                }
+                                else { <div class="mv-cel nada" title="Sem atividades neste dia">—</div> }
+                            }
+                            <div class="mv-media" style="--c:@(c.Pct <= media ? "#10B981" : "#EF4444")" title="@($"Média: {Texto.FmtMin(c.Media)} por dia")">@P0(c.Pct)</div>
+                        }
+                    </div>
+                </div>
+            </div>
+            <div class="mv-card">
+                <div class="mv-tit"><b>Em que hora o time mais para</b><span>minutos de pausa somados por hora do dia (inclui o horário de almoço)</span></div>
+                @if (porHora.Count == 0) { <p class="muted">Nenhuma pausa no período.</p> }
+                else
+                {
+                    <div class="mv-horas" style="grid-template-columns: repeat(@porHora.Count, 1fr)">
+                        @foreach (var (h, m) in porHora)
+                        {
+                            <div class="mv-hora @(h == pico ? "pico" : "")" title="@($"{h}h às {h + 1}h: {Texto.FmtMin(m)} de pausa somados")">
+                                <span style="height:@N(8 + m / maxH * 92)%"></span><small>@(h)h</small>
+                            </div>
+                        }
+                    </div>
+                    <div class="mv-insight">⏰ O pico de pausas é entre <b>@(pico)h e @(pico + 1)h</b>. Vale olhar a fila e a distribuição do trabalho nesse horário.</div>
+                }
+                <div class="mv-dest">
+                    @if (maior != null)
+                    {
+                        <div><small>MAIOR PAUSA</small><b>@Texto.FmtMin(maior.Min)</b><span>@Curto(maior.Colaborador) · @Texto.Dm(maior.Dia), @Texto.Hm(maior.De)–@Texto.Hm(maior.Ate)</span></div>
+                    }
+                    @if (r.PorDia.Count > 1)
+                    {
+                        <div><small>DIA MAIS OCIOSO</small><b>@Texto.Dm(diaPior.dia)</b><span>@Texto.DiaSemana(diaPior.dia).ToLowerInvariant() · média de @Texto.FmtMin(diaPior.media) por pessoa</span></div>
+                    }
+                    else
+                    {
+                        var top = cols.FirstOrDefault();
+                        if (top != null) { <div><small>MAIS OCIOSO</small><b>@Curto(top.Colaborador)</b><span>@Texto.FmtMin(top.Media) · @P0(top.Pct)</span></div> }
+                    }
+                </div>
+            </div>
+        </div>
+    };
+
+    // ======================= Relógio do time =======================
+    DateOnly? _dia;
+    const int MaxAneis = 30;
+
+    RenderFragment Relogio() => __builder =>
+    {
+        var r = R!;
+        var dia = _dia is { } dd && r.Dias.Contains(dd) ? dd : r.Dias[^1];
+        var ds = r.DiasL.Where(x => x.Dia == dia).OrderByDescending(x => x.Liquido).ToList();
+        var mostrar = ds.Take(MaxAneis).ToList();
+        var inicio = TimeOnly.TryParse(r.Param.Inicio, CultureInfo.InvariantCulture, out var ti) ? ti.Hour * 60 + ti.Minute : 8 * 60;
+        double ini = Math.Min(inicio, ds.Select(x => x.Primeira.Hour * 60 + x.Primeira.Minute).DefaultIfEmpty(inicio).Min());
+        ini = Math.Floor(ini / 60) * 60;
+        double fim = ds.Select(x => x.Ultima.Hour * 60.0 + x.Ultima.Minute).DefaultIfEmpty(ini + 600).Max();
+        if (TimeOnly.TryParse(r.Param.Fim, CultureInfo.InvariantCulture, out var tf)) fim = Math.Max(fim, tf.Hour * 60 + tf.Minute);
+        fim = Math.Max(ini + 60, Math.Ceiling(fim / 60) * 60);
+        const double Volta = 0.92;   // deixa uma fresta no topo para os nomes
+        double A(double m) => -Math.PI / 2 + (Math.Clamp(m, ini, fim) - ini) / (fim - ini) * 2 * Math.PI * Volta;
+        double Min(DateTime t) => t.Hour * 60 + t.Minute + t.Second / 60.0;
+        int n = Math.Max(1, mostrar.Count);
+        double rExt = 300, rInt = 112, gap = n > 14 ? 2 : 4;
+        double esp = Math.Min(26, (rExt - rInt - gap * (n - 1)) / n);
+        var pausasDia = r.Pausas.Where(p => p.Dia == dia).ToLookup(p => p.Chave);
+        double mediaDia = ds.Select(x => x.Liquido).DefaultIfEmpty(0).Average();
+        <div class="mv-card mv-rel">
+            <div class="mv-rel-graf">
+                <svg viewBox="0 0 660 660" role="img" aria-label="Relógio do time">
+                    @for (double h = ini; h <= fim; h += 60)
+                    {
+                        var a = A(h);
+                        <g><text x="@N(330 + 318 * Math.Cos(a))" y="@N(330 + 318 * Math.Sin(a) + 4)" class="mv-rel-h">@(((int)h / 60))h</text></g>
+                    }
+                    @for (int k = 0; k < mostrar.Count; k++)
+                    {
+                        var x = mostrar[k]; var chave = x.Chave;
+                        double r2 = rExt - k * (esp + gap), r1 = r2 - esp;
+                        <g class="mv-anel" @onclick="() => AoEscolher.InvokeAsync(chave)">
+                            <title>@($"{x.Colaborador}: {Texto.FmtMin(x.Liquido)} ocioso ({P0(x.Pct)}) · {x.Pausas} pausas · {Texto.Hm(x.Primeira)} a {Texto.Hm(x.Ultima)}")</title>
+                            <path d="@Arco(r1, r2, A(ini), A(fim))" class="mv-trilho" />
+                            <path d="@Arco(r1, r2, A(Min(x.Primeira)), A(Min(x.Ultima)))" class="mv-prod" />
+                            @foreach (var p in pausasDia[x.Chave])
+                            {
+                                <path d="@Arco(r1, r2, A(Min(p.De)), A(Min(p.Ate)))" fill="@CorPausa(p.Min)">
+                                    <title>@($"{x.Colaborador}: pausa de {Texto.FmtMin(p.Min)}, {Texto.Hm(p.De)}–{Texto.Hm(p.Ate)}")</title>
+                                </path>
+                            }
+                            @if (esp >= 11)
+                            {
+                                var a0 = A(ini) - 0.03;
+                                <g><text x="@N(330 + (r1 + r2) / 2 * Math.Cos(a0) - 4)" y="@N(330 + (r1 + r2) / 2 * Math.Sin(a0) + 4)" class="mv-rel-nome" style="font-size:@N(Math.Min(11.5, esp * 0.62))px">@x.Colaborador.Split(' ')[0]</text></g>
+                            }
+                        </g>
+                    }
+                    <circle cx="330" cy="330" r="@N(rExt - n * (esp + gap) - 6)" class="mv-rel-centro" />
+                    <text x="330" y="314" class="mv-rel-rot">@Texto.Dm(dia) · MÉDIA</text>
+                    <text x="330" y="352" class="mv-rel-val">@Texto.FmtMin(mediaDia)</text>
+                    <text x="330" y="374" class="mv-rel-sub">ocioso por pessoa</text>
+                </svg>
+            </div>
+            <div class="mv-rel-lado">
+                @if (r.Dias.Count > 1)
+                {
+                    <div class="mv-dias">
+                        @foreach (var d in r.Dias)
+                        {
+                            var dd2 = d;
+                            <button class="@(d == dia ? "on" : "")" @onclick="() => _dia = dd2" title="@Texto.DiaSemana(d)">@Texto.Dm(d)</button>
+                        }
+                    </div>
+                }
+                <div class="mv-tit"><b>O dia do time num relógio</b><span>cada anel é uma pessoa, da mais ociosa (por fora) para a menos (por dentro) · as pausas aparecem na hora em que aconteceram</span></div>
+                <div class="mv-rel-leg">
+                    <span><i class="mv-prod-c"></i>trabalhando</span><span><i style="background:#FCD34D"></i>até 12 min</span><span><i style="background:#F59E0B"></i>12–20 min</span>
+                    <span><i style="background:#EF4444"></i>20–45 min</span><span><i style="background:#A78BFA"></i>45 min ou mais (ex.: almoço)</span>
+                </div>
+                @if (ds.Count > MaxAneis) { <p class="muted pequeno">Mostrando os @MaxAneis mais ociosos de @ds.Count.</p> }
+                <div class="mv-rank">
+                    @for (int k = 0; k < ds.Count; k++)
+                    {
+                        var x = ds[k]; var chave = x.Chave;
+                        <button @onclick="() => AoEscolher.InvokeAsync(chave)"><em>@(k + 1)º</em><span>@x.Colaborador</span><b style="color:@(x.Pct <= r.Pct ? "#10B981" : "#EF4444")">@Texto.FmtMin(x.Liquido)</b><small>@P0(x.Pct)</small></button>
+                    }
+                </div>
+            </div>
+        </div>
+    };
+
+    static string CorPausa(double min) => min >= 45 ? "#A78BFA" : min >= 20 ? "#EF4444" : min >= 12 ? "#F59E0B" : "#FCD34D";
+
+    static string Arco(double r1, double r2, double a0, double a1)
+    {
+        if (a1 - a0 < 0.004) a1 = a0 + 0.004;
+        double cx = 330, cy = 330;
+        string P(double r, double a) => $"{N(cx + r * Math.Cos(a))},{N(cy + r * Math.Sin(a))}";
+        int g = a1 - a0 > Math.PI ? 1 : 0;
+        return $"M{P(r2, a0)} A{N(r2)},{N(r2)} 0 {g} 1 {P(r2, a1)} L{P(r1, a1)} A{N(r1)},{N(r1)} 0 {g} 0 {P(r1, a0)} Z";
+    }
+}

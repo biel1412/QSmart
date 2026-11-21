@@ -48,18 +48,16 @@
             </div>
             <p class="muted" style="margin:0">@Regra()</p>
         </Painel>
-        <Painel Titulo="@TituloGrafico()" Estilo="height:330px">
-            @if (E.MonRes != null && E.MonRes.Dias.Count == 1)
-            {
-                <BarrasLista Itens="ItensColab()" Total="@Math.Max(1, ItensColab().Sum(x => x.Item2))" Altura="260px" Vazio="Sem dados" />
-            }
-            else
-            {
-                <Colunas Cols="ColsDias()" Legenda="_legDias" Altura="260px" Vazio="@(E.MonRes == null ? "Anexe o compilado, selecione colaboradores e clique em Gerar" : "Sem dados")" />
-            }
-        </Painel>
+        <div class="mv-barra">
+            <div class="rs-vista" aria-label="Forma de ver">
+                <button class="@(_vista == "mapa" ? "on" : "")" @onclick="@(() => Vista("mapa"))" title="Colaborador × dia, comparado com a média do time"><Icone Nome="mosaico" Tamanho="15" /> Mapa de calor</button>
+                <button class="@(_vista == "relogio" ? "on" : "")" @onclick="@(() => Vista("relogio"))" title="O dia do time num relógio, com as pausas na hora em que aconteceram"><Icone Nome="radial" Tamanho="15" /> Relógio do time</button>
+            </div>
+        </div>
+        <MonitorVisual R="E.MonRes" Vista="@_vista" AoEscolher="EscolherColab"
+                       Vazio="@(E.MonRes == null ? "Anexe o compilado, selecione colaboradores e clique em Gerar" : "Sem dados")" />
         <p class="muted" style="margin:0">@TextoFiltro()</p>
-        <div>
+        <div id="mon-tabelas">
             <SeletorAbas Itens="_abas" Ativa="_aba" AtivaChanged="i => _aba = i" />
             <div class="aba-conteudo">
                 <Painel Sangrar="true">
@@ -93,8 +91,24 @@
         new("Pausas", 70, 'c'), new("Maior pausa", 160, 'c'), new("Ocioso bruto", 110, 'c'), new("Intervalo", 90, 'c'), new("Ocioso", 90, 'c'), new("%", 70, 'c') };
     readonly List<ColunaTab> _colsPausas = new() { new("Colaborador", 0), new("Dia", 105, 'c'), new("De", 90, 'c'), new("Até", 90, 'c'), new("Duração", 100, 'c'), new("Tipo", 280) };
     readonly List<ColunaTab> _colsRank = new() { new("", 140), new("Dia", 105, 'c'), new("Colaborador", 0), new("Ocioso", 100, 'c'), new("%", 70, 'c'), new("Atividades", 95, 'c') };
-    readonly List<(string, string)> _legDias = new() { ("Ocioso médio (min)", "var(--amber)"), ("Dia mais ocioso", "var(--red)") };
     int _aba;
+    string _vista = "mapa";
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { if (await E.Nav.Ler("monitor_vista") is "relogio") _vista = "relogio"; } catch { }
+    }
+
+    async Task Vista(string v) { _vista = v; try { await E.Nav.Gravar("monitor_vista", v); } catch { } }
+
+    /// <summary>Clique no mapa ou no relógio: mostra as pausas da pessoa nas tabelas de baixo.</summary>
+    async Task EscolherColab(string chave)
+    {
+        E.MonFiltro = chave; _cDia = null; _aba = 3;
+        StateHasChanged();
+        await Task.Delay(30);
+        try { await E.Nav.Rolar("mon-tabelas"); } catch { }
+    }
     string _ini = "08:00", _fim = "17:00";
     double _gap = 7;
     int _intervalo = 60;
@@ -183,25 +197,6 @@
             async r => { E.MonRes = r; E.MonFiltro = null; await Task.CompletedTask; },
             ex => J.Erro("Monitor", ex.Message), (s, _) => E.SubMon = $"Calculando ociosidade… {s}s");
     }
-
-    string TituloGrafico()
-    {
-        var r = E.MonRes;
-        if (r != null && r.Dias.Count == 1) return $"Tempo ocioso em {Texto.Dmy(r.Dias[0])} (minutos e parcela do total)";
-        return "Ociosidade média por dia (minutos por colaborador)";
-    }
-
-    List<(string, List<(long, string, string)>, string)> ColsDias()
-    {
-        var r = E.MonRes;
-        if (r == null) return new();
-        var mx = r.PorDia.Select(x => x.media).DefaultIfEmpty(0).Max();
-        return r.PorDia.Select(x => (Texto.Dm(x.dia), new List<(long, string, string)> { ((long)Texto.PyRound(x.media, 0), x.media == mx ? "var(--red)" : "var(--amber)", "Ocioso médio") },
-            Texto.DiaSemana(x.dia))).ToList();
-    }
-
-    List<(string, long, string?)> ItensColab() => E.MonRes == null ? new() : E.MonRes.PorCol.Select(x =>
-        (x.Colaborador, (long)Texto.PyRound(x.Media, 0), (string?)(x.Pct >= 30 ? "var(--red)" : x.Pct >= 15 ? "var(--amber)" : "var(--green)"))).ToList();
 
     string Dd(DiaMonitor? x) => x == null ? "—" : $"{Texto.Dm(x.Dia)} · {Texto.FmtMin(x.Liquido)}";
 
