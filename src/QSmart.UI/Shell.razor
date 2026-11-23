@@ -77,6 +77,14 @@ else
             <Logo Tamanho="28" /><span class="marca-nome"><b>Q</b>Smart</span>
         </div>
         <div class="progresso @(E.Carregando ? "ativo" : "")"><span></span></div>
+        @if (E.Conta.Visao && E.Conta.Perfil is { } vp)
+        {
+            <div class="visao-faixa">
+                <Icone Nome="olho" Tamanho="17" />
+                <span>Você está vendo o QSmart <b>pelos olhos de @vp.NomeCompleto</b> (@NomePapel(vp.Papel)). É só visualização: nada do que fizer aqui é salvo.</span>
+                <button class="btn btn-pri btn-peq" @onclick="VoltarAdmin"><Icone Nome="esquerda" Tamanho="14" /> Voltar para a minha conta</button>
+            </div>
+        }
         @if (E.Conta.Perfil is { } pf)
         {
             var res = Nivel();
@@ -262,5 +270,13 @@ else
         E.Conta.Mudou -= AoMudarConta; E.Sino.Mudou -= Atualizar; _timerSino?.Dispose();
         Rotas.LocationChanged -= AoNavegar;
         _ref?.Dispose();
+    }
+
+    static string NomePapel(string p) => p switch { "admin" => "administrador", "coordenador" => "coordenador", "lideranca" => "liderança", _ => "usuário" };
+
+    async Task VoltarAdmin()
+    {
+        await E.Conta.VoltarAdmin();
+        Rotas.NavigateTo("perfil");
     }
 }

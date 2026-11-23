@@ -1,4 +1,5 @@
 @page "/perfil"
+@inject NavigationManager Navegar
 @using QSmart.Core.Conta
 @using Microsoft.AspNetCore.Components.Forms
 @inject Estado E
@@ -251,6 +252,7 @@
                                 @if (u.Status == "pendente") { <button class="btn btn-pri rx-mini" @onclick="() => Status(u, Ativo)">Aprovar</button> }
                                 else if (u.Status == "ativo" && !eu) { <button class="btn btn-sec rx-mini" @onclick="() => Status(u, Bloqueado)">Bloquear</button> }
                                 else if (u.Status == "bloqueado") { <button class="btn btn-sec rx-mini" @onclick="() => Status(u, Ativo)">Desbloquear</button> }
+                                @if (u.Status == "ativo" && !eu) { <button class="btn btn-sec rx-mini" title="Ver o QSmart pelos olhos dessa pessoa (só visualização)" @onclick="() => VerComo(u)"><Icone Nome="olho" Tamanho="15" /></button> }
                                 <button class="btn btn-sec rx-mini" title="Gera um código de recuperação novo para a pessoa trocar a senha" @onclick="() => NovoCodigo(u)">Novo código</button>
                                 @if (!eu) { <button class="btn btn-sec rx-mini" title="Excluir a conta" @onclick="() => Excluir(u)"><Icone Nome="lixo" Tamanho="14" /></button> }
                             </div>
@@ -462,6 +464,14 @@
         var r = await E.Conta.Chamar("GET", "admin/equipes");
         _equipes = (r.Json?["equipes"] as System.Text.Json.Nodes.JsonArray ?? new()).Select(x => new EquipeAdm(Txt(x, "lideranca"), Txt(x, "coordenacao"), Num(x, "coordenadorId"), Num(x, "pessoas"))).ToList();
         _lideresSem = (r.Json?["lideresSemEquipe"] as System.Text.Json.Nodes.JsonArray ?? new()).Select(x => x?.ToString() ?? "").Where(x => x != "").ToList();
+    }
+
+    async Task VerComo(UsuarioAdmin u)
+    {
+        var erro = await E.Conta.VerComo(u.Id);
+        if (erro != null) { await J.Erro("Ver como", erro); return; }
+        _ = E.Sino.Carregar();
+        Navegar.NavigateTo("");
     }
 
     string NomeCoord(int id) => _usuarios?.FirstOrDefault(x => x.Id == id) is { } c ? $"{c.Nome} {c.Sobrenome}" : "?";

@@ -67,8 +67,47 @@ public sealed class Conta
 
     // ---------------- chamadas ----------------
 
+    // ---------------- ver como (administrador olhando a conta de outra pessoa, só leitura) ----------------
+    string? _tokenAdmin;
+    PerfilConta? _perfilAdmin;
+    Dictionary<string, int> _usoAdmin = new();
+    List<DateOnly> _diasAdmin = new();
+    /// <summary>O administrador está vendo a plataforma pelos olhos de outra pessoa (nada é salvo).</summary>
+    public bool Visao => _tokenAdmin != null;
+    public string NomeAdmin => _perfilAdmin?.NomeCompleto ?? "";
+
+    void ZerarCaches() { _e.OneBase = null; _e.OneErro = null; _e.FeDados = null; _e.FeErro = null; _e.FeColabs = null; _e.Sino.Limpar(); }
+
+    public async Task<string?> VerComo(int id)
+    {
+        if (Visao) return "Volte para a sua conta antes de ver outra.";
+        var r = await Chamar("POST", "admin/ver-como", new JsonObject { ["id"] = id });
+        if (!r.Ok || r.Json == null) return r.Erro;
+        _tokenAdmin = Token; _perfilAdmin = Perfil; _usoAdmin = Uso; _diasAdmin = Dias;
+        Token = r.Json["token"]?.GetValue<string>();
+        Perfil = LerPerfil(r.Json["perfil"]);
+        ZerarCaches();
+        await CarregarEu();
+        Mudou?.Invoke(); _e.Notificar();
+        return null;
+    }
+
+    public async Task VoltarAdmin()
+    {
+        if (!Visao) return;
+        try { await Chamar("POST", "sair"); } catch { }
+        Token = _tokenAdmin; Perfil = _perfilAdmin; Uso = _usoAdmin; Dias = _diasAdmin;
+        _tokenAdmin = null; _perfilAdmin = null;
+        ZerarCaches();
+        await CarregarEu();
+        Mudou?.Invoke(); _e.Notificar();
+    }
+
     public async Task<RespostaApi> Chamar(string metodo, string rota, JsonObject? corpo = null)
     {
+        // no "ver como" nada é gravado: nem chega a ir para o servidor
+        if (Visao && metodo != "GET" && rota is not ("sair" or "mr/perguntar"))
+            return new RespostaApi(false, 403, null, "Modo visualização: você está vendo a conta de outra pessoa, nada é salvo.");
         var cab = new Dictionary<string, string> { ["Content-Type"] = "application/json" };
         if (Token != null) cab["Authorization"] = "Bearer " + Token;
         var r = await _e.Nav.Req(Base + rota, metodo, cab, corpo?.ToJsonString());
@@ -76,7 +115,12 @@ public sealed class Conta
         try { if (!string.IsNullOrWhiteSpace(r.Texto)) j = JsonNode.Parse(r.Texto); } catch { }
         var erro = r.Status == 0 ? "Não consegui falar com o servidor do QSmart. Confira a internet e tente de novo."
             : j?["erro"]?.GetValue<string>() ?? (r.Status >= 400 ? $"Erro {r.Status} no servidor." : "");
-        if (r.Status == 401 && j?["motivo"]?.GetValue<string>() == "sessao" && Token != null) { Limpar(); }
+        if (r.Status == 401 && j?["motivo"]?.GetValue<string>() == "sessao" && Token != null)
+        {
+            // a visualização expirou: volta para a conta do administrador
+            if (Visao) { Token = _tokenAdmin; Perfil = _perfilAdmin; Uso = _usoAdmin; Dias = _diasAdmin; _tokenAdmin = null; _perfilAdmin = null; ZerarCaches(); Mudou?.Invoke(); _e.Notificar(); }
+            else Limpar();
+        }
         return new RespostaApi(r.Status is >= 200 and < 300, r.Status, j, erro);
     }
 
@@ -145,6 +189,7 @@ public sealed class Conta
 
     public async Task Sair()
     {
+        if (Visao) { await VoltarAdmin(); return; }
         if (Token != null) await Chamar("POST", "sair");
         Limpar();
     }

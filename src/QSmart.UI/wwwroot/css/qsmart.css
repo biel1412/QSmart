@@ -2751,3 +2751,8 @@ a.sino-it:hover { background: var(--surface2); }
 .pf-eq-add { height: 28px !important; padding: 0 6px !important; font-size: 12px !important; max-width: 120px; }
 .pf-eq-info { color: #7E8CA8; font-size: 12px; }
 .pf-eq-soltas { display: flex; gap: 8px; align-items: flex-start; margin: 0 0 10px; padding: 10px 14px; border-radius: 12px; background: rgba(245,158,11,.12); border: 1px solid rgba(245,158,11,.35); color: #FCD34D; font-size: 12.5px; }
+/* ver como (administrador olhando a conta de outra pessoa) */
+.visao-faixa { position: sticky; top: 0; z-index: 60; display: flex; align-items: center; gap: 12px; padding: 10px 18px; margin: 0 190px 4px 0; border-radius: 0 0 14px 14px; background: linear-gradient(90deg, #7C3AED, #DB2777); color: #fff; font-size: 13px; box-shadow: 0 6px 20px rgba(124,58,237,.35); }
+.visao-faixa span { flex: 1; }
+.visao-faixa .btn { background: #fff; color: #7C3AED; border: 0; white-space: nowrap; }
+.principal:has(.visao-faixa) { outline: 3px solid #A855F7; outline-offset: -3px; }

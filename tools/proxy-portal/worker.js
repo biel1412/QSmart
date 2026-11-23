@@ -169,7 +169,7 @@ async function logado(req, env) {
   const t = (req.headers.get("Authorization") || "").replace(/^Bearer\s*/i, "").trim();
   if (!t || t.startsWith("gsk_")) return null;
   const u = await env.DB.prepare(
-    "SELECT u.* FROM sessoes s JOIN usuarios u ON u.id = s.usuario_id WHERE s.token = ? AND s.expira > ? AND u.status = 'ativo'"
+    "SELECT u.*, s.visao AS _visao FROM sessoes s JOIN usuarios u ON u.id = s.usuario_id WHERE s.token = ? AND s.expira > ? AND u.status = 'ativo'"
   ).bind(await sha256(t), agora()).first();
   return u || null;
 }
@@ -386,6 +386,8 @@ async function api(req, env, url) {
   // ---------- daqui para baixo, só logado ----------
   const u = await logado(req, env);
   if (!u) return erro("Sessão expirada. Entre de novo.", 401, { motivo: "sessao" });
+  // "ver como": o administrador olha a conta de outra pessoa só para ler; nada é gravado
+  if (u._visao && m !== "GET" && !(rota === "sair" || rota === "mr/perguntar")) return erro("Modo visualização: nada é salvo.", 403, { motivo: "visao" });
 
   if (rota === "sair" && m === "POST") {
     const t = (req.headers.get("Authorization") || "").replace(/^Bearer\s*/i, "").trim();
@@ -513,6 +515,18 @@ async function api(req, env, url) {
       const n = q.length - (lid ? 1 : 0);
       for (let i = 0; i < q.length; i += 80) await env.DB.batch(q.slice(i, i + 80));
       return json({ ok: true, pessoas: n, para });
+    }
+    // ver a plataforma pelos olhos de outra pessoa (sessão só de leitura, 2 horas)
+    if (rota === "admin/ver-como" && m === "POST") {
+      const b = await corpo(req);
+      const alvo = await env.DB.prepare("SELECT * FROM usuarios WHERE id = ?").bind(Number(b.id)).first();
+      if (!alvo) return erro("Usuário não encontrado.", 404);
+      if (alvo.id === u.id) return erro("Essa já é a sua conta.");
+      if (alvo.status !== "ativo") return erro("Só dá para ver contas ativas.");
+      const token = b64(aleatorio(32)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+      const expira = new Date(Date.now() + 2 * 3600e3).toISOString();
+      await env.DB.prepare("INSERT INTO sessoes (token, usuario_id, expira, visao) VALUES (?, ?, ?, ?)").bind(await sha256(token), alvo.id, expira, u.id).run();
+      return json({ token, perfil: await perfil(env, alvo) });
     }
     if (rota === "admin/recuperacao" && m === "POST") {
       const b = await corpo(req);
