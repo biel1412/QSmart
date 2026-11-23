@@ -38,6 +38,53 @@
         }
         else
         {
+            @if (_coord == null)
+            {
+                <div class="oc-cab">
+                    <div><b>@(E.OneVeTudo ? "Coordenações" : "Sua coordenação")</b><span class="muted pequeno">@(E.OneVeTudo ? "clique numa coordenação para ver a carteira das lideranças" : "clique para ver a carteira das suas lideranças")</span></div>
+                    <span class="mola"></span>
+                    <span class="fa-cadeado" title="Salvo no banco do QSmart, criptografado"><Icone Nome="escudo" Tamanho="14" /> salvo no banco · criptografado</span>
+                    <button class="btn btn-sec" @onclick="Recarregar" title="Buscar as mudanças feitas por outras pessoas"><Icone Nome="atualizar" Tamanho="15" /></button>
+                </div>
+                <div class="oc-grade">
+                    @foreach (var c in _coords)
+                    {
+                        var cc = c;
+                        int t = c.Pessoas.Count, em = c.Pessoas.Count(p => OneAOne.Faixa(p, _hoje) == FaixaOO.EmDia), ch = c.Pessoas.Count(p => OneAOne.Faixa(p, _hoje) == FaixaOO.Chegando), at = t - em - ch;
+                        int pct = t == 0 ? 0 : (int)Math.Round(em * 100.0 / t);
+                        <button class="oc-card @(c.Chave == "" ? "sem" : "")" @onclick="() => AbrirCoord(cc.Chave)">
+                            <div class="oc-topo">
+                                <span class="oc-av" style="background:@CorLider(c.Nome)">@(c.Chave == "" ? "?" : Iniciais(c.Nome))</span>
+                                <div><b>@c.Nome</b><small>@Ferias.Plural(c.Lids.Count, "liderança", "lideranças") · @Ferias.Plural(t, "colaborador", "colaboradores")</small></div>
+                                <span class="oc-pct" style="--p:@pct"><span>@pct%</span></span>
+                            </div>
+                            <div class="oc-barra">
+                                <i class="g" style="flex:@em"></i><i class="a" style="flex:@ch"></i><i class="r" style="flex:@at"></i>
+                                @if (t == 0) { <i class="v" style="flex:1"></i> }
+                            </div>
+                            <div class="oc-nums"><span class="g">@em em dia</span><span class="a">@ch chegando</span><span class="r">@at atrasados</span></div>
+                            <div class="oc-lids">
+                                @foreach (var l in c.Lids.Take(8))
+                                {
+                                    var n = c.Pessoas.Count(p => p.Lideranca == l);
+                                    <span style="--c:@CorLider(l)"><i></i>@l <small>@n</small></span>
+                                }
+                                @if (c.Lids.Count > 8) { <span>+@(c.Lids.Count - 8)</span> }
+                                @if (c.Lids.Count == 0) { <small class="muted">nenhuma liderança ainda</small> }
+                            </div>
+                            <span class="oc-abrir">Ver carteira <Icone Nome="direita" Tamanho="14" /></span>
+                        </button>
+                    }
+                </div>
+            }
+            else
+            {
+                <div class="oc-trilha">
+                    <button class="btn btn-sec btn-peq" @onclick="() => AbrirCoord(null)"><Icone Nome="esquerda" Tamanho="14" /> Coordenações</button>
+                    <span class="oc-av peq" style="background:@CorLider(NomeCoord)">@(_coord == "" ? "?" : Iniciais(NomeCoord))</span>
+                    <b>@NomeCoord</b>
+                    <small class="muted">@Ferias.Plural(_lids.Count, "liderança", "lideranças")</small>
+                </div>
             @if (_mud != null) { @PainelMudancas }
 
             <div class="barra-ferr">
@@ -159,6 +206,7 @@
                     </Painel>
                 </aside>
             </div>
+            }
         }
 
         @if (_ficha != null) { @Ficha }
@@ -210,18 +258,62 @@
         finally { _enviando = false; StateHasChanged(); }
     }
 
+    sealed record CoordOO(string Chave, string Nome, List<string> Lids, List<PessoaOO> Pessoas);
+    List<CoordOO> _coords = new();
+    string? _coord;
+    string NomeCoord => _coords.FirstOrDefault(c => c.Chave == _coord)?.Nome ?? "";
+
+    string CoordDe(PessoaOO p) => p.Coordenacao != "" ? p.Coordenacao : E.OneVeTudo ? "" : E.OneCoordenacao;
+    static string ChaveC(string c) => Ferias.Norm(c);
+
+    void AbrirCoord(string? k) { _coord = k; E.OneCoordAberta = k; _lider = Todas; }
+
+    /// <summary>Liderança com o nome já cadastrado (sem diferença de maiúsculas, acentos e espaços).</summary>
+    string OficialLid(string l)
+    {
+        l = System.Text.RegularExpressions.Regex.Replace(l ?? "", @"\s+", " ").Trim();
+        var b = E.OneBase;
+        var achou = (b?.TodasLiderancas() ?? new()).Concat(E.OneEquipes.Keys).FirstOrDefault(x => Ferias.Norm(x) == Ferias.Norm(l));
+        return achou ?? l;
+    }
+
+    void MontarCoords(BaseOO b)
+    {
+        var ativos = b.Ativos.ToList();
+        var nomes = new Dictionary<string, string>();
+        void Nome(string c) { var k = ChaveC(c); if (!nomes.ContainsKey(k)) nomes[k] = c == "" ? "Sem coordenação" : c; }
+        if (!E.OneVeTudo && E.OneCoordenacao != "") Nome(E.OneCoordenacao);
+        foreach (var p in ativos) Nome(CoordDe(p));
+        var lidCoord = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var l in b.TodasLiderancas())
+        {
+            var dela = ativos.Where(p => string.Equals(p.Lideranca, l, StringComparison.OrdinalIgnoreCase)).GroupBy(p => ChaveC(CoordDe(p))).OrderByDescending(g => g.Count()).FirstOrDefault();
+            string c = dela != null ? CoordDe(dela.First()) : E.OneEquipes.TryGetValue(l, out var ce) ? ce : E.OneVeTudo ? "" : E.OneCoordenacao;
+            Nome(c);
+            lidCoord[l] = ChaveC(c);
+        }
+        _coords = nomes.Select(kv => new CoordOO(kv.Key, kv.Value,
+                b.TodasLiderancas().Where(l => lidCoord.GetValueOrDefault(l) == kv.Key || ativos.Any(p => p.Lideranca == l && ChaveC(CoordDe(p)) == kv.Key)).ToList(),
+                ativos.Where(p => ChaveC(CoordDe(p)) == kv.Key).ToList()))
+            .OrderBy(c => c.Chave == "" ? 1 : 0).ThenBy(c => c.Nome, StringComparer.CurrentCultureIgnoreCase).ToList();
+        _coords.RemoveAll(c => c.Chave == "" && c.Pessoas.Count == 0 && c.Lids.Count == 0);
+        if (_coord != null && !_coords.Any(c => c.Chave == _coord)) _coord = null;
+    }
+
     void Montar()
     {
         var b = E.OneBase;
         if (b == null) return;
-        _lids = b.TodasLiderancas();
+        _coord ??= E.OneCoordAberta;
+        MontarCoords(b);
+        _lids = _coord == null ? b.TodasLiderancas() : _coords.First(c => c.Chave == _coord).Lids;
         if (_lider != Todas && !_lids.Contains(_lider)) _lider = Todas;
         _ativos = b.Ativos.Count();
         _arquivados = b.Pessoas.Count(p => p.Arquivado);
         _acoes = OneAOne.AcoesAbertas(b).Where(x => Visivel(x.p)).OrderBy(x => x.r.AcaoPrazo ?? DateOnly.MaxValue).ToList();
     }
 
-    bool Visivel(PessoaOO p) => _lider == Todas || p.Lideranca == _lider;
+    bool Visivel(PessoaOO p) => (_coord == null || ChaveC(CoordDe(p)) == _coord) && (_lider == Todas || p.Lideranca == _lider);
     static string CorLider(string l) { if (l == "") return "#64748B"; int h = 0; foreach (var ch in Ferias.Norm(l)) h = unchecked(h * 31 + ch); return Paleta[(int)((uint)h % Paleta.Length)]; }
     static string Cls(FaixaOO f) => f switch { FaixaOO.EmDia => "g", FaixaOO.Chegando => "a", _ => "r" };
     static string Iniciais(string nome) { var p = nome.Replace("(jovem)", "").Split(' ', StringSplitOptions.RemoveEmptyEntries).Where(x => char.IsUpper(x[0])).ToArray(); return p.Length == 0 ? "?" : p.Length == 1 ? p[0][..Math.Min(2, p[0].Length)].ToUpperInvariant() : $"{p[0][0]}{p[^1][0]}".ToUpperInvariant(); }
@@ -446,7 +538,7 @@
             else l = await J.Um("Liderança", _lids.Select(x => (x, x)), "", "De qual liderança?", "");
             if (string.IsNullOrWhiteSpace(l)) return;
         }
-        var p = new PessoaOO { Nome = n, Lideranca = l.Trim(), Tipo = "Novo", Entrada = _hoje };
+        var p = new PessoaOO { Nome = n, Lideranca = OficialLid(l), Tipo = "Novo", Entrada = _hoje, Coordenacao = _coord is { Length: > 0 } ? NomeCoord : "" };
         p.Vinculos.Add(new VinculoOO { Lideranca = p.Lideranca, Desde = _hoje });
         b.Pessoas.Add(p);
         if (!b.Liderancas.Contains(p.Lideranca)) b.Liderancas.Add(p.Lideranca);
@@ -457,7 +549,14 @@
     {
         var n = await J.Entrada("Nova liderança", "Nome da liderança:", "");
         if (string.IsNullOrWhiteSpace(n)) return;
-        n = n.Trim();
+        n = OficialLid(n);
+        // administrador dentro de uma coordenação: a equipe já nasce nela
+        if (E.OneVeTudo && _coord is { Length: > 0 })
+        {
+            var us = await E.Conta.Usuarios() ?? new();
+            var co = us.FirstOrDefault(u => u.Papel == "coordenador" && (Ferias.Norm($"{u.Nome} {u.Sobrenome}") == _coord || Ferias.Norm(u.Lideranca) == _coord));
+            if (co != null) { await E.Conta.Chamar("POST", "admin/equipes", new System.Text.Json.Nodes.JsonObject { ["lideranca"] = n, ["de"] = "", ["para"] = co.Id }); E.OneEquipes[n] = NomeCoord; }
+        }
         if (!E.OneBase!.Liderancas.Contains(n, StringComparer.OrdinalIgnoreCase)) E.OneBase.Liderancas.Add(n);
         Salvar();
     }

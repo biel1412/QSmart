@@ -373,6 +373,10 @@ public sealed class Estado
     /// <summary>Pode criar, renomear e excluir lideranças: administrador ou coordenador.</summary>
     public bool OneGere => OneVeTudo || Conta.Perfil?.Papel == "coordenador";
     public string OneMinhaLideranca = "";
+    /// <summary>Equipes registradas (liderança → coordenação), inclusive as que ainda não têm pessoas.</summary>
+    public Dictionary<string, string> OneEquipes = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>Coordenação aberta no One a One (para voltar a ela ao trocar de tela).</summary>
+    public string? OneCoordAberta;
     public bool OneCarregando;
     const string CofreOne = "one_a_one";
     const string IdMeta = "__base";
@@ -396,7 +400,14 @@ public sealed class Estado
             OneVeTudo = r.Json["veTudo"]?.GetValue<bool>() ?? false;
             OneMinhaLideranca = r.Json["lideranca"]?.GetValue<string>() ?? "";
             OneCoordenacao = r.Json["coordenacao"]?.GetValue<string>() ?? "";
-            var equipes = (r.Json["equipes"] as System.Text.Json.Nodes.JsonArray)?.Select(x => x?.GetValue<string>() ?? "").Where(x => x != "").ToList() ?? new();
+            OneEquipes = new(StringComparer.OrdinalIgnoreCase);
+            foreach (var x in r.Json["equipes"] as System.Text.Json.Nodes.JsonArray ?? new())
+            {
+                var l = x is System.Text.Json.Nodes.JsonObject o ? o["lideranca"]?.GetValue<string>() ?? "" : x?.GetValue<string>() ?? "";
+                var c = x is System.Text.Json.Nodes.JsonObject o2 ? o2["coordenacao"]?.GetValue<string>() ?? "" : OneCoordenacao;
+                if (l != "") OneEquipes[l] = c;
+            }
+            var equipes = OneEquipes.Keys.Where(l => Conta.Perfil?.Papel != "admin").ToList();
             var b = new QSmart.Core.Coordenacao.BaseOO();
             _oneSinc.Clear();
             if (r.Json["pessoas"] is System.Text.Json.Nodes.JsonArray a)

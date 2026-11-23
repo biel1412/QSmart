@@ -205,6 +205,21 @@ async function equipesOO(env) {
   const r = await env.DB.prepare("SELECT lideranca, coordenacao FROM oo_equipes").all();
   const m = new Map(); for (const x of r.results || []) m.set(normN(x.lideranca), x); return m;
 }
+// nome "oficial" de cada liderança: "diogo machado", "DIOGO  MACHADO" e "Diogo Machado" são a mesma pessoa
+async function lideresOficiais(env) {
+  const m = new Map();
+  const por = (nome, forcar) => { const n = String(nome || "").replace(/\s+/g, " ").trim(); if (!n) return; const k = normN(n); if (forcar || !m.has(k)) m.set(k, n); };
+  for (const x of (await env.DB.prepare("SELECT DISTINCT lideranca FROM oo_pessoas WHERE lideranca != ''").all()).results || []) por(x.lideranca, false);
+  for (const x of (await env.DB.prepare("SELECT nome, sobrenome FROM usuarios WHERE papel = 'lideranca'").all()).results || []) por(`${x.nome} ${x.sobrenome}`, true);
+  for (const x of (await env.DB.prepare("SELECT lideranca FROM oo_equipes").all()).results || []) por(x.lideranca, true);
+  return l => {
+    const n = String(l || "").replace(/\s+/g, " ").trim(); if (!n) return "";
+    const o = m.get(normN(n)); if (o) return o;
+    // nome novo todo em minúsculas (ou maiúsculas): deixa com iniciais maiúsculas
+    const t = (n === n.toLowerCase() || n === n.toUpperCase()) ? n.toLowerCase().replace(/(^|\s)(\S)/g, (a, b, c) => b + c.toUpperCase()).replace(/\s(Da|De|Do|Das|Dos|E)\s/g, x => x.toLowerCase()) : n;
+    m.set(normN(n), t); return t;
+  };
+}
 // registra a equipe na coordenação, se ainda não for de ninguém
 async function registrarEquipe(env, lid, coord) {
   lid = String(lid || "").trim(); if (!lid || !coord) return;
@@ -493,7 +508,7 @@ async function api(req, env, url) {
     }
     if (rota === "admin/equipes" && m === "POST") {
       const b = await corpo(req);
-      const lid = String(b.lideranca || "").trim(), de = String(b.de || "");
+      const lid = (await lideresOficiais(env))(String(b.lideranca || "")), de = String(b.de || "");
       let para = "";
       if (b.para) {
         const c = await env.DB.prepare("SELECT id, nome, sobrenome, lideranca, papel FROM usuarios WHERE id = ?").bind(Number(b.para)).first();
@@ -585,6 +600,8 @@ async function api(req, env, url) {
       })).filter(x => x.nome);
       if (linhas.length === 0) return erro("A planilha veio sem pessoas.");
       if (linhas.some(l => !l.coordenacao)) return erro("Escolha de qual coordenador é esta planilha.");
+      const oficial = await lideresOficiais(env);
+      for (const l of linhas) l.lideranca = oficial(l.lideranca);
       // quem é de outra coordenação não muda de dono por esta planilha
       const outras = [];
       const todos = (await env.DB.prepare("SELECT id, dados FROM oo_pessoas WHERE id != ?").bind(META_OO).all()).results || [];
@@ -600,6 +617,11 @@ async function api(req, env, url) {
         if (p && p.Coordenacao && !mesmaCoord(p.Coordenacao, l.coordenacao) && !p.Arquivado && !ac.admin) { outras.push(l.nome); continue; }
         if (p) {
           let mudou = false;
+          if (l.lideranca && p.Lideranca !== l.lideranca && normN(p.Lideranca) === normN(l.lideranca)) {
+            // mesma liderança, só escrita diferente: arruma o nome sem contar como troca de time
+            for (const v of p.Vinculos || []) if (normN(v.Lideranca) === normN(l.lideranca)) v.Lideranca = l.lideranca;
+            p.Lideranca = l.lideranca; mudou = true;
+          }
           if (l.lideranca && p.Lideranca !== l.lideranca) {
             for (const v of p.Vinculos || []) if (!v.Ate) v.Ate = hoje;
             (p.Vinculos ||= []).push({ Lideranca: l.lideranca, Desde: hoje, Ate: null });
@@ -659,7 +681,7 @@ async function api(req, env, url) {
     }
     // a equipe registrada manda; sem registro, vale de quem são as pessoas
     const minhaLid = l => { if (ac.admin) return true; const e = equipes.get(normN(l)); return e ? ac.minha(e.coordenacao) : !lidsOutras.has(normN(l)); };
-    const minhasEquipes = ac.admin ? [] : [...equipes.values()].filter(e => ac.minha(e.coordenacao)).map(e => e.lideranca);
+    const minhasEquipes = [...equipes.values()].filter(e => ac.admin || ac.minha(e.coordenacao)).map(e => ({ lideranca: e.lideranca, coordenacao: e.coordenacao }));
 
     if (rota === "oo" && m === "GET") {
       const r = await env.DB.prepare("SELECT id, lideranca, coordenacao, dados, atualizado_em FROM oo_pessoas").all();
@@ -672,8 +694,9 @@ async function api(req, env, url) {
       return json({ pessoas, veTudo: ac.admin, coordenacao: ac.coord, lideranca: "", equipes: minhasEquipes });
     }
 
+    let oficialLid = null;
     const salvar = async p => {
-      const id = String(p.id || "").slice(0, 64), lid = String(p.lideranca || "").trim().slice(0, 80);
+      const id = String(p.id || "").slice(0, 64); let lid = String(p.lideranca || "").trim().slice(0, 80);
       if (!id || typeof p.dados !== "string") return "Registro inválido.";
       if (p.dados.length > 400000) return "Registro grande demais.";
       if (id === META_OO) {
@@ -686,6 +709,19 @@ async function api(req, env, url) {
       }
       let coord = String(p.coordenacao || "").trim().slice(0, 80);
       if (!ac.admin && !coord) coord = ac.coord;
+      // liderança com o nome oficial (sem diferença de maiúsculas/acentos/espaços)
+      if (lid) {
+        oficialLid ||= await lideresOficiais(env);
+        const of = oficialLid(lid);
+        if (of !== lid) {
+          try {
+            const o = JSON.parse(p.dados); const pp = (o.Pessoas || [])[0];
+            if (pp) { if (normN(pp.Lideranca) === normN(lid)) pp.Lideranca = of; for (const v of pp.Vinculos || []) if (normN(v.Lideranca) === normN(lid)) v.Lideranca = of; }
+            p.dados = JSON.stringify(o);
+          } catch { }
+          lid = of;
+        }
+      }
       if (!ac.minha(coord)) return "Você só pode salvar pessoas da sua coordenação.";
       const antes = await env.DB.prepare("SELECT coordenacao FROM oo_pessoas WHERE id = ?").bind(id).first();
       if (antes && !ac.minha(antes.coordenacao)) return "Essa pessoa é de outra coordenação.";
