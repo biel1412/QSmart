@@ -28,6 +28,8 @@ public sealed class FeriasPessoa
 {
     public DateOnly? Admissao { get; set; }
     public List<PeriodoFer> Periodos { get; set; } = new();
+    /// <summary>Pessoa-chave cuja ausência não pesa: não entra na conta de quantos estão de férias.</summary>
+    public bool SemImpacto { get; set; }
 }
 
 /// <summary>Férias no banco do QSmart: converte para o motor de choques e sugestões (FeriasAuto) e exporta.</summary>
@@ -48,7 +50,7 @@ public static class FeriasBanco
                 ["id"] = p.Id, ["inicio"] = D(p.Inicio), ["pedido"] = D(p.Pedido), ["dias"] = p.Dias, ["vende"] = p.Vende,
                 ["status"] = p.Status, ["obs"] = p.Obs, ["mantido"] = p.Mantido,
             });
-        return new JsonObject { ["admissao"] = D(f.Admissao), ["periodos"] = a }.ToJsonString();
+        return new JsonObject { ["admissao"] = D(f.Admissao), ["periodos"] = a, ["semImpacto"] = f.SemImpacto }.ToJsonString();
     }
 
     public static FeriasPessoa DeJson(string json)
@@ -58,6 +60,7 @@ public static class FeriasBanco
         {
             var n = JsonNode.Parse(json);
             f.Admissao = LD(n?["admissao"]);
+            f.SemImpacto = n?["semImpacto"] is JsonValue si && si.TryGetValue<bool>(out var sb) && sb;
             if (n?["periodos"] is JsonArray a)
                 foreach (var x in a)
                 {

@@ -139,6 +139,15 @@ public static class FormatoPt
         c.NumberFormat.NumberDecimalSeparator = ","; c.NumberFormat.NumberGroupSeparator = ".";
         c.NumberFormat.PercentDecimalSeparator = ","; c.NumberFormat.PercentGroupSeparator = ".";
         c.NumberFormat.CurrencyDecimalSeparator = ","; c.NumberFormat.CurrencyGroupSeparator = ".";
+        // nomes de dias e meses em português (o navegador roda sem dados de cultura)
+        var f = c.DateTimeFormat;
+        f.DayNames = new[] { "domingo", "segunda-feira", "terça-feira", "quarta-feira", "quinta-feira", "sexta-feira", "sábado" };
+        f.AbbreviatedDayNames = new[] { "dom", "seg", "ter", "qua", "qui", "sex", "sáb" };
+        f.ShortestDayNames = new[] { "D", "S", "T", "Q", "Q", "S", "S" };
+        f.MonthNames = new[] { "janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro", "" };
+        f.AbbreviatedMonthNames = new[] { "jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez", "" };
+        f.MonthGenitiveNames = f.MonthNames; f.AbbreviatedMonthGenitiveNames = f.AbbreviatedMonthNames;
+        f.ShortDatePattern = "dd/MM/yyyy";
         return c;
     }
 

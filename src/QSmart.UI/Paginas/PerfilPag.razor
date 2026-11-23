@@ -88,6 +88,55 @@
             </div>
         </div>
 
+        @if (p.Coordenacao)
+        {
+            <div class="pf-sec"><b>Base de colaboradores</b><span>nome, admissão, liderança e coordenação · alimenta o One a One e as Férias</span></div>
+            <div class="pf-card pf-base">
+                <div class="pf-base-ac">
+                    <span class="pf-base-ic"><Icone Nome="grade-planilha" Tamanho="26" /></span>
+                    <div>
+                        <b>Carregue a planilha uma vez</b>
+                        <p class="muted pequeno">Colunas: <b>Nome</b>, <b>Data de admissão</b>, <b>Liderança</b> e <b>Coordenação</b> (a ordem não importa). Quem já existe é atualizado; quem saiu da planilha é arquivado com o histórico guardado. Pode carregar de novo sempre que a base mudar.</p>
+                        <div class="pf-base-bts">
+                            <label class="btn btn-pri @(_baseEnviando ? "disabled" : "")">
+                                @if (_baseEnviando) { <span class="ia-spin pequeno"></span> <span>Enviando…</span> } else { <Icone Nome="upload" Tamanho="15" /> <span>Carregar planilha (.xlsx ou .csv)</span> }
+                                <InputFile OnChange="CarregarBase" accept=".xlsx,.xlsm,.csv" @key="_chaveBase" disabled="@_baseEnviando" />
+                            </label>
+                            <button class="btn btn-sec" @onclick="BaixarModelo"><Icone Nome="download" Tamanho="15" /> Baixar modelo</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="pf-base-info">
+                    @if (_base == null) { <p class="muted pequeno"><span class="ia-spin pequeno"></span> Carregando…</p> }
+                    else
+                    {
+                        @if (_base["ultima"] is System.Text.Json.Nodes.JsonObject ul)
+                        {
+                            <div class="pf-base-ult">
+                                <small>ÚLTIMA CARGA</small>
+                                <b>@Quando(Txt(ul, "em")) · @(Txt(ul, "por"))</b>
+                                <span>@(Num(ul, "linhas")) pessoas · @(Num(ul, "novos")) novas · @(Num(ul, "atualizados")) atualizadas · @(Num(ul, "arquivados")) arquivadas</span>
+                                @if (Num(ul, "semAdmissao") > 0) { <span class="pf-base-alerta"><Icone Nome="alerta" Tamanho="13" /> @(Num(ul, "semAdmissao")) sem data de admissão</span> }
+                            </div>
+                        }
+                        else { <p class="muted pequeno">Nenhuma planilha carregada ainda.</p> }
+                        <div class="pf-base-coords">
+                            @foreach (var c in (_base["coordenacoes"] as System.Text.Json.Nodes.JsonArray ?? new()).Where(c => Txt(c, "nome") != ""))
+                            {
+                                var dono = TxtOuNulo(c, "coordenador");
+                                <div class="@(Sim(c, "minha") ? "pf-base-c minha" : "pf-base-c")">
+                                    <b>@Txt(c, "nome")</b>
+                                    <span>@Num(c, "pessoas") pessoas</span>
+                                    @if (dono != null) { <em class="ok"><Icone Nome="check" Tamanho="12" /> @dono</em> }
+                                    else { <em class="sem" title="Nenhuma conta de coordenador com esse nome. O administrador pode escrever esse nome no campo Equipe do coordenador, em Equipe e acessos."><Icone Nome="alerta" Tamanho="12" /> sem coordenador</em> }
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+
         @if (p.Admin)
         {
             <div class="pf-sec"><b>Equipe e acessos</b><span>aprovar cadastros, definir papéis e equipes</span>
@@ -106,7 +155,7 @@
                                 <option value="usuario">Usuário</option><option value="lideranca">Liderança</option>
                                 <option value="coordenador">Coordenador</option><option value="admin">Administrador</option>
                             </select>
-                            <input class="campo" placeholder="@(u.Papel == "lideranca" ? "nome da equipe no One a One" : "—")" value="@u.Lideranca" @onchange="e => MudarEquipe(u, e.Value?.ToString())" />
+                            <input class="campo" placeholder="@(u.Papel == "coordenador" ? "nome na planilha, se diferente" : "—")" title="@(u.Papel == "coordenador" ? "A coluna Coordenação da planilha é ligada a esta conta pelo nome da pessoa. Se na planilha estiver escrito diferente, escreva aqui como está lá." : "")" value="@u.Lideranca" @onchange="e => MudarEquipe(u, e.Value?.ToString())" />
                             <span class="pf-st @u.Status">@(u.Status switch { "ativo" => "Ativo", "pendente" => "Aguardando aprovação", _ => "Bloqueado" })</span>
                             <div class="pf-eq-ac">
                                 @if (u.Status == "pendente") { <button class="btn btn-pri rx-mini" @onclick="() => Status(u, Ativo)">Aprovar</button> }
@@ -118,7 +167,7 @@
                         </div>
                     }
                 </div>
-                <p class="muted pequeno">Coordenador e administrador veem todas as equipes do One a One. Liderança vê só a equipe com o nome escrito aqui, igual ao do One a One.</p>
+                <p class="muted pequeno">Só <b>coordenador</b> e <b>administrador</b> entram na seção Coordenação (Férias, Pontos de ação e One a One); liderança e usuário usam o resto do QSmart. Cada coordenador vê no One a One as pessoas da sua coordenação (coluna Coordenação da planilha base) e, nas Férias, vê o painel geral mas marca só os seus.</p>
             }
         }
     </div>
@@ -129,12 +178,55 @@
     string _atual = "", _nova = "", _nova2 = "";
     bool _enviando;
     List<UsuarioAdmin>? _usuarios;
+    System.Text.Json.Nodes.JsonNode? _base;
+    bool _baseEnviando;
+    int _chaveBase;
+
+    async Task LerBase()
+    {
+        var r = await E.BaseResumo();
+        _base = r.Ok ? r.Json : new System.Text.Json.Nodes.JsonObject();
+    }
+
+    static string Txt(System.Text.Json.Nodes.JsonNode? n, string k) => n?[k] is System.Text.Json.Nodes.JsonValue v && v.TryGetValue<string>(out var x) ? x : "";
+    static string? TxtOuNulo(System.Text.Json.Nodes.JsonNode? n, string k) => n?[k] is System.Text.Json.Nodes.JsonValue v && v.TryGetValue<string>(out var x) ? x : null;
+    static int Num(System.Text.Json.Nodes.JsonNode? n, string k) => n?[k] is System.Text.Json.Nodes.JsonValue v && v.TryGetValue<int>(out var x) ? x : 0;
+    static bool Sim(System.Text.Json.Nodes.JsonNode? n, string k) => n?[k] is System.Text.Json.Nodes.JsonValue v && v.TryGetValue<bool>(out var x) && x;
+    static string Quando(string? iso) => DateTime.TryParse(iso, null, System.Globalization.DateTimeStyles.RoundtripKind, out var d) ? d.ToLocalTime().ToString("dd/MM/yyyy 'às' HH:mm") : "";
+
+    async Task BaixarModelo() => await E.Nav.Baixar("Modelo base de colaboradores.xlsx", QSmart.Core.Coordenacao.FeriasClt.Modelo(), Navegador.MimeXlsx);
+
+    async Task CarregarBase(InputFileChangeEventArgs ev)
+    {
+        var f = ev.File;
+        byte[] bytes;
+        try { using var ms = new MemoryStream(); await f.OpenReadStream(30_000_000).CopyToAsync(ms); bytes = ms.ToArray(); }
+        catch (Exception ex) { _chaveBase++; await J.Erro("Base de colaboradores", "Não consegui ler o arquivo: " + ex.Message); return; }
+        _chaveBase++;
+        List<QSmart.Core.Coordenacao.LinhaBase> linhas;
+        try { linhas = await QSmart.Core.Coordenacao.FeriasClt.LerBase(new QSmart.Core.Planilhas.Arquivo(f.Name, bytes)); }
+        catch (Exception ex) { await J.Erro("Base de colaboradores", ex.Message); return; }
+        var coords = linhas.GroupBy(l => l.Coordenacao).Select(g => $"• {(g.Key == "" ? "(sem coordenação)" : g.Key)}: {g.Count()}").ToList();
+        int semAdm = linhas.Count(l => l.Admissao == null);
+        var msg = $"{linhas.Count} pessoas em {Math.Max(1, coords.Count)} coordenação(ões):\n{string.Join("\n", coords)}" +
+                  (semAdm > 0 ? $"\n\n{semAdm} sem data de admissão (as Férias delas ficam sem prazo até corrigir)." : "") +
+                  "\n\nQuem já existe é atualizado e quem não está na planilha (dessas coordenações) é arquivado. Enviar?";
+        if (!await J.Pergunta("Carregar base de colaboradores", msg)) return;
+        _baseEnviando = true; StateHasChanged();
+        var r = await E.BaseEnviar(linhas, f.Name);
+        _baseEnviando = false;
+        if (!r.Ok) { await J.Erro("Base de colaboradores", r.Erro); return; }
+        await LerBase();
+        _ = E.Conta.Registrar("base.carregar", true);
+        await J.Info("Base de colaboradores", $"Pronto! {r.Json?["novos"]?.GetValue<int>()} novas, {r.Json?["atualizados"]?.GetValue<int>()} atualizadas e {r.Json?["arquivados"]?.GetValue<int>()} arquivadas. Já estão no One a One e nas Férias.");
+    }
     static readonly string[] Ferramentas = Abas.Todas.Concat(Abas.Internas).Where(a => !a.Externo).Select(a => a.Chave).ToArray();
 
     protected override async Task OnInitializedAsync()
     {
         E.Conta.Mudou += Atualizar;
         await E.Conta.CarregarEu();
+        if (E.Conta.Perfil?.Coordenacao == true) await LerBase();
         if (E.Conta.Perfil?.Admin == true) await CarregarUsuarios();
     }
 

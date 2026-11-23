@@ -368,6 +368,10 @@ public sealed class Estado
     /// <summary>Erro ao abrir (sem acesso, sem internet…).</summary>
     public string? OneErro;
     public bool OneVeTudo;
+    /// <summary>Nome da coordenação de quem está vendo (vazio para o administrador).</summary>
+    public string OneCoordenacao = "";
+    /// <summary>Pode criar, renomear e excluir lideranças: administrador ou coordenador.</summary>
+    public bool OneGere => OneVeTudo || Conta.Perfil?.Papel == "coordenador";
     public string OneMinhaLideranca = "";
     public bool OneCarregando;
     const string CofreOne = "one_a_one";
@@ -391,6 +395,7 @@ public sealed class Estado
             OneErro = null;
             OneVeTudo = r.Json["veTudo"]?.GetValue<bool>() ?? false;
             OneMinhaLideranca = r.Json["lideranca"]?.GetValue<string>() ?? "";
+            OneCoordenacao = r.Json["coordenacao"]?.GetValue<string>() ?? "";
             var b = new QSmart.Core.Coordenacao.BaseOO();
             _oneSinc.Clear();
             if (r.Json["pessoas"] is System.Text.Json.Nodes.JsonArray a)
@@ -402,8 +407,6 @@ public sealed class Estado
                     if (id == IdMeta) { b.Liderancas = lida.Liderancas; b.Fotos = lida.Fotos; _oneSinc[id] = SerMeta(b); }
                     else if (lida.Pessoas.Count > 0) { var p = lida.Pessoas[0]; p.Id = id; b.Pessoas.Add(p); _oneSinc[id] = SerPessoa(p); }
                 }
-            if (!OneVeTudo && OneMinhaLideranca != "" && !b.Liderancas.Contains(OneMinhaLideranca)) b.Liderancas.Add(OneMinhaLideranca);
-            if (!OneVeTudo) b.Liderancas.RemoveAll(l => l != OneMinhaLideranca);
             b.Pessoas = b.Pessoas.OrderBy(p => p.Nome, StringComparer.CurrentCultureIgnoreCase).ToList();
             OneBase = b;
         }
@@ -425,7 +428,8 @@ public sealed class Estado
                 ids.Add(p.Id);
                 var json = SerPessoa(p);
                 if (_oneSinc.TryGetValue(p.Id, out var ant) && ant == json) continue;
-                var r = await Conta.Chamar("PUT", "oo", new System.Text.Json.Nodes.JsonObject { ["id"] = p.Id, ["lideranca"] = p.Lideranca, ["dados"] = json });
+                if (p.Coordenacao == "" && OneCoordenacao != "") p.Coordenacao = OneCoordenacao;
+                var r = await Conta.Chamar("PUT", "oo", new System.Text.Json.Nodes.JsonObject { ["id"] = p.Id, ["lideranca"] = p.Lideranca, ["coordenacao"] = p.Coordenacao, ["dados"] = SerPessoa(p) });
                 if (r.Ok) _oneSinc[p.Id] = json; else erros.Add($"{p.Nome}: {r.Erro}");
             }
             foreach (var id in _oneSinc.Keys.Where(k => k != IdMeta && !ids.Contains(k)).ToList())
@@ -433,7 +437,7 @@ public sealed class Estado
                 var r = await Conta.Chamar("DELETE", "oo?id=" + Uri.EscapeDataString(id));
                 if (r.Ok) _oneSinc.Remove(id); else erros.Add(r.Erro);
             }
-            if (OneVeTudo)
+            if (OneGere)
             {
                 var meta = SerMeta(b);
                 if (!_oneSinc.TryGetValue(IdMeta, out var antM) || antM != meta)
@@ -449,6 +453,72 @@ public sealed class Estado
             await Janelas.Aviso("One a One", "Algumas mudanças não foram salvas no banco:\n\n" + string.Join("\n", erros.Distinct().Take(5)) + "\n\nVou recarregar a carteira do banco.");
             OneBase = null; await CarregarOne(true);
         }
+    }
+
+    // ---- Base de colaboradores (planilha da coordenação: nome, admissão, liderança, coordenação) ----
+    public async Task<RespostaApi> BaseResumo() => await Conta.Chamar("GET", "oo/base");
+
+    public async Task<RespostaApi> BaseEnviar(List<QSmart.Core.Coordenacao.LinhaBase> linhas, string arquivo)
+    {
+        var a = new System.Text.Json.Nodes.JsonArray();
+        foreach (var l in linhas)
+            a.Add(new System.Text.Json.Nodes.JsonObject
+            {
+                ["nome"] = l.Nome, ["admissao"] = l.Admissao?.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture) ?? "",
+                ["lideranca"] = l.Lideranca, ["coordenacao"] = l.Coordenacao,
+            });
+        var r = await Conta.Chamar("POST", "oo/base", new System.Text.Json.Nodes.JsonObject { ["linhas"] = a, ["arquivo"] = arquivo });
+        if (r.Ok) { OneBase = null; FeColabs = null; }
+        return r;
+    }
+
+    // ---- Férias (painel geral): todas as coordenações veem todo mundo; cada uma edita os seus ----
+    public List<QSmart.Core.Coordenacao.ColabFer>? FeColabs;
+    public bool FeAdmin;
+    public string FeCoordenacao = "";
+    readonly Dictionary<string, string> _feSinc2 = new();
+
+    public async Task CarregarFerias(bool forcar = false)
+    {
+        if (!Conta.Logado) return;
+        if (FeColabs != null && !forcar) return;
+        var r = await Conta.Chamar("GET", "fe");
+        if (!r.Ok || r.Json == null) { FeErro = r.Erro; FeColabs = null; Notificar(); return; }
+        FeErro = null;
+        FeAdmin = r.Json["admin"]?.GetValue<bool>() ?? false;
+        FeCoordenacao = r.Json["coordenacao"]?.GetValue<string>() ?? "";
+        var lista = new List<QSmart.Core.Coordenacao.ColabFer>();
+        _feSinc2.Clear();
+        if (r.Json["pessoas"] is System.Text.Json.Nodes.JsonArray a)
+            foreach (var x in a)
+            {
+                string S(string k) => x?[k]?.GetValue<string>() ?? "";
+                var c = new QSmart.Core.Coordenacao.ColabFer
+                {
+                    Id = S("id"), Nome = S("nome"), Lideranca = S("lideranca"), Coordenacao = S("coordenacao"),
+                    Admissao = DateOnly.TryParseExact(S("admissao"), "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var d) ? d : null,
+                    Minha = x?["minha"]?.GetValue<bool>() ?? false,
+                };
+                var dados = S("dados");
+                c.F = dados == "" ? new() : QSmart.Core.Coordenacao.FeriasBanco.DeJson(dados);
+                c.F.Admissao ??= c.Admissao;
+                if (c.Admissao == null) c.Admissao = c.F.Admissao;
+                _feSinc2[c.Id] = QSmart.Core.Coordenacao.FeriasBanco.ParaJson(c.F);
+                lista.Add(c);
+            }
+        FeColabs = lista.OrderBy(c => c.Nome, StringComparer.CurrentCultureIgnoreCase).ToList();
+        Notificar();
+    }
+
+    public async Task<bool> SalvarFerias(QSmart.Core.Coordenacao.ColabFer c)
+    {
+        var json = QSmart.Core.Coordenacao.FeriasBanco.ParaJson(c.F);
+        if (_feSinc2.TryGetValue(c.Id, out var ant) && ant == json) return true;
+        var r = await Conta.Chamar("PUT", "fe", new System.Text.Json.Nodes.JsonObject { ["id"] = c.Id, ["dados"] = json });
+        if (r.Ok) { _feSinc2[c.Id] = json; _ = Sino.Carregar(); return true; }
+        await Janelas.Aviso("Férias", "Não consegui salvar no banco: " + r.Erro + "\n\nVou recarregar as férias do banco.");
+        await CarregarFerias(true);
+        return false;
     }
 
     // ---- Férias no banco (mesmas pessoas do One a One) ----
@@ -653,7 +723,10 @@ public sealed class Estado
         Notificar();
     }
 
-    public bool AbaAtiva(string chave) => !Prefs.AbasOff.Contains(Abas.PaiDe(chave) ?? chave);
+    public bool AbaAtiva(string chave) => !Prefs.AbasOff.Contains(Abas.PaiDe(chave) ?? chave) && Permitida(chave);
+
+    /// <summary>A seção Coordenação é só de coordenador e administrador; liderança e usuário usam o resto.</summary>
+    public bool Permitida(string chave) => Abas.Por(Abas.PaiDe(chave) ?? chave)?.Grupo != "Coordenação" || Conta.Perfil?.Coordenacao == true;
 
     public async Task SalvarPrefs()
     {

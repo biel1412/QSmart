@@ -1,497 +1,480 @@
 @page "/ferias"
 @inherits PaginaBase
+@implements IDisposable
 @using QSmart.Core.Coordenacao
 
-@{ Montar(); }
 <Pagina Titulo="Férias" Grupo="@A.Grupo"
-        Sub="As férias de cada pessoa do One a One, por liderança. O QSmart encontra quem fica fora junto no mesmo time, sugere novas datas para cada choque e mostra o quanto o impacto diminuiu."
-        Kpis="@(_b != null && _b.Funcs.Count > 0 ? KpisFe : null)">
+        Sub="O painel geral de férias de todas as coordenações. Cada coordenação marca as suas; o QSmart mostra o prazo de cada pessoa pela CLT, avisa quando um mês passa do limite e sugere datas melhores."
+        Kpis="@(_todos.Count > 0 ? KpisFe : null)">
     <Acoes>
-        <button class="btn btn-hero" disabled="@(_b == null || _b.Periodos.Count == 0)" @onclick="Exportar" title="As férias em planilha, com os choques"><Icone Nome="download" Tamanho="17" /> Exportar planilha</button>
+        <button class="btn btn-hero" disabled="@(_todos.Count == 0)" @onclick="Exportar" title="O painel de férias em planilha"><Icone Nome="download" Tamanho="17" /> Exportar planilha</button>
     </Acoes>
     <ChildContent>
         @if (E.FeErro != null)
         {
-            <div class="oo-bloqueio"><Icone Nome="cadeado" Tamanho="26" /><div><b>@E.FeErro</b><p class="muted">As férias usam as mesmas pessoas e lideranças do One a One: coordenador vê todas as equipes; liderança, só a sua.</p></div></div>
+            <div class="oo-bloqueio"><Icone Nome="cadeado" Tamanho="26" /><div><b>@E.FeErro</b><p class="muted">As Férias são da coordenação: só coordenador e administrador entram.</p></div></div>
         }
-        else if (_b == null)
+        else if (E.FeColabs == null)
         {
-            <p class="muted"><span class="ia-spin pequeno"></span> Abrindo as férias do banco…</p>
+            <p class="muted"><span class="ia-spin pequeno"></span> Abrindo o painel de férias…</p>
         }
-        else if (_b.Funcs.Count == 0)
+        else if (_todos.Count == 0)
         {
             <div class="vazio-grande">
                 <span class="vazio-ic"><Icone Nome="ferias" Tamanho="34" /></span>
-                <h3>Nenhuma pessoa cadastrada ainda</h3>
-                <p class="muted">As férias usam as pessoas e lideranças do One a One. Cadastre a equipe lá primeiro; depois volte aqui para marcar as férias de cada um.</p>
-                <a class="btn btn-pri" href="one-a-one"><Icone Nome="conversa" Tamanho="16" /> Ir para o One a One</a>
+                <h3>Nenhuma pessoa na base ainda</h3>
+                <p class="muted">Carregue no seu Perfil a planilha com <b>nome, data de admissão, liderança e coordenação</b>. Ela monta este painel e o One a One de uma vez.</p>
+                <a class="btn btn-pri" href="perfil"><Icone Nome="upload" Tamanho="16" /> Carregar a planilha no Perfil</a>
             </div>
         }
         else
         {
-            <div class="barra-ferr">
-                <span class="rotulo">Liderança</span>
-                <select class="campo" style="min-width:160px" value="@_aba" @onchange="MudouAba">
-                    <option value="@Todas">Todas (@_lids.Count)</option>
-                    @foreach (var l in _lids) { <option value="@l">@l</option> }
+            <div class="fv-barra">
+                <div class="fv-seg">
+                    <button class="@(!_geral ? "on" : "")" @onclick="() => _geral = false" disabled="@(E.FeAdmin)">Minha coordenação</button>
+                    <button class="@(_geral ? "on" : "")" @onclick="() => _geral = true">Geral</button>
+                </div>
+                @if (_geral || E.FeAdmin)
+                {
+                    <select class="campo" value="@_coord" @onchange="e => { _coord = e.Value?.ToString() ?? Todas; _lid = Todas; }">
+                        <option value="@Todas">Todas as coordenações (@_carga.Coordenacoes.Count)</option>
+                        @foreach (var c in _carga.Coordenacoes) { <option value="@c">@c</option> }
+                    </select>
+                }
+                <select class="campo" value="@_lid" @onchange="e => _lid = e.Value?.ToString() ?? Todas">
+                    <option value="@Todas">Todas as lideranças</option>
+                    @foreach (var l in Visiveis(false).Select(c => c.Lideranca).Where(l => l != "").Distinct().OrderBy(l => l)) { <option value="@l">@l</option> }
                 </select>
-                <input class="campo" style="width:200px" placeholder="Buscar pessoa…" @bind="_busca" @bind:event="oninput" />
-                <button class="btn btn-sec" @onclick="NovasFerias"><Icone Nome="mais" Tamanho="15" /> Férias</button>
+                <input class="campo fv-busca" placeholder="Buscar pessoa…" @bind="_busca" @bind:event="oninput" />
+                <label class="fv-chk"><input type="checkbox" @bind="_soPendentes" /> Só quem precisa marcar</label>
                 <span class="mola"></span>
-                <span class="fa-cadeado" title="Salvo no banco do QSmart, criptografado"><Icone Nome="escudo" Tamanho="14" /> salvo no banco · criptografado</span>
-                <button class="btn btn-sec" @onclick="Recarregar" title="Buscar as mudanças feitas por outras pessoas"><Icone Nome="atualizar" Tamanho="15" /></button>
+                <button class="btn btn-sec" @onclick="Recarregar" title="Buscar o que as outras coordenações marcaram"><Icone Nome="atualizar" Tamanho="15" /></button>
             </div>
 
-            <div class="fa-impacto">
-                <div class="fa-imp-num">
-                    <span class="rotulo">Dias de choque no time</span>
-                    <div><b class="fa-de">@Fmt(_inicial)</b> <Icone Nome="direita" Tamanho="18" /> <b class="fa-para">@Fmt(_atual)</b></div>
-                    <span class="muted pequeno">@(_inicial == 0 ? (_atual == 0 ? "nenhum choque nas datas pedidas" : "choque novo depois das mudanças") : _atual < _inicial ? $"impacto {Pct(_inicial - _atual, _inicial)} menor com {Ferias.Plural(_alterados.Count, "data mudada", "datas mudadas")}" : "com as datas pedidas, sem mudanças ainda")</span>
-                </div>
-                <div class="fa-imp-barra" title="Choque de agora em relação ao das datas pedidas">
-                    <span style="width:@Pc(_atual, Math.Max(1, _inicial))"></span>
-                    <em style="left:@Pc(_atual, Math.Max(1, _inicial))">@Pct(_atual, Math.Max(1, _inicial))</em>
-                </div>
-                <div class="fa-imp-lado">
-                    <span><b>@_fila.Count</b> para revisar</span>
-                    <span><b>@_alterados.Count</b> mudadas</span>
-                    <span><b>@_mantidos</b> mantidas</span>
-                    @if (_fila.Count > 1) { <button class="btn btn-sec" @onclick="AceitarTodas" title="Aplica a melhor sugestão de cada data em choque"><Icone Nome="check" Tamanho="15" /> Aceitar todas as melhores</button> }
-                </div>
+            @* ======================================================== mapa dos meses *@
+            <div class="fv-meses-cab">
+                <b>Ocupação por mês</b>
+                <span class="muted pequeno">até @FeriasClt.LimitePorCoordenacao pessoas por coordenação · @_carga.LimiteGeral no geral (@_carga.Coordenacoes.Count coordenações × @FeriasClt.LimitePorCoordenacao)@(_semImpacto > 0 ? $" · {_semImpacto} pessoa(s)-chave fora da conta" : "")</span>
+                <span class="mola"></span>
+                <button class="fv-nav" @onclick="() => Andar(-3)" title="Meses anteriores"><Icone Nome="esquerda" Tamanho="16" /></button>
+                <button class="fv-nav txt" @onclick="Hoje">Hoje</button>
+                <button class="fv-nav" @onclick="() => Andar(3)" title="Próximos meses"><Icone Nome="direita" Tamanho="16" /></button>
             </div>
-
-            @Linha()
-
-            <div class="grade-32">
-                <Painel Titulo="Revisão das datas em choque" Nota="@(_fila.Count > 0 ? $"{Math.Min(_i, _fila.Count - 1) + 1} de {_fila.Count}" : "")" Classe="fa-revisao">
-                    <Extra>
-                        @if (_fila.Count > 1)
-                        {
-                            <div class="segmentado">
-                                <button class="seg" @onclick="() => Mover(-1)" title="Anterior"><Icone Nome="esquerda" Tamanho="15" /></button>
-                                <button class="seg" @onclick="() => Mover(1)" title="Próxima"><Icone Nome="direita" Tamanho="15" /></button>
-                            </div>
-                        }
-                    </Extra>
-                    <ChildContent>
-                        @if (_fila.Count == 0)
-                        {
-                            <div class="fa-ok">
-                                <span class="vazio-ic"><Icone Nome="check" Tamanho="30" /></span>
-                                <h3>@(_atual == 0 ? "Nenhuma data em choque" : "Tudo revisado")</h3>
-                                <p class="muted">@(_atual == 0 ? "Ninguém do mesmo time fica fora junto." : "Os choques que sobraram foram mantidos de propósito ou já não podem mudar.")
-                                    @(_presos > 0 ? $" {Ferias.Plural(_presos, "período")} em choque já começou ou está como “Já tirou”." : "")</p>
-                                @if (_mantidos > 0) { <button class="btn btn-sec" @onclick="RevisarMantidos">Revisar de novo as @_mantidos mantidas</button> }
-                            </div>
-                        }
-                        else
-                        {
-                            var p = _fila[Math.Min(_i, _fila.Count - 1)];
-                            var com = FeriasAuto.ComQuem(_b, p);
-                            int ch = FeriasAuto.Choque(_b, p);
-                            <div class="fa-card">
-                                <div class="fa-quem">
-                                    <span class="fa-av">@Iniciais(p.Nome)</span>
-                                    <div>
-                                        <b>@p.Nome</b>
-                                        <span class="muted pequeno">@p.Aba · @p.Status@(Vende(p) ? " · vende 10 dias" : "")</span>
-                                    </div>
-                                    <span class="fa-tag-choque">@Ferias.Plural(ch, "dia") de choque</span>
-                                </div>
-                                <div class="fa-agora">
-                                    <span class="rotulo">Marcado hoje</span>
-                                    <b>@Texto.Dmy(p.Inicio) a @Texto.Dmy(p.Fim)</b> <span class="muted">(@p.Dias dias, @Texto.DiaSemana(p.Inicio).ToLowerInvariant())</span>
-                                    <div class="fa-com">fora junto com: @foreach (var c in com) { <span>@c.nome <b>@c.dias d</b></span> }</div>
-                                </div>
-                                @{ var ops = Opcoes(p); }
-                                @if (ops.Count == 0)
-                                {
-                                    <p class="hero-aviso"><Icone Nome="alerta" Tamanho="15" /> Não achei outra data que diminua o choque dentro das regras (início em dia permitido, sem passar do fim do concessivo e sem bater com outro período da mesma pessoa).</p>
-                                }
-                                else
-                                {
-                                    <FeriasAutoLinha P="p" Ops="ops" B="_b" />
-                                    <div class="fa-ops">
-                                        @for (int k = 0; k < ops.Count; k++)
-                                        {
-                                            var o = ops[k];
-                                            <div class="fa-op @(k == 0 ? "melhor" : "")">
-                                                <div class="fa-op-topo">
-                                                    <span class="fa-op-rot">@(k == 0 ? "Sugestão do QSmart" : o.Deslocamento < 0 ? "Data próxima, antes" : "Data próxima, depois")</span>
-                                                    <span class="fa-op-desl">@(o.Deslocamento > 0 ? "+" : "")@o.Deslocamento dias</span>
-                                                </div>
-                                                <b class="fa-op-data">@Texto.Dmy(o.NovoInicio) a @Texto.Dmy(o.NovoFim)</b>
-                                                <span class="muted pequeno">começa @Texto.DiaSemana(o.NovoInicio).ToLowerInvariant()@(o.ProximoDepois < 999 ? $" · {Ferias.Plural(o.ProximoDepois, "dia")} de folga até o colega mais perto" : "")</span>
-                                                <div class="fa-op-imp">
-                                                    <div><span>Choque da pessoa</span><b>@o.ChoqueAntes → @o.ChoqueDepois dias</b></div>
-                                                    <div><span>Choque do time</span><b>@Fmt(o.TimeAntes) → @Fmt(o.TimeDepois)</b></div>
-                                                    <div class="fa-op-red"><span>Impacto</span><b>−@Pct(o.TimeAntes - o.TimeDepois, Math.Max(1, o.TimeAntes))</b></div>
-                                                </div>
-                                                <button class="btn @(k == 0 ? "btn-pri" : "btn-sec")" @onclick="() => Aceitar(o)"><Icone Nome="check" Tamanho="15" /> Mudar para esta data</button>
-                                            </div>
-                                        }
-                                    </div>
-                                }
-                                <div class="fa-card-pe">
-                                    <button class="btn btn-sec" @onclick="() => Manter(p)" title="Fica com a data marcada e sai da revisão">Manter a data atual</button>
-                                    <button class="btn btn-sec" @onclick="() => Mover(1)" disabled="@(_fila.Count < 2)">Pular por agora</button>
-                                </div>
-                            </div>
-                        }
-                    </ChildContent>
-                </Painel>
-
-                <Painel Titulo="Datas mudadas" Nota="@(_alterados.Count > 0 ? Ferias.Plural(_alterados.Count, "data") : "")" Sangrar="true">
-                    @if (_alterados.Count == 0)
-                    {
-                        <p class="muted" style="padding:14px 18px">Nenhuma ainda. As datas que você mudar aparecem aqui, com a data pedida, e podem ser desfeitas.</p>
-                    }
-                    else
-                    {
-                        <ul class="fa-lista">
-                            @foreach (var p in _alterados)
+            <div class="fv-meses">
+                @foreach (var m in _meses)
+                {
+                    var k = FeriasClt.Mes(m.Year, m.Month);
+                    var g = _carga.Geral(k);
+                    bool estGeral = _carga.EstouraGeral(k);
+                    bool estAlguma = _carga.Coordenacoes.Any(c => _carga.Estoura(k, c));
+                    <button class="fv-mes @(estGeral || estAlguma ? "estoura" : "") @(k == _mesFoco ? "foco" : "") @(m.Year == _hoje.Year && m.Month == _hoje.Month ? "atual" : "")" @onclick="() => FocarMes(k)">
+                        <span class="fv-mes-n">@FeriasClt.Meses[m.Month - 1]<small>@(m.Month == 1 || m == _meses[0] ? m.Year.ToString() : "")</small></span>
+                        <span class="fv-mes-g"><b>@g</b>/@_carga.LimiteGeral</span>
+                        <span class="fv-mes-barra"><i style="width:@Pc(g, _carga.LimiteGeral)"></i></span>
+                        <span class="fv-mes-coords">
+                            @foreach (var c in _carga.Coordenacoes)
                             {
-                                <li>
-                                    <div><b>@p.Nome</b><span class="muted pequeno">pediu @Texto.Dmy(p.InicioOriginal) <Icone Nome="direita" Tamanho="12" /> <b class="fa-para">@Texto.Dmy(p.Inicio)</b> · @p.Dias dias</span></div>
-                                    <button class="btn btn-sec btn-peq" @onclick="() => Desfazer(p)" title="Volta para a data pedida">Desfazer</button>
-                                </li>
+                                var n = _carga.Na(k, c);
+                                <span class="@(n > FeriasClt.LimitePorCoordenacao ? "x" : n == FeriasClt.LimitePorCoordenacao ? "cheio" : "")" style="--c:@CorCoord(c)" title="@($"{c}: {n} de {FeriasClt.LimitePorCoordenacao}")">
+                                    @for (int i = 0; i < Math.Max(FeriasClt.LimitePorCoordenacao, n); i++) { <i class="@(i < n ? (i >= FeriasClt.LimitePorCoordenacao ? "a-mais" : "on") : "")"></i> }
+                                </span>
                             }
-                        </ul>
-                    }
-                </Painel>
+                        </span>
+                    </button>
+                }
+            </div>
+            <div class="fv-legenda">
+                @foreach (var c in _carga.Coordenacoes) { <span><i style="background:@CorCoord(c)"></i>@c@(Minha(c) ? " (sua)" : "")</span> }
+                <span><i class="janela"></i>pode tirar (até o limite)</span>
+                <span><i class="limite"></i>limite (fim do período concessivo)</span>
+                <span><i class="conf"></i>mês acima do limite</span>
             </div>
 
-            <div class="grade-2">
-                <Painel Titulo="Prazos (CLT)" Nota="@(_prazos.Count > 0 ? Ferias.Plural(_prazos.Count, "pessoa") : "")" Sangrar="true">
-                    @if (_prazos.Count == 0) { <p class="muted" style="padding:14px 18px">Nenhum prazo apertado.</p> }
-                    else
-                    {
-                        <ul class="fa-lista">
-                            @foreach (var x in _prazos)
-                            {
-                                <li class="fa-pz @x.classe"><div><b class="fe-link" @onclick="() => AbrirFunc(x.f)">@x.f.Nome</b><span class="muted pequeno">@x.texto</span></div><span class="fa-pz-tag">@x.tag</span></li>
-                            }
-                        </ul>
-                    }
-                </Painel>
-                <Painel Titulo="Regras e conferência" Nota="@(_regras.Count > 0 ? Ferias.Plural(_regras.Count, "aviso") : "")">
-                    <div class="fer-alertas">
-                        @if (_regras.Count == 0) { <p class="muted">Nada a conferir.</p> }
-                        @foreach (var x in _regras) { <div class="fer-alerta clt"><Icone Nome="alerta" Tamanho="16" /><span><b>CLT</b><br />@x</span></div> }
+            @if (_mesFoco != null)
+            {
+                var quem = _todos.Where(c => c.F.Periodos.SelectMany(FeriasClt.MesesDe).Contains(_mesFoco)).OrderBy(c => c.Coordenacao).ThenBy(c => c.Nome).ToList();
+                <div class="fv-foco">
+                    <div class="fv-foco-cab"><b>@FeriasClt.MesNome(_mesFoco)</b><span>@quem.Count(c => !c.F.SemImpacto) de @_carga.LimiteGeral no geral</span>
+                        <span class="mola"></span><button class="sn-mais" @onclick="() => _mesFoco = null" title="Fechar"><Icone Nome="x" Tamanho="15" /></button></div>
+                    <div class="fv-foco-lista">
+                        @foreach (var c in quem)
+                        {
+                            var per = c.F.Periodos.First(p => FeriasClt.MesesDe(p).Contains(_mesFoco));
+                            <button class="fv-chip @(c.F.SemImpacto ? "chave" : "") @(FeriasClt.Conflitos(c, _carga).Contains(_mesFoco) ? "conf" : "")" style="--c:@CorCoord(c.Coordenacao)" @onclick="() => Abrir(c)">
+                                <span class="fv-av" style="background:@CorCoord(c.Coordenacao)">@Iniciais(c.Nome)</span>
+                                <span><b>@Curto(c.Nome)</b><small>@per.Inicio.ToString("dd/MM") – @per.Fim.ToString("dd/MM") · @c.Coordenacao</small></span>
+                                @if (c.F.SemImpacto) { <em title="Pessoa-chave: não entra na conta">chave</em> }
+                            </button>
+                        }
+                        @if (quem.Count == 0) { <span class="muted pequeno">Ninguém de férias neste mês.</span> }
                     </div>
-                </Painel>
+                </div>
+            }
+
+            @* ======================================================== linha do tempo *@
+            var lista = Visiveis(true);
+            <div class="fv-tl">
+                <div class="fv-tl-cab">
+                    <div class="fv-tl-nome">@lista.Count pessoa(s)</div>
+                    <div class="fv-tl-grade">
+                        @foreach (var m in _meses)
+                        {
+                            var k = FeriasClt.Mes(m.Year, m.Month);
+                            <span class="@(_carga.EstouraGeral(k) || _carga.Coordenacoes.Any(c => _carga.Estoura(k, c)) ? "estoura" : "") @(k == _mesFoco ? "foco" : "")">@FeriasClt.Meses[m.Month - 1]</span>
+                        }
+                        @if (_hoje >= _ini && _hoje <= _fim) { <i class="fv-hoje" style="left:@Pos(_hoje)"><b>hoje</b></i> }
+                    </div>
+                </div>
+                @foreach (var c in lista)
+                {
+                    var s = FeriasClt.Situacao(c, _hoje);
+                    var conf = FeriasClt.Conflitos(c, _carga);
+                    <div class="fv-tl-lin @(_sel == c ? "sel" : "") @(c.Minha ? "" : "outra")" @onclick="() => Abrir(c)" @key="c.Id">
+                        <div class="fv-tl-nome">
+                            <span class="fv-av" style="background:@CorCoord(c.Coordenacao)">@Iniciais(c.Nome)</span>
+                            <div><b>@c.Nome</b><small>@(c.Lideranca == "" ? "sem liderança" : c.Lideranca)@(_geral ? $" · {c.Coordenacao}" : "")</small></div>
+                            <span class="fv-st @Nivel(s.Nivel)" title="@Dica(s)">@(s.Nivel == NivelFer.Completo ? "✓" : s.Faltam > 0 && s.Nivel != NivelFer.SemAdmissao ? $"{s.Faltam}d" : "")</span>
+                        </div>
+                        <div class="fv-tl-grade">
+                            @foreach (var _ in _meses) { <span></span> }
+                            @if (s.Ciclo is { } ci && ci.Limite >= _ini && ci.Libera <= _fim && s.Faltam > 0)
+                            {
+                                <i class="fv-janela" style="left:@Pos(Max(ci.Libera, _ini));width:@Larg(Max(ci.Libera, _ini), Min(ci.Limite, _fim))" title="@($"Pode tirar de {ci.Libera:dd/MM/yyyy} a {ci.Limite:dd/MM/yyyy}")"></i>
+                            }
+                            @if (s.Ciclo is { } ci2 && ci2.Limite >= _ini && ci2.Limite <= _fim && s.Faltam > 0)
+                            {
+                                <i class="fv-limite" style="left:@Pos(ci2.Limite)" title="@($"Limite: {ci2.Limite:dd/MM/yyyy}")"></i>
+                            }
+                            @foreach (var p in c.F.Periodos.Where(p => p.Fim >= _ini && p.Inicio <= _fim))
+                            {
+                                bool pc = !c.F.SemImpacto && FeriasClt.MesesDe(p).Any(conf.Contains);
+                                <i class="fv-per @(pc ? "conf" : "") @(c.F.SemImpacto ? "chave" : "") @(p.Status == "Pedido" ? "pedido" : "")" style="left:@Pos(Max(p.Inicio, _ini));width:@Larg(Max(p.Inicio, _ini), Min(p.Fim, _fim));--c:@CorCoord(c.Coordenacao)"
+                                   title="@($"{p.Inicio:dd/MM/yyyy} a {p.Fim:dd/MM/yyyy} · {p.Dias} dias{(p.Vende ? " + 10 vendidos" : "")} · {p.Status}")">@(p.Dias >= 10 ? $"{p.Dias}d" : "")</i>
+                            }
+                        </div>
+                    </div>
+                }
+                @if (lista.Count == 0) { <p class="muted pequeno fv-vazio">Ninguém com esses filtros.</p> }
             </div>
         }
     </ChildContent>
 </Pagina>
 
-@if (_ficha != null && _b != null) { @Ficha() }
+@* ======================================================== painel da pessoa *@
+@if (_sel is { } c0)
+{
+    var sit = FeriasClt.Situacao(c0, _hoje);
+    var avisos = FeriasClt.Validar(c0, _hoje);
+    var conf0 = FeriasClt.Conflitos(c0, _carga);
+    bool ed = c0.Minha;
+    <div class="fv-fundo" @onclick="Fechar"></div>
+    <aside class="fv-painel">
+        <header>
+            <span class="fv-av gde" style="background:@CorCoord(c0.Coordenacao)">@Iniciais(c0.Nome)</span>
+            <div><b>@c0.Nome</b><small>@(c0.Coordenacao == "" ? "sem coordenação" : c0.Coordenacao) · @(c0.Lideranca == "" ? "sem liderança" : c0.Lideranca)</small></div>
+            <button class="sn-mais" @onclick="Fechar" title="Fechar"><Icone Nome="x" Tamanho="17" /></button>
+        </header>
+        @if (!ed) { <div class="fv-so-ver"><Icone Nome="olho" Tamanho="14" /> Da coordenação <b>@c0.Coordenacao</b>: você só vê. Quem marca é essa coordenação.</div> }
+
+        <section class="fv-prazo @Nivel(sit.Nivel)">
+            @if (sit.Ciclo is { } ci)
+            {
+                <div class="fv-anel" style="--p:@((int)Math.Round((sit.Marcados + sit.Vendidos) * 100.0 / 30))">
+                    <span><b>@(sit.Marcados + sit.Vendidos)</b>/30</span>
+                </div>
+                <div class="fv-prazo-txt">
+                    <span class="fv-st-txt @Nivel(sit.Nivel)">@sit.Rotulo</span>
+                    <b>Limite @ci.Limite.ToString("dd/MM/yyyy")</b>
+                    <small>Pode tirar de @ci.Libera.ToString("dd/MM/yyyy") até @ci.Limite.ToString("dd/MM/yyyy")@(sit.Faltam > 0 && sit.InicioMax is { } im ? $" · começar até {im:dd/MM/yyyy}" : "")</small>
+                    <small>Admissão @(c0.Admissao?.ToString("dd/MM/yyyy")) · @sit.Marcados dias marcados@(sit.Vendidos > 0 ? " + 10 vendidos" : "")@(sit.Faltam > 0 ? $" · faltam {sit.Faltam}" : "")</small>
+                </div>
+            }
+            else
+            {
+                <div class="fv-prazo-txt"><span class="fv-st-txt sem">Sem data de admissão</span><small>Atualize a planilha base no Perfil com a data de admissão desta pessoa.</small></div>
+            }
+        </section>
+
+        <label class="fv-chave @(c0.F.SemImpacto ? "on" : "")">
+            <input type="checkbox" checked="@c0.F.SemImpacto" disabled="@(!ed)" @onchange="e => MudarChave(c0, e.Value is true)" />
+            <span class="fv-sw"></span>
+            <span><b>Pessoa-chave: não impacta</b><small>Fica fora da conta de quantos estão de férias no mês (não gera conflito nem alerta).</small></span>
+        </label>
+
+        <div class="fv-sec"><b>Férias marcadas</b>@if (ed) { <button class="btn btn-sec btn-peq" @onclick="() => NovoPeriodo(c0, sit)"><Icone Nome="mais" Tamanho="14" /> Período</button> }</div>
+        @if (c0.F.Periodos.Count == 0) { <p class="muted pequeno">Nenhum período marcado ainda.</p> }
+        @foreach (var p in c0.F.Periodos.OrderBy(p => p.Inicio).ToList())
+        {
+            var pp = p;
+            bool pc = !c0.F.SemImpacto && FeriasClt.MesesDe(p).Any(conf0.Contains);
+            <div class="fv-per-card @(pc ? "conf" : "") @(_perSel == p ? "sel" : "")" @onclick="() => _perSel = pp">
+                <div class="fv-per-lin">
+                    <label>Início<input type="date" value="@p.Inicio.ToString("yyyy-MM-dd")" disabled="@(!ed)" @onchange="e => MudarInicio(c0, pp, e)" /></label>
+                    <label>Dias<input type="number" min="5" max="30" value="@p.Dias" disabled="@(!ed)" @onchange="e => MudarDias(c0, pp, e)" /></label>
+                    <label>Situação
+                        <select value="@p.Status" disabled="@(!ed)" @onchange="e => MudarStatus(c0, pp, e)">
+                            @foreach (var st in FeriasBanco.StatusPossiveis) { <option value="@st">@st</option> }
+                        </select>
+                    </label>
+                    @if (ed) { <button class="sn-mais" title="Excluir este período" @onclick:stopPropagation="true" @onclick="() => ExcluirPeriodo(c0, pp)"><Icone Nome="lixo" Tamanho="15" /></button> }
+                </div>
+                <div class="fv-per-info">
+                    <span>@p.Inicio.ToString("ddd dd/MM", Br) → @p.Fim.ToString("ddd dd/MM/yyyy", Br) · volta @p.Fim.AddDays(1).ToString("dd/MM", Br)</span>
+                    <label class="fv-vende"><input type="checkbox" checked="@p.Vende" disabled="@(!ed)" @onchange="e => MudarVende(c0, pp, e.Value is true)" /> vende 10 dias</label>
+                </div>
+                @if (pc)
+                {
+                    <div class="fv-per-conf"><Icone Nome="alerta" Tamanho="13" />
+                        @string.Join(" · ", FeriasClt.MesesDe(p).Where(conf0.Contains).Select(m => $"{FeriasClt.MesNome(m)}: {_carga.Na(m, c0.Coordenacao)}/{FeriasClt.LimitePorCoordenacao} na coordenação, {_carga.Geral(m)}/{_carga.LimiteGeral} no geral"))
+                    </div>
+                }
+            </div>
+        }
+
+        @if (avisos.Count > 0)
+        {
+            <div class="fv-avisos">
+                @foreach (var a in avisos) { <span class="@(a.Erro ? "erro" : "")"><Icone Nome="@(a.Erro ? "alerta" : "info")" Tamanho="13" /> @a.Texto</span> }
+            </div>
+        }
+
+        @if (ed && c0.Admissao != null)
+        {
+            var alvo = _perSel != null && c0.F.Periodos.Contains(_perSel) ? _perSel : null;
+            int diasSug = alvo?.Dias ?? Math.Max(5, sit.Faltam > 0 ? sit.Faltam - (sit.Vendidos == 0 && sit.Faltam == 30 ? 0 : 0) : 30);
+            var sugs = FeriasClt.Sugerir(c0, _todos, diasSug, _hoje, alvo);
+            <div class="fv-sec"><b>Sugestões @(alvo != null ? $"para o período de {alvo.Inicio:dd/MM}" : $"para {diasSug} dias")</b></div>
+            <p class="muted pequeno fv-sug-dica">Datas próximas que cabem no prazo, com menos gente da coordenação e da mesma liderança fora junto.</p>
+            <div class="fv-sugs">
+                @foreach (var sg in sugs)
+                {
+                    var ss = sg;
+                    <div class="fv-sug">
+                        <div class="fv-sug-data"><b>@sg.Inicio.ToString("dd/MM")</b><span>→</span><b>@sg.Fim.ToString("dd/MM")</b><small>@sg.Inicio.ToString("ddd, dd 'de' MMM yyyy", Br)</small></div>
+                        <small>@sg.Dias dias · @sg.Motivo</small>
+                        <button class="btn btn-pri btn-peq" @onclick="() => UsarSugestao(c0, alvo, ss)"><Icone Nome="check" Tamanho="14" /> @(alvo != null ? "Mudar para esta" : "Marcar esta")</button>
+                    </div>
+                }
+                @if (sugs.Count == 0) { <span class="muted pequeno">Não achei datas livres no prazo. Veja o mapa dos meses ou marque a pessoa como chave.</span> }
+            </div>
+        }
+    </aside>
+}
 
 @code {
     protected override string Chave => "ferias";
     const string Todas = "\u0001todas";
-    string _aba = Todas, _busca = "";
-    int _i, _inicial, _atual, _mantidos, _presos, _versao;
-    readonly DateOnly _hoje = DateOnly.FromDateTime(DateTime.Today);
-    BaseAuto? _b;
-    Dictionary<int, (string pessoa, PeriodoFer per)> _mapa = new();
-    Dictionary<FuncAuto, string> _pessoas = new();
-    List<string> _lids = new(), _regras = new();
-    List<PeriodoAuto> _fila = new(), _alterados = new();
-    List<(FuncAuto f, string classe, string tag, string texto)> _prazos = new();
-    readonly Dictionary<(int id, DateOnly ini, int ver), List<SugestaoAuto>> _cache = new();
-    string? _ficha;   // id da pessoa (One a One)
-    // formulário de novo período
-    string _nIni = "", _nDias = "30";
-    bool _nVende;
+    static readonly System.Globalization.CultureInfo Br = Core.Pacote.FormatoPt.Pt;
+    static readonly string[] Paleta = { "#6366F1", "#0EA5E9", "#10B981", "#F59E0B", "#EC4899", "#8B5CF6", "#14B8A6", "#EF4444", "#84CC16", "#F97316" };
 
-    protected override async Task OnInitializedAsync() => await E.CarregarFe(true);
+    DateOnly _hoje = DateOnly.FromDateTime(DateTime.Today);
+    DateOnly _ini, _fim;
+    List<DateOnly> _meses = new();
+    List<ColabFer> _todos = new();
+    FeriasClt.Carga _carga = new();
+    bool _geral, _soPendentes;
+    string _coord = Todas, _lid = Todas, _busca = "";
+    string? _mesFoco;
+    int _semImpacto;
+    ColabFer? _sel;
+    PeriodoFer? _perSel;
+    string? _urlTratada;
 
-    async Task Recarregar() { E.FeDados = null; await E.CarregarFe(true); _versao++; _cache.Clear(); }
-    void MudouAba(ChangeEventArgs e) { _aba = e.Value?.ToString() ?? Todas; _i = 0; }
-
-    bool NoFiltro(PeriodoAuto p) => _aba == Todas || p.Aba == _aba;
-    bool NoFiltro(FuncAuto f) => _aba == Todas || f.Aba == _aba;
-    static bool Vende(PeriodoAuto p) => Ferias.Norm(p.Vende).StartsWith("s");
-
-    void Montar()
+    protected override async Task OnInitializedAsync()
     {
-        if (E.OneBase == null || E.FeDados == null) { _b = null; return; }
-        (_b, _mapa, _pessoas) = FeriasBanco.Montar(E.OneBase.Pessoas, E.FeDados);
-        var b = _b;
-        _lids = b.Abas.Where(a => a != "").OrderBy(a => a, StringComparer.CurrentCultureIgnoreCase).ToList();
-        if (_aba != Todas && !_lids.Contains(_aba)) _aba = Todas;
-        string? aba = _aba == Todas ? null : _aba;
-        _atual = FeriasAuto.ChoqueTotal(b, aba);
-        _inicial = FeriasBanco.ChoquePedido(b, aba);
-        var emChoque = b.Periodos.Where(p => NoFiltro(p) && FeriasAuto.Choque(b, p) > 0).ToList();
-        _presos = emChoque.Count(p => !FeriasAuto.Ajustavel(p, _hoje));
-        _fila = emChoque.Where(p => FeriasAuto.Ajustavel(p, _hoje) && !b.Mantidos.Contains(p.Id))
-            .OrderByDescending(p => FeriasAuto.Choque(b, p)).ThenBy(p => p.Inicio).ToList();
-        _mantidos = b.Periodos.Count(p => NoFiltro(p) && b.Mantidos.Contains(p.Id));
-        _alterados = b.Periodos.Where(p => NoFiltro(p) && p.Alterado).OrderBy(p => p.Inicio).ToList();
-        if (_i >= _fila.Count) _i = 0;
-        _regras = FeriasAuto.Regras(b, _hoje).Where(r => aba == null || b.Funcs.Any(f => f.Aba == aba && r.StartsWith(f.Nome + ":"))).ToList();
-        _prazos = new();
-        foreach (var f in b.Funcs.Where(NoFiltro))
+        Rotas.LocationChanged += Mudou;
+        Janela(0);
+        await E.CarregarFerias(true);
+        Recalcular();
+        LerUrl();
+    }
+
+    void Mudou(object? s, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e) { LerUrl(); InvokeAsync(StateHasChanged); }
+
+    void LerUrl()
+    {
+        if (_urlTratada == Rotas.Uri) return;
+        _urlTratada = Rotas.Uri;
+        var q = new Uri(Rotas.Uri).Query.TrimStart('?').Split('&').Select(x => x.Split('=', 2)).Where(x => x.Length == 2).ToDictionary(x => x[0], x => Uri.UnescapeDataString(x[1]));
+        if (q.TryGetValue("mes", out var m) && m.Length == 7 && DateOnly.TryParseExact(m + "-01", "yyyy-MM-dd", null, System.Globalization.DateTimeStyles.None, out var d))
         {
-            var (t, d) = FeriasAuto.SituacaoPrazo(f, _hoje);
-            bool marcou = b.Periodos.Any(p => p.Func == f && p.Fim >= _hoje);
-            switch (t)
+            _geral = true; _coord = Todas; _mesFoco = m;
+            if (d < _ini || d > _fim) { _ini = d.AddMonths(-2); Janela(0, _ini); }
+        }
+    }
+
+    public override void Dispose() { base.Dispose(); Rotas.LocationChanged -= Mudou; }
+
+    void Recalcular()
+    {
+        _todos = E.FeColabs ?? new();
+        _carga = FeriasClt.Calcular(_todos);
+        _semImpacto = _todos.Count(c => c.F.SemImpacto);
+        if (E.FeAdmin) _geral = true;
+        StateHasChanged();
+    }
+
+    async Task Recarregar() { await E.CarregarFerias(true); if (_sel != null) _sel = E.FeColabs?.FirstOrDefault(c => c.Id == _sel.Id); Recalcular(); }
+
+    // ---------------------------------------------------- janela de 12 meses
+    void Janela(int deslocar, DateOnly? de = null)
+    {
+        var baseM = de ?? (_ini == default ? new DateOnly(_hoje.Year, _hoje.Month, 1).AddMonths(-1) : _ini);
+        _ini = new DateOnly(baseM.Year, baseM.Month, 1).AddMonths(deslocar);
+        _fim = _ini.AddMonths(12).AddDays(-1);
+        _meses = Enumerable.Range(0, 12).Select(i => _ini.AddMonths(i)).ToList();
+    }
+    void Andar(int n) => Janela(n);
+    void Hoje() { _ini = default; Janela(0); }
+    void FocarMes(string k) => _mesFoco = _mesFoco == k ? null : k;
+
+    int TotalDias => _fim.DayNumber - _ini.DayNumber + 1;
+    string Pos(DateOnly d) => Pct((d.DayNumber - _ini.DayNumber) * 100.0 / TotalDias);
+    string Larg(DateOnly a, DateOnly b) => Pct(Math.Max(0.35, (b.DayNumber - a.DayNumber + 1) * 100.0 / TotalDias));
+    static string Pct(double v) => v.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture) + "%";
+    static string Pc(int a, int b) => Pct(Math.Min(100, b == 0 ? 0 : a * 100.0 / b));
+    static DateOnly Max(DateOnly a, DateOnly b) => a > b ? a : b;
+    static DateOnly Min(DateOnly a, DateOnly b) => a < b ? a : b;
+
+    // ---------------------------------------------------- filtros
+    bool Minha(string coord) => E.FeAdmin || _todos.Any(c => c.Minha && string.Equals(c.Coordenacao, coord, StringComparison.OrdinalIgnoreCase));
+
+    List<ColabFer> Visiveis(bool completo)
+    {
+        IEnumerable<ColabFer> q = _todos;
+        if (!_geral && !E.FeAdmin) q = q.Where(c => c.Minha);
+        else if (_coord != Todas) q = q.Where(c => string.Equals(c.Coordenacao, _coord, StringComparison.OrdinalIgnoreCase));
+        if (!completo) return q.ToList();
+        if (_lid != Todas) q = q.Where(c => c.Lideranca == _lid);
+        if (_busca.Trim() != "") { var b = Ferias.Norm(_busca); q = q.Where(c => Ferias.Norm(c.Nome).Contains(b)); }
+        if (_soPendentes) q = q.Where(c => FeriasClt.Situacao(c, _hoje) is { Faltam: > 0 } s && s.Nivel is not NivelFer.Aguardando);
+        if (_mesFoco != null) { }
+        // urgentes primeiro, depois por nome
+        return q.OrderBy(c => Ordem(FeriasClt.Situacao(c, _hoje).Nivel)).ThenBy(c => c.Coordenacao).ThenBy(c => c.Nome, StringComparer.CurrentCultureIgnoreCase).ToList();
+    }
+
+    static int Ordem(NivelFer n) => n switch { NivelFer.Estourado => 0, NivelFer.Urgente => 1, NivelFer.Atencao => 2, NivelFer.SemAdmissao => 3, NivelFer.Ok => 4, NivelFer.Aguardando => 5, _ => 6 };
+    static string Nivel(NivelFer n) => n switch { NivelFer.Estourado => "estourado", NivelFer.Urgente => "urgente", NivelFer.Atencao => "atencao", NivelFer.Ok => "ok", NivelFer.Completo => "completo", NivelFer.Aguardando => "aguardando", _ => "sem" };
+    static string Dica(SituacaoFer s) => s.Ciclo is { } c ? $"{s.Rotulo} · pode tirar de {c.Libera:dd/MM/yyyy} a {c.Limite:dd/MM/yyyy}{(s.Faltam > 0 ? $" · faltam {s.Faltam} dias" : "")}" : s.Rotulo;
+
+    string CorCoord(string c)
+    {
+        var i = _carga.Coordenacoes.FindIndex(x => string.Equals(x, c, StringComparison.OrdinalIgnoreCase));
+        return i < 0 ? "#94A3B8" : Paleta[i % Paleta.Length];
+    }
+
+    static string Iniciais(string n) { var p = n.Split(' ', StringSplitOptions.RemoveEmptyEntries); return p.Length == 0 ? "?" : (p[0][..1] + (p.Length > 1 ? p[^1][..1] : "")).ToUpperInvariant(); }
+    static string Curto(string n) { var p = n.Split(' ', StringSplitOptions.RemoveEmptyEntries); return p.Length <= 2 ? n : $"{p[0]} {p[^1]}"; }
+
+    // ---------------------------------------------------- edição
+    void Abrir(ColabFer c) { _sel = c; _perSel = c.F.Periodos.Where(p => p.Fim >= _hoje).OrderBy(p => p.Inicio).FirstOrDefault(); }
+    void Fechar() { _sel = null; _perSel = null; }
+
+    async Task Salvar(ColabFer c)
+    {
+        Recalcular();
+        await E.SalvarFerias(c);
+        Recalcular();
+    }
+
+    async Task MudarChave(ColabFer c, bool on) { c.F.SemImpacto = on; await Salvar(c); }
+
+    async Task NovoPeriodo(ColabFer c, SituacaoFer s)
+    {
+        int dias = s.Faltam > 0 ? Math.Min(30, s.Faltam) : 30;
+        if (dias < 5) dias = 5;
+        var sug = FeriasClt.Sugerir(c, _todos, dias, _hoje, null, 1).FirstOrDefault();
+        var ini = sug?.Inicio ?? Ferias.ProximoDiaUtil(Max(s.Ciclo?.Libera ?? _hoje, _hoje.AddDays(30)));
+        var p = new PeriodoFer { Inicio = ini, Pedido = ini, Dias = dias };
+        c.F.Periodos.Add(p);
+        _perSel = p;
+        await Salvar(c);
+    }
+
+    async Task ExcluirPeriodo(ColabFer c, PeriodoFer p)
+    {
+        if (!await J.Pergunta("Excluir período", $"Excluir as férias de {p.Inicio:dd/MM/yyyy} a {p.Fim:dd/MM/yyyy}?")) return;
+        c.F.Periodos.Remove(p);
+        if (_perSel == p) _perSel = null;
+        await Salvar(c);
+    }
+
+    async Task MudarInicio(ColabFer c, PeriodoFer p, ChangeEventArgs e)
+    {
+        if (!DateOnly.TryParseExact(e.Value?.ToString(), "yyyy-MM-dd", null, System.Globalization.DateTimeStyles.None, out var d)) return;
+        p.Inicio = d; if (p.Status == "Pedido") p.Pedido = d;
+        await Salvar(c);
+    }
+
+    async Task MudarDias(ColabFer c, PeriodoFer p, ChangeEventArgs e)
+    {
+        if (!int.TryParse(e.Value?.ToString(), out var d)) return;
+        p.Dias = Math.Clamp(d, 1, 30);
+        await Salvar(c);
+    }
+
+    async Task MudarStatus(ColabFer c, PeriodoFer p, ChangeEventArgs e) { p.Status = e.Value?.ToString() ?? p.Status; await Salvar(c); }
+
+    async Task MudarVende(ColabFer c, PeriodoFer p, bool on)
+    {
+        if (on)
+        {
+            // uma venda por ciclo: tira dos outros do mesmo ciclo
+            var ci = c.Admissao is { } adm ? FeriasClt.CicloDe(adm, p.Inicio) : null;
+            foreach (var o in c.F.Periodos.Where(o => o != p && ci != null && FeriasClt.CicloDe(c.Admissao!.Value, o.Inicio) == ci)) o.Vende = false;
+            if (c.F.Periodos.Count(o => ci != null && FeriasClt.CicloDe(c.Admissao!.Value, o.Inicio) == ci) == 1 && p.Dias == 30) p.Dias = 20;
+        }
+        p.Vende = on;
+        await Salvar(c);
+    }
+
+    async Task UsarSugestao(ColabFer c, PeriodoFer? alvo, SugestaoFer s)
+    {
+        if (alvo != null) { alvo.Inicio = s.Inicio; alvo.Dias = s.Dias; }
+        else { alvo = new PeriodoFer { Inicio = s.Inicio, Pedido = s.Inicio, Dias = s.Dias }; c.F.Periodos.Add(alvo); }
+        _perSel = alvo;
+        _ = E.Conta.Registrar("ferias.sugestao", true);
+        await Salvar(c);
+    }
+
+    // ---------------------------------------------------- exportar
+    async Task Exportar()
+    {
+        var wb = new Core.Planilhas.XlsxWriter();
+        var s = wb.Planilha("Férias");
+        s.Cabecalho("Coordenação", "Liderança", "Nome", "Admissão", "Pode tirar a partir de", "Limite", "Situação", "Faltam marcar", "Início", "Fim", "Dias", "Vende 10 dias", "Status", "Pessoa-chave", "Mês acima do limite");
+        s.NegritoLinha(0);
+        int n = 1;
+        foreach (var c in _todos.OrderBy(c => c.Coordenacao).ThenBy(c => c.Lideranca).ThenBy(c => c.Nome))
+        {
+            var st = FeriasClt.Situacao(c, _hoje);
+            var conf = FeriasClt.Conflitos(c, _carga);
+            var ps = c.F.Periodos.OrderBy(p => p.Inicio).ToList();
+            if (ps.Count == 0) { s.Linha(c.Coordenacao, c.Lideranca, c.Nome, c.Admissao, st.Ciclo?.Libera, st.Ciclo?.Limite, st.Rotulo, st.Faltam, null, null, null, "", "", c.F.SemImpacto ? "Sim" : "Não", ""); n++; continue; }
+            foreach (var p in ps)
             {
-                case FeriasAuto.Prazo.Vencido: _prazos.Add((f, "vencido", "vencido", $"concessivo terminou em {Texto.Dmy(f.FimConcessivo!.Value)}, há {Ferias.Plural(d, "dia")}")); break;
-                case FeriasAuto.Prazo.ConcessivoPerto when !marcou: _prazos.Add((f, "perto", $"{d} dias", $"concessivo vence em {Texto.Dmy(f.FimConcessivo!.Value)} e não há férias marcadas")); break;
-                case FeriasAuto.Prazo.SemAdmissao: _prazos.Add((f, "sem", "sem admissão", "sem data de admissão: clique no nome e informe para calcular os prazos")); break;
+                s.Linha(c.Coordenacao, c.Lideranca, c.Nome, c.Admissao, st.Ciclo?.Libera, st.Ciclo?.Limite, st.Rotulo, st.Faltam, p.Inicio, p.Fim, p.Dias, p.Vende ? "Sim" : "Não", p.Status,
+                    c.F.SemImpacto ? "Sim" : "Não", string.Join(", ", FeriasClt.MesesDe(p).Where(conf.Contains).Select(FeriasClt.MesNome)));
+                n++;
             }
         }
-        _prazos = _prazos.OrderBy(x => x.classe switch { "vencido" => 0, "perto" => 1, _ => 2 }).ToList();
+        foreach (var col in new[] { 3, 4, 5, 8, 9 }) s.FormatoData(col, 1, Math.Max(1, n - 1));
+        s.Congelar(1, 3);
+        foreach (var (col, w) in new[] { (0, 22.0), (1, 22.0), (2, 32.0), (3, 12.0), (4, 14.0), (5, 12.0), (6, 20.0), (7, 10.0), (8, 12.0), (9, 12.0), (10, 7.0), (11, 12.0), (12, 11.0), (13, 12.0), (14, 30.0) }) s.Largura(col, w);
+        await E.Nav.Baixar($"Férias {_hoje:yyyy-MM-dd}.xlsx", wb.Salvar(), Navegador.MimeXlsx);
     }
 
-    List<SugestaoAuto> Opcoes(PeriodoAuto p)
-    {
-        var k = (p.Id, p.Inicio, _versao);
-        if (!_cache.TryGetValue(k, out var l)) { l = FeriasAuto.Opcoes(_b!, p, _hoje); _cache[k] = l; }
-        return l;
-    }
-
-    FeriasPessoa Dados(string pessoa)
-    {
-        if (!E.FeDados!.TryGetValue(pessoa, out var f)) E.FeDados[pessoa] = f = new FeriasPessoa();
-        return f;
-    }
-
-    async Task Gravar(string pessoa) { _versao++; _cache.Clear(); await E.SalvarFe(pessoa); }
-
-    async Task Aceitar(SugestaoAuto o)
-    {
-        var (pessoa, per) = _mapa[o.Periodo.Id];
-        per.Inicio = o.NovoInicio; per.Mantido = false;
-        await Gravar(pessoa);
-    }
-
-    async Task Manter(PeriodoAuto p) { var (pessoa, per) = _mapa[p.Id]; per.Mantido = true; await Gravar(pessoa); }
-    async Task Desfazer(PeriodoAuto p) { var (pessoa, per) = _mapa[p.Id]; per.Inicio = per.Pedido; await Gravar(pessoa); }
-
-    async Task RevisarMantidos()
-    {
-        var mexidos = new HashSet<string>();
-        foreach (var p in _b!.Periodos.Where(p => NoFiltro(p) && _b.Mantidos.Contains(p.Id)))
-        {
-            var (pessoa, per) = _mapa[p.Id]; per.Mantido = false; mexidos.Add(pessoa);
-        }
-        _i = 0;
-        foreach (var x in mexidos) await Gravar(x);
-    }
-
-    void Mover(int d) { if (_fila.Count == 0) return; _i = ((_i + d) % _fila.Count + _fila.Count) % _fila.Count; }
-
-    async Task AceitarTodas()
-    {
-        if (!await J.Pergunta("Aceitar todas", $"Aplicar a melhor sugestão para cada data em choque ({_fila.Count})? Elas são aplicadas uma de cada vez, da maior para a menor, e dá para desfazer cada uma depois.")) return;
-        int antes = _inicial, n = 0;
-        var mexidos = new HashSet<string>();
-        for (int volta = 0; volta < 3; volta++)
-        {
-            Montar();
-            foreach (var p in _fila.ToList())
-            {
-                var s = FeriasAuto.Sugerir(_b!, p, _hoje);
-                if (s == null) continue;
-                p.Inicio = s.NovoInicio;                     // vale para o cálculo da próxima
-                var (pessoa, per) = _mapa[p.Id]; per.Inicio = s.NovoInicio; mexidos.Add(pessoa); n++;
-            }
-        }
-        foreach (var x in mexidos) await Gravar(x);
-        Montar();
-        await J.Info("Aceitar todas", $"{Ferias.Plural(n, "data mudada", "datas mudadas")}. Choque do time: {Fmt(antes)} → {Fmt(_atual)} dias ({Pct(antes - _atual, Math.Max(1, antes))} a menos).");
-    }
-
-    // ---------------- cadastro ----------------
-
-    async Task NovasFerias()
-    {
-        var funcs = _b!.Funcs.Where(f => NoFiltro(f)).OrderBy(f => f.Nome).ToList();
-        if (funcs.Count == 0) return;
-        var id = await J.Um("Novas férias", funcs.Select(f => (_pessoas[f], $"{f.Nome} · {f.Aba}")), "", "De quem são as férias?", "");
-        if (!string.IsNullOrEmpty(id)) Abrir(id);
-    }
-
-    void AbrirFunc(FuncAuto f) => Abrir(_pessoas[f]);
-    void Abrir(string pessoa) { _ficha = pessoa; _nIni = ""; _nDias = "30"; _nVende = false; }
-    void Fechar() => _ficha = null;
-
-    static string Iso(DateOnly? d) => d?.ToString("yyyy-MM-dd") ?? "";
-    static DateOnly? DeIso(string? s) => DateOnly.TryParseExact(s ?? "", "yyyy-MM-dd", out var d) ? d : null;
-
-    async Task MudarAdmissao(string pessoa, ChangeEventArgs e) { Dados(pessoa).Admissao = DeIso(e.Value?.ToString()); await Gravar(pessoa); }
-
-    async Task AdicionarPeriodo(string pessoa)
-    {
-        var ini = DeIso(_nIni);
-        if (ini == null) { await J.Aviso("Férias", "Informe a data de início."); return; }
-        if (!int.TryParse(_nDias, out var dias) || dias < 1 || dias > 30) { await J.Aviso("Férias", "Dias: de 1 a 30."); return; }
-        var f = Dados(pessoa);
-        var fim = ini.Value.AddDays(dias - 1);
-        if (f.Periodos.Any(p => p.Inicio <= fim && ini.Value <= p.Fim)) { await J.Aviso("Férias", "Esse período bate com outro período da mesma pessoa."); return; }
-        f.Periodos.Add(new PeriodoFer { Inicio = ini.Value, Pedido = ini.Value, Dias = dias, Vende = _nVende });
-        _nIni = ""; _nDias = "30"; _nVende = false;
-        await Gravar(pessoa);
-    }
-
-    /// <summary>Mudar a data na ficha é mudar o pedido (a base do impacto acompanha).</summary>
-    async Task MudarInicio(string pessoa, PeriodoFer per, ChangeEventArgs e)
-    {
-        if (DeIso(e.Value?.ToString()) is not { } d) return;
-        bool eraIgual = per.Inicio == per.Pedido;
-        per.Inicio = d; if (eraIgual) per.Pedido = d;
-        await Gravar(pessoa);
-    }
-
-    async Task MudarDias(string pessoa, PeriodoFer per, ChangeEventArgs e)
-    {
-        if (!int.TryParse(e.Value?.ToString(), out var n) || n < 1 || n > 30) { await J.Aviso("Férias", "Dias: de 1 a 30."); return; }
-        per.Dias = n; await Gravar(pessoa);
-    }
-
-    async Task MudarStatus(string pessoa, PeriodoFer per, ChangeEventArgs e) { per.Status = e.Value?.ToString() ?? per.Status; await Gravar(pessoa); }
-    async Task MudarVende(string pessoa, PeriodoFer per, ChangeEventArgs e) { per.Vende = e.Value is true; await Gravar(pessoa); }
-    async Task MudarObs(string pessoa, PeriodoFer per, ChangeEventArgs e) { per.Obs = e.Value?.ToString()?.Trim() ?? ""; await Gravar(pessoa); }
-    async Task VoltarPedido(string pessoa, PeriodoFer per) { per.Inicio = per.Pedido; await Gravar(pessoa); }
-
-    async Task Remover(string pessoa, PeriodoFer per)
-    {
-        if (!await J.Pergunta("Remover férias", $"Remover as férias de {per.Inicio:dd/MM/yyyy} ({per.Dias} dias)?")) return;
-        Dados(pessoa).Periodos.Remove(per);
-        await Gravar(pessoa);
-    }
-
-    async Task Exportar() => await E.Salvar($"Ferias_{_hoje:yyyy-MM-dd}.xlsx", FeriasBanco.Exportar(_b!), Navegador.MimeXlsx, "Planilha exportada");
-
-    static string Pct(int a, int t) => t == 0 ? "0%" : $"{Math.Round(a * 100.0 / t):0}%";
-    static string Pc(int a, int t) => (Math.Clamp(a * 100.0 / t, 0, 100)).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture) + "%";
-    static string Pcd(double v) => v.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture) + "%";
-    static string Iniciais(string nome) { var p = nome.Split(' ', '.', '_').Where(x => x != "").ToArray(); return (p.Length == 0 ? "?" : p.Length == 1 ? p[0][..Math.Min(2, p[0].Length)] : $"{p[0][0]}{p[^1][0]}").ToUpperInvariant(); }
-    static string Curto(string n) { var p = n.Split(' ', StringSplitOptions.RemoveEmptyEntries); return p.Length > 1 ? $"{p[0]} {p[^1]}" : n; }
-    static readonly string[] Paleta = { "#0EA5E9", "#8B5CF6", "#EC4899", "#F59E0B", "#10B981", "#6366F1", "#14B8A6", "#F97316" };
-    static string CorLider(string l) { int h = 0; foreach (var ch in Ferias.Norm(l)) h = unchecked(h * 31 + ch); return Paleta[(int)((uint)h % Paleta.Length)]; }
-
-    // ---------------- linha do tempo por liderança ----------------
-
-    RenderFragment Linha() => __builder =>
-    {
-        var ini = new DateOnly(_hoje.Year, _hoje.Month, 1);
-        var fim = ini.AddMonths(12);
-        double total = fim.DayNumber - ini.DayNumber;
-        double P(DateOnly d) => Math.Clamp((d.DayNumber - ini.DayNumber) / total * 100, 0, 100);
-        var busca = Ferias.Norm(_busca);
-        <div class="fe-tl">
-            <div class="fe-tl-cab"><span></span><div class="fe-tl-meses">
-                @for (int m = 0; m < 12; m++) { var d = ini.AddMonths(m); <span style="left:@Pcd(P(d));width:@Pcd(P(d.AddMonths(1)) - P(d))">@Texto.MesesPt[d.Month - 1][..3]@(d.Month == 1 ? "/" + (d.Year % 100).ToString("00") : "")</span> }
-                <i class="fe-hoje" style="left:@Pcd(P(_hoje))" title="Hoje"></i>
-            </div></div>
-            @foreach (var l in _lids.Where(l => _aba == Todas || l == _aba))
-            {
-                var funcs = _b!.Funcs.Where(f => f.Aba == l && (busca == "" || Ferias.Norm(f.Nome).Contains(busca))).OrderBy(f => f.Nome).ToList();
-                if (funcs.Count == 0) continue;
-                int chL = FeriasAuto.ChoqueTotal(_b, l);
-                <div class="fe-tl-lider" style="--l:@CorLider(l)">
-                    <b>@l</b><small>@Ferias.Plural(funcs.Count, "pessoa") · @(chL == 0 ? "sem choque" : $"{chL} dias de choque")</small>
-                </div>
-                @foreach (var f in funcs)
-                {
-                    var ps = _b.Periodos.Where(p => p.Func == f && p.Fim >= ini && p.Inicio < fim).ToList();
-                    <div class="fe-tl-lin" style="--l:@CorLider(l)">
-                        <button class="fe-tl-nome" @onclick="() => AbrirFunc(f)" title="@f.Nome">@Curto(f.Nome)@if (!_b.Periodos.Any(p => p.Func == f && p.Fim >= _hoje)) { <em>sem férias</em> }</button>
-                        <div class="fe-tl-trilho" @onclick="() => AbrirFunc(f)">
-                            @foreach (var p in ps)
-                            {
-                                int ch = FeriasAuto.Choque(_b, p);
-                                var cls = Ferias.Norm(p.Status).StartsWith("ja tirou") || p.Fim < _hoje ? "tirou" : ch > 0 ? (_b.Mantidos.Contains(p.Id) ? "mant" : "ch") : p.Alterado ? "mud" : "ok";
-                                <span class="fe-bar @cls" style="left:@Pcd(P(p.Inicio));width:@Pcd(Math.Max(0.6, P(p.Fim.AddDays(1)) - P(p.Inicio)))"
-                                      title="@($"{p.Nome}: {Texto.Dmy(p.Inicio)} a {Texto.Dmy(p.Fim)} ({p.Dias} dias){(ch > 0 ? $" · {ch} dias de choque" : "")}{(p.Alterado ? $" · pediu {Texto.Dmy(p.InicioOriginal)}" : "")}")"></span>
-                            }
-                        </div>
-                    </div>
-                }
-            }
-            <div class="fe-tl-leg"><span><i class="ok"></i>sem choque</span><span><i class="ch"></i>em choque</span><span><i class="mud"></i>data mudada</span><span><i class="mant"></i>choque mantido</span><span><i class="tirou"></i>já tirou</span></div>
-        </div>
-    };
-
-    // ---------------- ficha da pessoa ----------------
-
-    RenderFragment Ficha() => __builder =>
-    {
-        var pessoa = _ficha!;
-        var f = _pessoas.FirstOrDefault(x => x.Value == pessoa).Key;
-        if (f == null) { _ficha = null; return; }
-        var dados = Dados(pessoa);
-        var (t, dd) = FeriasAuto.SituacaoPrazo(f, _hoje);
-        <div class="oo-fundo" @onclick="Fechar"></div>
-        <div class="oo-ficha" style="--l:@CorLider(f.Aba)">
-            <div class="oo-ficha-cab">
-                <span class="oo-av grande" style="background:@CorLider(f.Aba)">@Iniciais(f.Nome)</span>
-                <div><b>@f.Nome</b><small>@f.Aba</small></div>
-                <button class="oo-x" @onclick="Fechar" title="Fechar"><Icone Nome="x" Tamanho="18" /></button>
-            </div>
-            <div class="oo-ficha-corpo">
-                <div class="oo-campos">
-                    <label>Admissão<input class="campo" type="date" value="@Iso(dados.Admissao)" @onchange="e => MudarAdmissao(pessoa, e)" /></label>
-                    <label>Fim do concessivo<input class="campo" disabled value="@(f.FimConcessivo is { } fc ? Texto.Dmy(fc) : "—")" /></label>
-                </div>
-                <p class="muted pequeno">@(t switch
-                {
-                    FeriasAuto.Prazo.SemAdmissao => "Informe a admissão para o QSmart calcular os prazos da CLT.",
-                    FeriasAuto.Prazo.Aquisitivo => $"Ainda no período aquisitivo: completa 1 ano em {dd} dias.",
-                    FeriasAuto.Prazo.Vencido => $"Concessivo vencido há {dd} dias.",
-                    _ => $"Pode tirar férias. O concessivo vence em {dd} dias.",
-                })</p>
-
-                <div class="oo-form">
-                    <b>Marcar férias</b>
-                    <div class="oo-campos">
-                        <label>Início<input class="campo" type="date" value="@_nIni" @onchange="@(e => _nIni = e.Value?.ToString() ?? "")" /></label>
-                        <label>Dias<input class="campo" type="number" min="1" max="30" value="@_nDias" @onchange="@(e => _nDias = e.Value?.ToString() ?? "30")" /></label>
-                    </div>
-                    <label class="fe-chk"><input type="checkbox" checked="@_nVende" @onchange="@(e => _nVende = e.Value is true)" /> Vende 10 dias</label>
-                    <button class="btn btn-pri" @onclick="() => AdicionarPeriodo(pessoa)"><Icone Nome="mais" Tamanho="15" /> Adicionar período</button>
-                </div>
-
-                <b class="fe-tit">Períodos (@dados.Periodos.Count)</b>
-                @if (dados.Periodos.Count == 0) { <p class="muted">Nenhum período marcado.</p> }
-                @foreach (var per in dados.Periodos.OrderBy(x => x.Inicio))
-                {
-                    var pa = _b!.Periodos.FirstOrDefault(x => _mapa.TryGetValue(x.Id, out var m) && m.per == per);
-                    int ch = pa == null ? 0 : FeriasAuto.Choque(_b, pa);
-                    <div class="fe-per @(ch > 0 ? "ch" : "")">
-                        <div class="oo-campos">
-                            <label>Início<input class="campo" type="date" value="@Iso(per.Inicio)" @onchange="e => MudarInicio(pessoa, per, e)" /></label>
-                            <label>Dias<input class="campo" type="number" min="1" max="30" value="@per.Dias" @onchange="e => MudarDias(pessoa, per, e)" /></label>
-                            <label>Situação<select class="campo" value="@per.Status" @onchange="e => MudarStatus(pessoa, per, e)">
-                                @foreach (var st in FeriasBanco.StatusPossiveis) { <option value="@st">@st</option> }</select></label>
-                        </div>
-                        <div class="fe-per-lin">
-                            <span>@Texto.Dmy(per.Inicio) a @Texto.Dmy(per.Fim)</span>
-                            <label class="fe-chk"><input type="checkbox" checked="@per.Vende" @onchange="e => MudarVende(pessoa, per, e)" /> vende 10 dias</label>
-                            @if (ch > 0) { <span class="fa-tag-choque">@ch dias de choque</span> }
-                        </div>
-                        @if (per.Mudou) { <p class="pequeno">Pediu @Texto.Dmy(per.Pedido) · data mudada pela coordenação <button class="btn btn-sec btn-peq" @onclick="() => VoltarPedido(pessoa, per)">voltar para a pedida</button></p> }
-                        <input class="campo" placeholder="Observação (opcional)" value="@per.Obs" @onchange="e => MudarObs(pessoa, per, e)" />
-                        <button class="btn btn-sec btn-peq fe-rem" @onclick="() => Remover(pessoa, per)"><Icone Nome="lixo" Tamanho="14" /> Remover</button>
-                    </div>
-                }
-            </div>
-        </div>
-    };
-
+    // ---------------------------------------------------- indicadores
     RenderFragment KpisFe => @<text>
-        @{ int longos = FeriasAuto.Pares(_b!).Count(x => (_aba == Todas || x.a.Aba == _aba) && x.dias > FeriasAuto.ChoqueLongo);
-           int sem = _b!.Funcs.Count(f => NoFiltro(f) && !_b.Periodos.Any(p => p.Func == f && p.Fim >= _hoje));
-           int venc = _prazos.Count(x => x.classe == "vencido"), perto = _prazos.Count(x => x.classe == "perto"); }
-        <Kpi Titulo="Dias de choque" Cor="red" Valor="@Fmt(_atual)" Detalhe="@(_atual < _inicial ? $"eram {Fmt(_inicial)} nas datas pedidas · −{Pct(_inicial - _atual, _inicial)}" : "mesmo time fora junto, somando os pares")" Proporcao="@(_inicial == 0 ? null : (double)_atual / _inicial)" />
-        <Kpi Titulo="Para revisar" Cor="orange" Valor="@Fmt(_fila.Count)" Detalhe="@($"{Ferias.Plural(longos, "choque")} de mais de {FeriasAuto.ChoqueLongo} dias")" />
-        <Kpi Titulo="Datas mudadas" Cor="green" Valor="@Fmt(_alterados.Count)" Detalhe="@(_alterados.Count > 0 ? "pela revisão de choques" : "nenhuma ainda")" />
-        <Kpi Titulo="Prazos" Cor="amber" Valor="@Fmt(venc + perto)" Detalhe="@($"{venc} vencido(s) · {perto} vencendo sem férias")" />
-        <Kpi Titulo="Sem férias marcadas" Cor="blue" Valor="@Fmt(sem)" Detalhe="pessoas sem período daqui para frente" />
+        @{ var meus = _todos.Where(c => c.Minha || E.FeAdmin).ToList();
+           var sits = meus.Select(c => FeriasClt.Situacao(c, _hoje)).ToList();
+           int urg = sits.Count(s => s.Nivel is NivelFer.Urgente or NivelFer.Estourado), aten = sits.Count(s => s.Nivel == NivelFer.Atencao);
+           int mesesX = _meses.Select(m => FeriasClt.Mes(m.Year, m.Month)).Count(k => _carga.EstouraGeral(k) || _carga.Coordenacoes.Any(c => _carga.Estoura(k, c)));
+           int semAdm = sits.Count(s => s.Nivel == NivelFer.SemAdmissao); }
+        <Kpi Titulo="@(E.FeAdmin ? "Pessoas" : "Na sua coordenação")" Cor="blue" Valor="@Fmt(meus.Count)" Detalhe="@($"{_todos.Count} no painel geral · {_carga.Coordenacoes.Count} coordenações")" />
+        <Kpi Titulo="Prazo urgente" Cor="red" Valor="@Fmt(urg)" Detalhe="precisam começar em até 45 dias" />
+        <Kpi Titulo="Atenção" Cor="orange" Valor="@Fmt(aten)" Detalhe="prazo nos próximos 4 meses" />
+        <Kpi Titulo="Meses acima do limite" Cor="amber" Valor="@Fmt(mesesX)" Detalhe="@($"nos 12 meses do painel · até {FeriasClt.LimitePorCoordenacao} por coordenação")" />
+        <Kpi Titulo="Pessoas-chave" Cor="green" Valor="@Fmt(_semImpacto)" Detalhe="@(semAdm > 0 ? $"fora da conta · {semAdm} sem admissão" : "fora da conta de conflito")" />
     </text>;
 }

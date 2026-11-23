@@ -178,7 +178,104 @@ async function marcarDia(env, id) {
   await env.DB.prepare("INSERT OR IGNORE INTO dias (usuario_id, dia) VALUES (?, ?)").bind(id, hojeBR()).run();
 }
 
-const podeVerTudo = u => u.papel === "admin" || u.papel === "coordenador";
+const podeVerTudo = u => u.papel === "admin";
+
+// =============================== coordenações ===============================
+// A coordenação de cada pessoa vem da planilha base (coluna "Coordenação"). Ela é ligada à conta do coordenador
+// pelo nome dele (ou pelo nome que o administrador escreveu no campo "Equipe" da conta do coordenador).
+const normN = s => String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
+const coordDoUsuario = u => (u.papel === "coordenador" && (u.lideranca || "").trim()) ? u.lideranca.trim() : `${u.nome || ""} ${u.sobrenome || ""}`.trim();
+function mesmaCoord(a, b) {
+  a = normN(a); b = normN(b);
+  if (!a || !b) return false;
+  if (a === b) return true;
+  const ta = a.split(" "), tb = b.split(" ");
+  const [menor, maior] = ta.length <= tb.length ? [ta, tb] : [tb, ta];
+  return menor[0] === maior[0] && menor.every(t => maior.includes(t));
+}
+// só coordenador e administrador entram na Coordenação (One a One, Férias)
+function acessoCoord(u) {
+  if (u.papel === "admin") return { admin: true, coord: "", minha: () => true };
+  if (u.papel === "coordenador") { const nome = coordDoUsuario(u); return { admin: false, coord: nome, minha: c => mesmaCoord(c, nome) }; }
+  return null;
+}
+const META_OO = "__base";
+function metaFiltrada(json, minhaLid) {
+  try {
+    const o = JSON.parse(json);
+    o.Liderancas = (o.Liderancas || []).filter(l => minhaLid(l));
+    const f = {};
+    for (const [mes, v] of Object.entries(o.Fotos || {})) { const x = {}; for (const [l, n] of Object.entries(v || {})) if (minhaLid(l)) x[l] = n; if (Object.keys(x).length) f[mes] = x; }
+    o.Fotos = f;
+    return JSON.stringify(o);
+  } catch { return json; }
+}
+function metaJuntar(antigo, novo, minhaLid) {
+  let a = {}, n = {};
+  try { a = antigo ? JSON.parse(antigo) : {}; } catch { }
+  try { n = JSON.parse(novo); } catch { return antigo || novo; }
+  const out = { ...a };
+  out.Liderancas = (a.Liderancas || []).filter(l => !minhaLid(l)).concat((n.Liderancas || []).filter(l => minhaLid(l)));
+  const f = {};
+  for (const mes of new Set([...Object.keys(a.Fotos || {}), ...Object.keys(n.Fotos || {})])) {
+    const x = {};
+    for (const [l, v] of Object.entries((a.Fotos || {})[mes] || {})) if (!minhaLid(l)) x[l] = v;
+    for (const [l, v] of Object.entries((n.Fotos || {})[mes] || {})) if (minhaLid(l)) x[l] = v;
+    f[mes] = x;
+  }
+  out.Fotos = f;
+  return JSON.stringify(out);
+}
+const hojeISO = () => hojeBR();
+function novoIdOO() { const b = crypto.getRandomValues(new Uint8Array(6)); return [...b].map(x => x.toString(16).padStart(2, "0")).join(""); }
+// meses (yyyy-mm) em que um período de férias tem pelo menos um dia
+function mesesDoPeriodo(ini, dias) {
+  const out = []; const d0 = new Date(ini + "T12:00:00Z"); if (isNaN(d0)) return out;
+  const fim = new Date(d0.getTime() + (Math.max(1, dias) - 1) * 864e5);
+  let y = d0.getUTCFullYear(), m = d0.getUTCMonth();
+  while (y < fim.getUTCFullYear() || (y === fim.getUTCFullYear() && m <= fim.getUTCMonth())) { out.push(`${y}-${String(m + 1).padStart(2, "0")}`); m++; if (m > 11) { m = 0; y++; } }
+  return out;
+}
+
+// Depois de marcar férias: se algum mês passou do limite (3 por coordenação; coordenações × 3 no geral),
+// avisa todas as coordenações e o administrador no sininho.
+async function alertasFerias(env, u, id, dadosNovos) {
+  let meus = [];
+  try { const o = JSON.parse(dadosNovos); if (!o.semImpacto) for (const p of o.periodos || []) meus.push(...mesesDoPeriodo(p.inicio, p.dias)); } catch { return; }
+  const mesAtual = hojeBR().slice(0, 7);
+  meus = [...new Set(meus)].filter(x => x >= mesAtual);
+  if (meus.length === 0) return;
+  const r = await env.DB.prepare("SELECT o.id, o.coordenacao, f.dados FROM oo_pessoas o JOIN fe_pessoas f ON f.id = o.id WHERE o.id != ?").bind(META_OO).all();
+  const coordsR = await env.DB.prepare("SELECT DISTINCT coordenacao FROM oo_pessoas WHERE id != ? AND coordenacao != ''").bind(META_OO).all();
+  const nCoord = Math.max(1, new Set((coordsR.results || []).map(x => normN(x.coordenacao))).size);
+  const porMes = {};   // mes -> coord(norm) -> {nome, n}
+  let minhaCoord = "";
+  for (const x of r.results || []) {
+    let o; try { o = JSON.parse(await decifrar(env, x.dados)); } catch { continue; }
+    if (x.id === id) minhaCoord = x.coordenacao || "";
+    if (o.semImpacto) continue;
+    const ms = new Set(); for (const p of o.periodos || []) for (const k of mesesDoPeriodo(p.inicio, p.dias)) ms.add(k);
+    for (const k of ms) { if (!meus.includes(k)) continue; const c = normN(x.coordenacao); ((porMes[k] ||= {})[c] ||= { nome: x.coordenacao || "Sem coordenação", n: 0 }).n++; }
+  }
+  const avisos = [];
+  for (const k of meus) {
+    const pc = porMes[k] || {};
+    const minha = pc[normN(minhaCoord)];
+    if (minha && minha.n > 3) avisos.push([k, `${minha.nome}: ${minha.n} pessoas de férias (limite 3)`]);
+    const geral = Object.values(pc).reduce((a, b) => a + b.n, 0);
+    if (geral > nCoord * 3) avisos.push([k, `${geral} pessoas de férias no geral (limite ${nCoord * 3})`]);
+  }
+  if (avisos.length === 0) return;
+  const quem = (await env.DB.prepare("SELECT id FROM usuarios WHERE status = 'ativo' AND (papel = 'coordenador' OR papel = 'admin') AND id != ?").bind(u.id).all()).results || [];
+  const q = [];
+  for (const [mes, texto] of avisos) {
+    const ref = `${mes}|${texto}`;
+    for (const d of quem)
+      q.push(env.DB.prepare("INSERT INTO notificacoes (usuario_id, tipo, de_id, post_id, ref, criado_em) SELECT ?, 'ferias', ?, NULL, ?, ? WHERE NOT EXISTS (SELECT 1 FROM notificacoes WHERE usuario_id = ? AND tipo = 'ferias' AND ref = ? AND lida = 0)")
+        .bind(d.id, u.id, ref, agora(), d.id, ref));
+  }
+  for (let i = 0; i < q.length; i += 80) await env.DB.batch(q.slice(i, i + 80));
+}
 
 // =============================== rotas /api ===============================
 
@@ -370,28 +467,121 @@ async function api(req, env, url) {
   }
 
   // ---------- One a One ----------
+  // ---------- base de colaboradores (planilha carregada no Perfil da coordenação) ----------
+  if (rota === "oo/base") {
+    const ac = acessoCoord(u);
+    if (!ac) return erro("Só a coordenação carrega a base de colaboradores.", 403);
+    const coordenadores = ((await env.DB.prepare("SELECT id, nome, sobrenome, papel, lideranca FROM usuarios WHERE papel = 'coordenador' AND status = 'ativo'").all()).results || []);
+    const donoDe = c => { const x = coordenadores.find(k => mesmaCoord(c, coordDoUsuario(k))); return x ? `${x.nome} ${x.sobrenome}`.trim() : null; };
+    if (m === "GET") {
+      const kv = await env.DB.prepare("SELECT valor FROM kv WHERE chave = 'base_import'").first();
+      const r = await env.DB.prepare("SELECT coordenacao, COUNT(*) AS n FROM oo_pessoas WHERE id != ? GROUP BY coordenacao").bind(META_OO).all();
+      const coords = (r.results || []).map(x => ({ nome: x.coordenacao || "", pessoas: x.n, coordenador: x.coordenacao ? donoDe(x.coordenacao) : null, minha: !!x.coordenacao && ac.minha(x.coordenacao) }));
+      return json({ ultima: kv ? JSON.parse(kv.valor) : null, coordenacoes: coords, minhaCoord: ac.coord });
+    }
+    if (m === "POST") {
+      const b = await corpo(req);
+      const linhas = (Array.isArray(b.linhas) ? b.linhas : []).slice(0, 5000).map(x => ({
+        nome: String(x.nome || "").replace(/\s+/g, " ").trim().slice(0, 120), admissao: /^\d{4}-\d{2}-\d{2}$/.test(x.admissao || "") ? x.admissao : null,
+        lideranca: String(x.lideranca || "").trim().slice(0, 80), coordenacao: String(x.coordenacao || "").trim().slice(0, 80),
+      })).filter(x => x.nome);
+      if (linhas.length === 0) return erro("A planilha veio sem pessoas.");
+      const todos = (await env.DB.prepare("SELECT id, dados FROM oo_pessoas WHERE id != ?").bind(META_OO).all()).results || [];
+      const porNome = new Map();
+      for (const t of todos) { try { const o = JSON.parse(await decifrar(env, t.dados)); const p = (o.Pessoas || [])[0]; if (p) { p.Id = t.id; porNome.set(normN(p.Nome), p); } } catch { } }
+      const hoje = hojeISO();
+      const recente = d => d && (Date.parse(hoje) - Date.parse(d)) / 864e5 < 90;
+      const gravar = [], vistos = new Set();
+      let novos = 0, atualizados = 0, arquivados = 0;
+      for (const l of linhas) {
+        const k = normN(l.nome); if (vistos.has(k)) continue; vistos.add(k);
+        let p = porNome.get(k);
+        if (p) {
+          let mudou = false;
+          if (l.lideranca && p.Lideranca !== l.lideranca) {
+            for (const v of p.Vinculos || []) if (!v.Ate) v.Ate = hoje;
+            (p.Vinculos ||= []).push({ Lideranca: l.lideranca, Desde: hoje, Ate: null });
+            p.Lideranca = l.lideranca; p.MudouEm = hoje; mudou = true;
+          }
+          if (l.admissao && p.Admissao !== l.admissao) { p.Admissao = l.admissao; mudou = true; }
+          if (l.coordenacao !== (p.Coordenacao || "")) { p.Coordenacao = l.coordenacao; mudou = true; }
+          if (p.Arquivado) { p.Arquivado = false; p.ArquivadoEm = null; mudou = true; }
+          if (!mudou) continue;
+          atualizados++;
+        } else {
+          p = { Id: novoIdOO(), Nome: l.nome, Lideranca: l.lideranca, Tipo: recente(l.admissao) ? "Novo" : "Antigo", Arquivado: false, ArquivadoEm: null,
+                Entrada: recente(l.admissao) ? l.admissao : null, MudouEm: null, Admissao: l.admissao, Coordenacao: l.coordenacao,
+                Vinculos: l.lideranca ? [{ Lideranca: l.lideranca, Desde: l.admissao || hoje, Ate: null }] : [], Registros: [] };
+          porNome.set(k, p);
+          novos++;
+        }
+        gravar.push(p);
+      }
+      // quem saiu da planilha (nas coordenações que vieram nela) é arquivado, com o histórico guardado
+      const coordsPlanilha = [...new Set(linhas.map(l => l.coordenacao).filter(Boolean))];
+      for (const [k, p] of porNome) {
+        if (vistos.has(k) || p.Arquivado) continue;
+        if (!coordsPlanilha.some(c => mesmaCoord(c, p.Coordenacao || ""))) continue;
+        p.Arquivado = true; p.ArquivadoEm = hoje; arquivados++; gravar.push(p);
+      }
+      const q = [];
+      for (const p of gravar) {
+        const dados = JSON.stringify({ Pessoas: [p], Liderancas: [], Fotos: {}, Arquivo: "", AtualizadoEm: "" });
+        q.push(env.DB.prepare("INSERT INTO oo_pessoas (id, lideranca, coordenacao, dados, atualizado_em, atualizado_por) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET lideranca = excluded.lideranca, coordenacao = excluded.coordenacao, dados = excluded.dados, atualizado_em = excluded.atualizado_em, atualizado_por = excluded.atualizado_por")
+          .bind(p.Id, p.Lideranca || "", p.Coordenacao || "", await cifrar(env, dados), agora(), u.id));
+      }
+      const resumo = {
+        em: agora(), por: `${u.nome} ${u.sobrenome}`.trim(), arquivo: String(b.arquivo || "").slice(0, 120), linhas: linhas.length, novos, atualizados, arquivados,
+        coordenacoes: coordsPlanilha.map(c => ({ nome: c, pessoas: linhas.filter(l => l.coordenacao === c).length, coordenador: donoDe(c) })),
+        semAdmissao: linhas.filter(l => !l.admissao).length,
+      };
+      q.push(env.DB.prepare("INSERT INTO kv (chave, valor) VALUES ('base_import', ?) ON CONFLICT(chave) DO UPDATE SET valor = excluded.valor").bind(JSON.stringify(resumo)));
+      for (let i = 0; i < q.length; i += 80) await env.DB.batch(q.slice(i, i + 80));
+      return json({ ok: true, ...resumo });
+    }
+  }
+
   if (rota === "oo" || rota === "oo/lote") {
-    if (!podeVerTudo(u) && !(u.papel === "lideranca" && u.lideranca)) return erro("Seu acesso não inclui o One a One. Fale com o administrador.", 403);
-    const minha = l => podeVerTudo(u) || (l || "") === u.lideranca;
+    const ac = acessoCoord(u);
+    if (!ac) return erro("O One a One é só da coordenação. Fale com o administrador.", 403);
+    // lideranças que são de pessoas de outras coordenações (para separar a "foto do mês" e a lista de lideranças)
+    let lidsOutras = new Set();
+    if (!ac.admin) {
+      const r = await env.DB.prepare("SELECT DISTINCT lideranca, coordenacao FROM oo_pessoas WHERE id != ?").bind(META_OO).all();
+      for (const x of r.results || []) if (x.lideranca && !ac.minha(x.coordenacao)) lidsOutras.add(normN(x.lideranca));
+      for (const x of r.results || []) if (x.lideranca && ac.minha(x.coordenacao)) lidsOutras.delete(normN(x.lideranca));
+    }
+    const minhaLid = l => ac.admin || !lidsOutras.has(normN(l));
 
     if (rota === "oo" && m === "GET") {
-      const r = podeVerTudo(u)
-        ? await env.DB.prepare("SELECT id, lideranca, dados, atualizado_em FROM oo_pessoas").all()
-        : await env.DB.prepare("SELECT id, lideranca, dados, atualizado_em FROM oo_pessoas WHERE lideranca = ?").bind(u.lideranca).all();
+      const r = await env.DB.prepare("SELECT id, lideranca, coordenacao, dados, atualizado_em FROM oo_pessoas").all();
       const pessoas = [];
-      for (const p of r.results || []) pessoas.push({ id: p.id, lideranca: p.lideranca, dados: await decifrar(env, p.dados), atualizadoEm: p.atualizado_em });
-      return json({ pessoas, veTudo: podeVerTudo(u), lideranca: u.lideranca });
+      for (const p of r.results || []) {
+        if (p.id === META_OO) { const d = await decifrar(env, p.dados); pessoas.push({ id: p.id, lideranca: "", dados: ac.admin ? d : metaFiltrada(d, minhaLid), atualizadoEm: p.atualizado_em }); continue; }
+        if (!ac.admin && !ac.minha(p.coordenacao)) continue;
+        pessoas.push({ id: p.id, lideranca: p.lideranca, coordenacao: p.coordenacao, dados: await decifrar(env, p.dados), atualizadoEm: p.atualizado_em });
+      }
+      return json({ pessoas, veTudo: ac.admin, coordenacao: ac.coord, lideranca: "" });
     }
 
     const salvar = async p => {
       const id = String(p.id || "").slice(0, 64), lid = String(p.lideranca || "").trim().slice(0, 80);
       if (!id || typeof p.dados !== "string") return "Registro inválido.";
       if (p.dados.length > 400000) return "Registro grande demais.";
-      if (!minha(lid)) return "Você só pode salvar pessoas da sua equipe.";
-      const antes = await env.DB.prepare("SELECT lideranca FROM oo_pessoas WHERE id = ?").bind(id).first();
-      if (antes && !minha(antes.lideranca)) return "Essa pessoa é de outra equipe.";
-      await env.DB.prepare("INSERT INTO oo_pessoas (id, lideranca, dados, atualizado_em, atualizado_por) VALUES (?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET lideranca = excluded.lideranca, dados = excluded.dados, atualizado_em = excluded.atualizado_em, atualizado_por = excluded.atualizado_por")
-        .bind(id, lid, await cifrar(env, p.dados), agora(), u.id).run();
+      if (id === META_OO) {
+        const antes = await env.DB.prepare("SELECT dados FROM oo_pessoas WHERE id = ?").bind(META_OO).first();
+        const dados = ac.admin ? p.dados : metaJuntar(antes ? await decifrar(env, antes.dados) : "", p.dados, minhaLid);
+        await env.DB.prepare("INSERT INTO oo_pessoas (id, lideranca, coordenacao, dados, atualizado_em, atualizado_por) VALUES (?, '', '', ?, ?, ?) ON CONFLICT(id) DO UPDATE SET dados = excluded.dados, atualizado_em = excluded.atualizado_em, atualizado_por = excluded.atualizado_por")
+          .bind(META_OO, await cifrar(env, dados), agora(), u.id).run();
+        return null;
+      }
+      let coord = String(p.coordenacao || "").trim().slice(0, 80);
+      if (!ac.admin && !coord) coord = ac.coord;
+      if (!ac.minha(coord)) return "Você só pode salvar pessoas da sua coordenação.";
+      const antes = await env.DB.prepare("SELECT coordenacao FROM oo_pessoas WHERE id = ?").bind(id).first();
+      if (antes && !ac.minha(antes.coordenacao)) return "Essa pessoa é de outra coordenação.";
+      await env.DB.prepare("INSERT INTO oo_pessoas (id, lideranca, coordenacao, dados, atualizado_em, atualizado_por) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET lideranca = excluded.lideranca, coordenacao = excluded.coordenacao, dados = excluded.dados, atualizado_em = excluded.atualizado_em, atualizado_por = excluded.atualizado_por")
+        .bind(id, lid, coord, await cifrar(env, p.dados), agora(), u.id).run();
       return null;
     };
 
@@ -408,9 +598,9 @@ async function api(req, env, url) {
     }
     if (rota === "oo" && m === "DELETE") {
       const id = url.searchParams.get("id") || "";
-      const antes = await env.DB.prepare("SELECT lideranca FROM oo_pessoas WHERE id = ?").bind(id).first();
+      const antes = await env.DB.prepare("SELECT coordenacao FROM oo_pessoas WHERE id = ?").bind(id).first();
       if (!antes) return json({ ok: true });
-      if (!minha(antes.lideranca)) return erro("Essa pessoa é de outra equipe.", 403);
+      if (!ac.minha(antes.coordenacao)) return erro("Essa pessoa é de outra coordenação.", 403);
       await env.DB.prepare("DELETE FROM oo_pessoas WHERE id = ?").bind(id).run();
       return json({ ok: true });
     }
@@ -418,36 +608,39 @@ async function api(req, env, url) {
 
   // ---------- Férias (mesmas pessoas do One a One; a equipe vem da pessoa no One a One) ----------
   if (rota === "fe") {
-    if (!podeVerTudo(u) && !(u.papel === "lideranca" && u.lideranca)) return erro("Seu acesso não inclui as Férias. Fale com o administrador.", 403);
-    const equipeDe = async id => {
-      const p = await env.DB.prepare("SELECT lideranca FROM oo_pessoas WHERE id = ?").bind(id).first();
-      return p ? (p.lideranca || "") : null;
-    };
-    const pode = l => podeVerTudo(u) || (l || "") === u.lideranca;
+    const ac = acessoCoord(u);
+    if (!ac) return erro("As Férias são só da coordenação. Fale com o administrador.", 403);
+    const coordDe = async id => { const p = await env.DB.prepare("SELECT coordenacao FROM oo_pessoas WHERE id = ?").bind(id).first(); return p ? (p.coordenacao || "") : null; };
 
+    // painel geral: todas as coordenações veem todo mundo; cada uma edita só os seus
     if (m === "GET") {
-      const r = podeVerTudo(u)
-        ? await env.DB.prepare("SELECT f.id, f.dados, f.atualizado_em FROM fe_pessoas f").all()
-        : await env.DB.prepare("SELECT f.id, f.dados, f.atualizado_em FROM fe_pessoas f JOIN oo_pessoas o ON o.id = f.id WHERE o.lideranca = ?").bind(u.lideranca).all();
+      const r = await env.DB.prepare("SELECT o.id, o.lideranca, o.coordenacao, o.dados AS odados, f.dados AS fdados FROM oo_pessoas o LEFT JOIN fe_pessoas f ON f.id = o.id WHERE o.id != ?").bind(META_OO).all();
       const pessoas = [];
-      for (const p of r.results || []) pessoas.push({ id: p.id, dados: await decifrar(env, p.dados), atualizadoEm: p.atualizado_em });
-      return json({ pessoas, veTudo: podeVerTudo(u), lideranca: u.lideranca });
+      for (const x of r.results || []) {
+        let p = null;
+        try { p = (JSON.parse(await decifrar(env, x.odados)).Pessoas || [])[0]; } catch { }
+        if (!p || p.Arquivado) continue;
+        pessoas.push({ id: x.id, nome: p.Nome || "", lideranca: x.lideranca || p.Lideranca || "", coordenacao: x.coordenacao || "", admissao: p.Admissao || "",
+          dados: x.fdados ? await decifrar(env, x.fdados) : "", minha: ac.admin || ac.minha(x.coordenacao) });
+      }
+      return json({ pessoas, admin: ac.admin, coordenacao: ac.coord });
     }
     if (m === "PUT") {
       const b = await corpo(req);
       const id = String(b.id || "").slice(0, 64);
       if (!id || typeof b.dados !== "string" || b.dados.length > 200000) return erro("Registro inválido.");
-      const l = await equipeDe(id);
-      if (l === null) return erro("Pessoa não encontrada no One a One.", 404);
-      if (!pode(l)) return erro("Essa pessoa é de outra equipe.", 403);
+      const c = await coordDe(id);
+      if (c === null) return erro("Pessoa não encontrada na base.", 404);
+      if (!ac.minha(c)) return erro("Essa pessoa é de outra coordenação: você só vê.", 403);
       await env.DB.prepare("INSERT INTO fe_pessoas (id, dados, atualizado_em, atualizado_por) VALUES (?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET dados = excluded.dados, atualizado_em = excluded.atualizado_em, atualizado_por = excluded.atualizado_por")
         .bind(id, await cifrar(env, b.dados), agora(), u.id).run();
+      await alertasFerias(env, u, id, b.dados);
       return json({ ok: true, em: agora() });
     }
     if (m === "DELETE") {
       const id = url.searchParams.get("id") || "";
-      const l = await equipeDe(id);
-      if (l !== null && !pode(l)) return erro("Essa pessoa é de outra equipe.", 403);
+      const c = await coordDe(id);
+      if (c !== null && !ac.minha(c)) return erro("Essa pessoa é de outra coordenação.", 403);
       await env.DB.prepare("DELETE FROM fe_pessoas WHERE id = ?").bind(id).run();
       return json({ ok: true });
     }
@@ -737,7 +930,7 @@ async function api(req, env, url) {
     for (const x of r.results || []) {
       if (x.de_id && !(x.de_id in fotos)) fotos[x.de_id] = x.foto ? await decifrar(env, x.foto) : "";
       if (x.tipo === "caderno" && !x.cnome) continue;
-      const t = x.ptexto ? (await decifrar(env, x.ptexto)).replace(/\s+/g, " ").trim() : x.cnome ? await decifrar(env, x.cnome) : "";
+      const t = x.tipo === "ferias" ? (x.ref || "").split("|").slice(1).join("|") : x.ptexto ? (await decifrar(env, x.ptexto)).replace(/\s+/g, " ").trim() : x.cnome ? await decifrar(env, x.cnome) : "";
       itens.push({ id: x.id, tipo: x.tipo, postId: x.post_id || 0, ref: x.ref || "", criadoEm: x.criado_em, lida: !!x.lida, de: x.de_id, nome: x.nome ? `${x.nome} ${x.sobrenome}`.trim() : "Alguém", trecho: t.length > 70 ? t.slice(0, 70) + "…" : t });
     }
     const n = await env.DB.prepare("SELECT COUNT(*) AS n FROM notificacoes WHERE usuario_id = ? AND lida = 0").bind(u.id).first();

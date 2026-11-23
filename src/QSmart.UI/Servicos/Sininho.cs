@@ -14,8 +14,13 @@ public sealed class Notificacao
     public string Trecho { get; set; } = "";
     public string Foto { get; set; } = "";
     public string Ref { get; set; } = "";
-    public string Href => Tipo == "caderno" ? $"smart-note?c={Uri.EscapeDataString(Ref)}" : $"feed?post={PostId}";
-    public string IconeTipo => Tipo switch { "curtida" => "coracao-cheio", "post" => "feed", "caderno" => "caderno", _ => "conversa" };
+    public string Href => Tipo switch
+    {
+        "caderno" => $"smart-note?c={Uri.EscapeDataString(Ref)}",
+        "ferias" => $"ferias?mes={Uri.EscapeDataString(Ref.Split('|')[0])}",
+        _ => $"feed?post={PostId}",
+    };
+    public string IconeTipo => Tipo switch { "curtida" => "coracao-cheio", "post" => "feed", "caderno" => "caderno", "ferias" => "calendario", _ => "conversa" };
 
     public string Texto => Tipo switch
     {
@@ -24,6 +29,7 @@ public sealed class Notificacao
         "comentario" => $"{Nome} comentou na sua publicação",
         "resposta" => $"{Nome} também comentou numa publicação que você comentou",
         "caderno" => $"{Nome} compartilhou um caderno do Smart Note com você",
+        "ferias" => $"Férias acima do limite em {QSmart.Core.Coordenacao.FeriasClt.MesNome(Ref.Split('|')[0])}",
         _ => Nome,
     };
 }

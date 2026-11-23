@@ -42,6 +42,10 @@ public sealed class PessoaOO
     public DateOnly? Entrada { get; set; }
     /// <summary>Quando mudou de liderança pela última vez (pede um 1:1 em até 30 dias).</summary>
     public DateOnly? MudouEm { get; set; }
+    /// <summary>Data de admissão na empresa (da planilha base da coordenação).</summary>
+    public DateOnly? Admissao { get; set; }
+    /// <summary>Coordenação a que a pessoa pertence (da planilha base).</summary>
+    public string Coordenacao { get; set; } = "";
     public List<VinculoOO> Vinculos { get; set; } = new();
     public List<RegistroOO> Registros { get; set; } = new();
 

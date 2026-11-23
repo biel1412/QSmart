@@ -20,7 +20,9 @@ public sealed class PerfilConta
     public string Iniciais => ((Nome.Length > 0 ? Nome[..1] : "") + (Sobrenome.Length > 0 ? Sobrenome[..1] : "")).ToUpperInvariant();
     public bool Admin => Papel == "admin";
     public bool VeTudoOO => Papel is "admin" or "coordenador";
-    public bool TemOO => VeTudoOO || (Papel == "lideranca" && Lideranca != "");
+    /// <summary>Só coordenador e administrador entram na seção Coordenação (Férias, Pontos de ação, One a One).</summary>
+    public bool Coordenacao => Papel is "admin" or "coordenador";
+    public bool TemOO => Coordenacao;
     public string PapelNome => NomePapel(Papel);
     public static string NomePapel(string p) => p switch { "admin" => "Administrador", "coordenador" => "Coordenador", "lideranca" => "Liderança", _ => "Usuário" };
 }

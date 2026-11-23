@@ -12,7 +12,7 @@
     <ChildContent>
         @if (E.OneErro != null)
         {
-            <div class="oo-bloqueio"><Icone Nome="cadeado" Tamanho="26" /><div><b>@E.OneErro</b><p class="muted">O One a One fica no banco do QSmart e cada pessoa vê só o que o administrador liberou: coordenador vê todas as equipes; liderança, só a sua.</p></div></div>
+            <div class="oo-bloqueio"><Icone Nome="cadeado" Tamanho="26" /><div><b>@E.OneErro</b><p class="muted">O One a One é da coordenação: cada coordenador vê as pessoas da sua coordenação (da planilha base carregada no Perfil) e o administrador vê todas.</p></div></div>
         }
         else if (b == null)
         {
@@ -27,13 +27,14 @@
                     <button class="btn btn-pri" @onclick="EnviarAntigo" disabled="@_enviando">@(_enviando ? "Enviando…" : "Enviar para o banco")</button></div>
             }
             <div class="fa-intro">
-                <div class="fa-passo"><span>1</span><div><b>Cadastre as lideranças</b><p class="muted">Cada liderança vira uma esteira. Pode ter 2, 3 ou 10.</p>
-                    @if (E.OneVeTudo) { <button class="btn btn-sec" @onclick="NovaLideranca"><Icone Nome="mais" Tamanho="15" /> Liderança</button> }</div></div>
+                <div class="fa-passo"><span>1</span><div><b>Carregue a base no Perfil</b><p class="muted">A planilha com nome, admissão, liderança e coordenação, carregada uma vez no seu Perfil, já monta as esteiras aqui e as Férias. Ou cadastre à mão:</p>
+                    <a class="btn btn-pri" href="perfil"><Icone Nome="upload" Tamanho="15" /> Carregar a planilha</a>
+                    @if (E.OneGere) { <button class="btn btn-sec" @onclick="NovaLideranca"><Icone Nome="mais" Tamanho="15" /> Liderança</button> }</div></div>
                 <div class="fa-passo"><span>2</span><div><b>Cadastre as pessoas</b><p class="muted">Nome, liderança e tipo: Novo (1:1 a cada 30 dias) ou Antigo (a cada 90).</p>
                     <button class="btn btn-sec" @onclick="NovaPessoa"><Icone Nome="mais" Tamanho="15" /> Pessoa</button></div></div>
                 <div class="fa-passo"><span>3</span><div><b>Registre cada 1:1</b><p class="muted">Clique no cartão, anote o que foi conversado e a ação combinada. O próximo 1:1 é calculado sozinho.</p></div></div>
             </div>
-            <p class="fa-privado"><Icone Nome="escudo" Tamanho="16" /> Tudo fica no banco do QSmart, criptografado. Só entra quem tem conta aprovada, e a liderança vê só a própria equipe. A planilha serve só para exportar.</p>
+            <p class="fa-privado"><Icone Nome="escudo" Tamanho="16" /> Tudo fica no banco do QSmart, criptografado. Só a coordenação entra, e cada coordenador vê só as pessoas da sua coordenação. A planilha serve só para exportar.</p>
         }
         else
         {
@@ -47,7 +48,7 @@
                 </select>
                 <input class="campo" style="width:200px" placeholder="Buscar pessoa…" @bind="_busca" @bind:event="oninput" />
                 <button class="btn btn-sec" @onclick="NovaPessoa"><Icone Nome="mais" Tamanho="15" /> Pessoa</button>
-                @if (E.OneVeTudo) { <button class="btn btn-sec" @onclick="NovaLideranca"><Icone Nome="mais" Tamanho="15" /> Liderança</button> }
+                @if (E.OneGere) { <button class="btn btn-sec" @onclick="NovaLideranca"><Icone Nome="mais" Tamanho="15" /> Liderança</button> }
                 <span class="mola"></span>
                 <span class="fa-cadeado" title="Salvo no banco do QSmart, criptografado"><Icone Nome="escudo" Tamanho="14" /> salvo no banco · criptografado</span>
                 <button class="btn btn-sec" @onclick="Recarregar" title="Buscar as mudanças feitas por outras pessoas"><Icone Nome="atualizar" Tamanho="15" /></button>
@@ -72,11 +73,11 @@
                         <section class="oo-lane @(_soltar == l ? "alvo" : "")" style="--l:@cor" @ondragover="() => Sobre(l)" @ondragover:preventDefault="true" @ondrop="() => Soltar(l)" @ondrop:preventDefault="true">
                             <header>
                                 <span class="oo-lav">@(l.Length > 0 ? l[..1].ToUpperInvariant() : "?")</span>
-                                <div><b title="@(E.OneVeTudo ? "Clique para renomear" : l)" @onclick="() => Renomear(l)">@l</b><small>@Ferias.Plural(ps.Count, "colaborador", "colaboradores")</small></div>
+                                <div><b title="@(E.OneGere ? "Clique para renomear" : l)" @onclick="() => Renomear(l)">@l</b><small>@Ferias.Plural(ps.Count, "colaborador", "colaboradores")</small></div>
                                 <div class="oo-ring" style="--p:@pct"><span>@pct%</span></div>
                                 <small class="oo-emd">em dia</small>
                                 <div class="oo-mini"><span class="g" title="Em dia">@em</span><span class="a" title="Chegando">@ch</span><span class="r" title="Atrasado">@at</span></div>
-                                @if (E.OneVeTudo)
+                                @if (E.OneGere)
                                 {
                                     <div class="oo-lane-ac">
                                         <button class="btn btn-sec btn-peq" title="Renomear a liderança" @onclick="() => Renomear(l)">Renomear</button>
@@ -189,7 +190,7 @@
     protected override async Task OnInitializedAsync()
     {
         await E.CarregarOne(true);
-        if (E.OneVeTudo) _antigo = await E.OneLocalAntigo();
+        if (E.OneGere) _antigo = await E.OneLocalAntigo();
     }
 
     async Task Recarregar() { E.OneBase = null; await E.CarregarOne(true); }
@@ -307,7 +308,7 @@
             <div class="oo-ficha-corpo">
                 <div class="oo-campos">
                     <label>Liderança
-                        <select class="campo" value="@p.Lideranca" disabled="@(!E.OneVeTudo)" @onchange="e => MudarLideranca(p, e.Value?.ToString() ?? p.Lideranca)">
+                        <select class="campo" value="@p.Lideranca" disabled="@(!E.OneGere)" @onchange="e => MudarLideranca(p, e.Value?.ToString() ?? p.Lideranca)">
                             @foreach (var l in _lids) { <option value="@l">@l</option> }
                         </select></label>
                     <label>Tipo
@@ -372,7 +373,7 @@
 
     void Salvar()
     {
-        if (E.OneBase is { } b && E.OneVeTudo) OneAOne.Fotografar(b, _hoje);
+        if (E.OneBase is { } b && E.OneGere) OneAOne.Fotografar(b, _hoje);
         _ = E.SalvarOne();
         E.Notificar();
     }
@@ -407,7 +408,7 @@
     void Soltar(string l)
     {
         var p = _arrastando; _arrastando = null; _soltar = null;
-        if (!E.OneVeTudo) return;
+        if (!E.OneGere) return;
         if (p == null || p.Lideranca == l) return;
         OneAOne.TrocarLideranca(p, l, _hoje);
         Salvar();
@@ -438,7 +439,7 @@
             await J.Aviso("Nova pessoa", ja.Arquivado ? $"{ja.Nome} já estava na carteira (arquivada). Abri a ficha para você reativar." : $"{ja.Nome} já está na carteira.");
             Abrir(ja); return;
         }
-        string? l = !E.OneVeTudo ? E.OneMinhaLideranca : _lider != Todas ? _lider : _lids.Count == 1 ? _lids[0] : null;
+        string? l = !E.OneGere ? E.OneMinhaLideranca : _lider != Todas ? _lider : _lids.Count == 1 ? _lids[0] : null;
         if (l == null)
         {
             if (_lids.Count == 0) { l = await J.Entrada("Liderança", "Nome da liderança desta pessoa:", ""); }
@@ -463,7 +464,7 @@
 
     async Task Renomear(string l)
     {
-        if (!E.OneVeTudo) return;
+        if (!E.OneGere) return;
         var n = await J.Entrada("Renomear liderança", $"Novo nome para “{l}” (todas as pessoas dela passam junto):", l);
         if (string.IsNullOrWhiteSpace(n) || n.Trim() == l) return;
         n = n.Trim();
