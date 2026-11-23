@@ -1,0 +1,225 @@
+@page "/downloads"
+@inherits PaginaBase
+@inject IJSRuntime JS
+
+<Pagina Titulo="Downloads" Grupo="@A.Grupo"
+        Sub="Automações, modelos e materiais prontos para baixar. Clique em Baixar e o arquivo vai para a pasta de downloads do seu computador.">
+    <Acoes>
+        @if (_admin) { <button class="btn btn-hero" @onclick="Novo"><Icone Nome="mais" Tamanho="17" /> Novo download</button> }
+    </Acoes>
+    <ChildContent>
+        @if (_erro != "") { <div class="oo-bloqueio"><Icone Nome="alerta" Tamanho="26" /><div><b>@_erro</b></div></div> }
+        else if (_itens == null) { <p class="muted"><span class="ia-spin pequeno"></span> Carregando…</p> }
+        else
+        {
+            @if (_admin && !_r2)
+            {
+                <div class="dl-aviso"><Icone Nome="alerta" Tamanho="18" /><div><b>O armazenamento de arquivos (R2) ainda não está ligado.</b>
+                    <span>Dá para cadastrar título e imagem, mas o envio e o download dos arquivos só funcionam depois de ativar o R2 na Cloudflare e ligar o bucket ao Worker com o nome ARQUIVOS.</span></div></div>
+            }
+            @if (_form != null) { @Formulario }
+            <div class="dl-barra">
+                <div class="ch-busca dl-busca"><Icone Nome="busca" Tamanho="15" /><input placeholder="Buscar download…" @bind="_busca" @bind:event="oninput" /></div>
+                <span class="muted pequeno">@Core.Coordenacao.Ferias.Plural(_itens.Count, "item", "itens")</span>
+            </div>
+            @if (_itens.Count == 0)
+            {
+                <div class="dl-vazio"><span><Icone Nome="download" Tamanho="30" /></span><b>Nenhum download ainda</b>
+                    <small>@(_admin ? "Clique em “Novo download” para publicar o primeiro arquivo." : "Quando o administrador publicar automações ou materiais, eles aparecem aqui.")</small></div>
+            }
+            <div class="dl-grade">
+                @foreach (var d in Filtrados())
+                {
+                    var dd = d;
+                    <div class="dl-card" @key="d.Id">
+                        <div class="dl-capa">
+                            @if (d.Imagem != "") { <img src="@d.Imagem" alt="" /> }
+                            else { <div class="dl-capa-vazia" style="--c:@Cor(d.Titulo)"><Icone Nome="@IconeTipo(d.Arquivo)" Tamanho="44" /></div> }
+                            @if (d.Arquivo != "") { <span class="dl-ext">@Ext(d.Arquivo)</span> }
+                        </div>
+                        <div class="dl-corpo">
+                            <b class="dl-titulo">@d.Titulo</b>
+                            @if (d.Descricao != "") { <p class="dl-desc">@d.Descricao</p> }
+                            <div class="dl-meta">
+                                @if (d.Arquivo != "") { <span title="@d.Arquivo"><Icone Nome="documento" Tamanho="13" /> @Tam(d.Tamanho)</span> }
+                                <span><Icone Nome="download" Tamanho="13" /> @d.Baixados</span>
+                                <span><Icone Nome="relogio" Tamanho="13" /> @Data(d.AtualizadoEm)</span>
+                            </div>
+                        </div>
+                        <div class="dl-pe">
+                            @if (_baixando == d.Id)
+                            {
+                                <div class="dl-prog"><i style="width:@(Math.Max(_pct, 3))%"></i><span>@(_pct >= 0 ? $"Baixando… {_pct}%" : "Baixando…")</span></div>
+                            }
+                            else
+                            {
+                                <button class="btn btn-pri dl-baixar" disabled="@(d.Arquivo == "" || _baixando != 0)" @onclick="() => Baixar(dd)">
+                                    <Icone Nome="download" Tamanho="16" /> @(d.Arquivo == "" ? "Sem arquivo ainda" : "Baixar")</button>
+                            }
+                            @if (_admin)
+                            {
+                                <button class="oo-x" title="Editar" @onclick="() => Editar(dd)"><Icone Nome="editar" Tamanho="16" /></button>
+                                <button class="oo-x" title="Excluir" @onclick="() => Excluir(dd)"><Icone Nome="lixo" Tamanho="16" /></button>
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+    </ChildContent>
+</Pagina>
+
+@code {
+    protected override string Chave => "downloads";
+
+    sealed record ItemDl(int Id, string Titulo, string Descricao, string Imagem, string Arquivo, string Tipo, long Tamanho, int Baixados, string AtualizadoEm);
+    sealed class FormDl { public int Id; public string Titulo = "", Descricao = "", Imagem = ""; public bool ImagemMudou; public string? ArqNome; public long ArqTam; public string ArquivoAtual = ""; }
+
+    List<ItemDl>? _itens;
+    bool _admin, _r2;
+    string _erro = "", _busca = "";
+    FormDl? _form;
+    ElementReference _inpImg, _inpArq;
+    bool _salvando;
+    int _baixando, _pct = -1;
+    string _etapa = "";
+    DotNetObjectReference<DownloadsPag>? _ref;
+
+    static string S(System.Text.Json.Nodes.JsonNode? n, string k) => n?[k] is System.Text.Json.Nodes.JsonValue v && v.TryGetValue<string>(out var x) ? x : "";
+    static long L(System.Text.Json.Nodes.JsonNode? n, string k) => n?[k] is System.Text.Json.Nodes.JsonValue v && v.TryGetValue<long>(out var x) ? x : 0;
+
+    protected override async Task OnInitializedAsync() { _ref = DotNetObjectReference.Create(this); await Carregar(); }
+
+    async Task Carregar()
+    {
+        var r = await E.Conta.Chamar("GET", "downloads");
+        if (!r.Ok || r.Json == null) { _erro = r.Erro; return; }
+        _erro = "";
+        _admin = r.Json["admin"]?.GetValue<bool>() ?? false;
+        _r2 = r.Json["r2"]?.GetValue<bool>() ?? false;
+        _itens = (r.Json["itens"] as System.Text.Json.Nodes.JsonArray ?? new()).Where(x => x != null)
+            .Select(x => new ItemDl((int)L(x, "id"), S(x, "titulo"), S(x, "descricao"), S(x, "imagem"), S(x, "arquivo"), S(x, "tipo"), L(x, "tamanho"), (int)L(x, "baixados"), S(x, "atualizadoEm"))).ToList();
+    }
+
+    IEnumerable<ItemDl> Filtrados()
+    {
+        var b = Core.Coordenacao.Ferias.Norm(_busca);
+        return _itens!.Where(d => b == "" || Core.Coordenacao.Ferias.Norm(d.Titulo + " " + d.Descricao + " " + d.Arquivo).Contains(b));
+    }
+
+    static readonly string[] Paleta = { "#0891B2", "#7C3AED", "#059669", "#DB2777", "#D97706", "#2563EB" };
+    static string Cor(string n) { int h = 0; foreach (var ch in n) h = unchecked(h * 31 + ch); return Paleta[(int)((uint)h % Paleta.Length)]; }
+    static string Ext(string n) { var i = n.LastIndexOf('.'); return i < 0 ? "ARQ" : n[(i + 1)..].ToUpperInvariant(); }
+    static string IconeTipo(string n) => Ext(n) switch { "XLSX" or "XLSM" or "CSV" => "grade-planilha", "PDF" => "pdf", "PPTX" => "apresentacao", "DOCX" => "documento", _ => "pacote" };
+    static string Tam(long b) => b >= 1024 * 1024 ? $"{b / 1024d / 1024d:0.0} MB".Replace('.', ',') : b >= 1024 ? $"{b / 1024} KB" : $"{b} B";
+    static string Data(string iso) => DateTime.TryParse(iso, null, System.Globalization.DateTimeStyles.RoundtripKind, out var d) ? d.ToLocalTime().ToString("dd/MM/yyyy") : "";
+
+    [JSInvokable] public Task Progresso(int p) { _pct = p; StateHasChanged(); return Task.CompletedTask; }
+
+    async Task Baixar(ItemDl d)
+    {
+        _baixando = d.Id; _pct = -1; StateHasChanged();
+        try { await JS.InvokeVoidAsync("qsmart.downloads.baixarArq", Conta.Base + "downloads/baixar?id=" + d.Id, E.Conta.Token, d.Arquivo, _ref); _ = E.Conta.Registrar("downloads.baixar", true); }
+        catch (JSException ex) { await J.Aviso("Downloads", ex.Message.Split('\n')[0]); }
+        finally { _baixando = 0; await Carregar(); StateHasChanged(); }
+    }
+
+    // ---------------- administrador ----------------
+    void Novo() => _form = new FormDl();
+    void Editar(ItemDl d) => _form = new FormDl { Id = d.Id, Titulo = d.Titulo, Descricao = d.Descricao, Imagem = d.Imagem, ArquivoAtual = d.Arquivo };
+
+    async Task EscolherImagem()
+    {
+        try { var url = await JS.InvokeAsync<string>("qsmart.downloads.capa", _inpImg); if (!string.IsNullOrEmpty(url)) { _form!.Imagem = url; _form.ImagemMudou = true; } }
+        catch (JSException) { await J.Aviso("Imagem", "Não consegui ler essa imagem. Use JPG ou PNG."); }
+    }
+
+    async Task EscolherArquivo()
+    {
+        var info = await JS.InvokeAsync<System.Text.Json.JsonElement?>("qsmart.downloads.arqInfo", _inpArq);
+        if (info is { } i && i.ValueKind == System.Text.Json.JsonValueKind.Object)
+        {
+            _form!.ArqNome = i.GetProperty("nome").GetString(); _form.ArqTam = i.GetProperty("tamanho").GetInt64();
+            if (_form.ArqTam > 100L * 1024 * 1024) { await J.Aviso("Arquivo", $"O arquivo tem {Tam(_form.ArqTam)}. O limite é de 100 MB por arquivo."); _form.ArqNome = null; }
+        }
+    }
+
+    async Task Salvar()
+    {
+        var f = _form!;
+        if (string.IsNullOrWhiteSpace(f.Titulo)) { await J.Aviso("Download", "Dê um título."); return; }
+        if (f.Id == 0 && f.ArqNome == null) { await J.Aviso("Download", "Escolha o arquivo para enviar."); return; }
+        _salvando = true; _pct = -1; _etapa = "Salvando…"; StateHasChanged();
+        try
+        {
+            var corpo = new System.Text.Json.Nodes.JsonObject { ["titulo"] = f.Titulo.Trim(), ["descricao"] = f.Descricao.Trim() };
+            if (f.Id == 0 || f.ImagemMudou) corpo["imagem"] = f.Imagem;
+            if (f.Id != 0) corpo["id"] = f.Id;
+            var r = await E.Conta.Chamar(f.Id == 0 ? "POST" : "PUT", "downloads", corpo);
+            if (!r.Ok) { await J.Aviso("Download", r.Erro); return; }
+            var id = (int)L(r.Json, "id");
+            if (f.ArqNome != null)
+            {
+                _etapa = "Enviando o arquivo…"; StateHasChanged();
+                var res = await JS.InvokeAsync<string>("qsmart.downloads.enviarArq", _inpArq, Conta.Base + "downloads/arquivo?id=" + id, E.Conta.Token, _ref);
+                var st = int.TryParse(res.Split('|')[0], out var s) ? s : 0;
+                if (st < 200 || st >= 300)
+                {
+                    string m; try { m = System.Text.Json.Nodes.JsonNode.Parse(res[(res.IndexOf('|') + 1)..])?["erro"]?.GetValue<string>() ?? $"Erro {st}"; } catch { m = $"Erro {st}"; }
+                    await Carregar();
+                    await J.Aviso("Arquivo", "Título e imagem foram salvos, mas o arquivo não subiu: " + m);
+                    _form = null; return;
+                }
+            }
+            _form = null;
+            await Carregar();
+            _ = E.Conta.Registrar("downloads.publicar", true);
+        }
+        catch (JSException ex) { await J.Aviso("Arquivo", ex.Message.Split('\n')[0]); }
+        finally { _salvando = false; _etapa = ""; StateHasChanged(); }
+    }
+
+    async Task Excluir(ItemDl d)
+    {
+        if (!await J.Pergunta("Excluir download", $"Excluir “{d.Titulo}” e o arquivo dele? Ninguém mais vai conseguir baixar.")) return;
+        var r = await E.Conta.Chamar("DELETE", "downloads?id=" + d.Id);
+        if (!r.Ok) { await J.Aviso("Excluir", r.Erro); return; }
+        await Carregar();
+    }
+
+    RenderFragment Formulario => @<text>
+        @{ var f = _form!; }
+        <div class="dl-form">
+            <div class="dl-form-cab"><b>@(f.Id == 0 ? "Novo download" : "Editar download")</b><button class="oo-x" title="Fechar" disabled="@_salvando" @onclick="() => _form = null"><Icone Nome="x" Tamanho="18" /></button></div>
+            <div class="dl-form-grade">
+                <label class="dl-form-capa" title="Escolher imagem de capa">
+                    @if (f.Imagem != "") { <img src="@f.Imagem" alt="" /> }
+                    else { <span><Icone Nome="imagem" Tamanho="30" /><small>Imagem de capa</small><em>JPG ou PNG · fica em 16:9</em></span> }
+                    <input type="file" accept="image/*" @ref="_inpImg" @onchange="EscolherImagem" />
+                </label>
+                <div class="dl-form-campos">
+                    <label>Título<input class="campo" maxlength="120" @bind="f.Titulo" @bind:event="oninput" placeholder="Ex.: Automação de conferência de pareceres" /></label>
+                    <label>Descrição <i>(opcional)</i><textarea class="campo area" rows="3" maxlength="600" @bind="f.Descricao" @bind:event="oninput" placeholder="O que tem no arquivo e como usar"></textarea></label>
+                    <label class="dl-form-arq">
+                        <Icone Nome="upload" Tamanho="18" />
+                        <span>@(f.ArqNome != null ? $"{f.ArqNome} · {Tam(f.ArqTam)}" : f.ArquivoAtual != "" ? $"Arquivo atual: {f.ArquivoAtual} (clique para trocar)" : "Escolher o arquivo (.zip, até 100 MB)")</span>
+                        <input type="file" @ref="_inpArq" @onchange="EscolherArquivo" />
+                    </label>
+                </div>
+            </div>
+            <div class="dl-form-pe">
+                @if (_salvando)
+                {
+                    <div class="dl-prog grande"><i style="width:@(Math.Max(_pct, 3))%"></i><span>@_etapa @(_pct >= 0 && _etapa.StartsWith("Enviando") ? $"{_pct}%" : "")</span></div>
+                }
+                else
+                {
+                    <button class="btn btn-sec" @onclick="() => _form = null">Cancelar</button>
+                    <button class="btn btn-pri" @onclick="Salvar"><Icone Nome="check" Tamanho="16" /> @(f.Id == 0 ? "Publicar" : "Salvar")</button>
+                }
+            </div>
+        </div>
+    </text>;
+
+    public override void Dispose() { base.Dispose(); _ref?.Dispose(); }
+}

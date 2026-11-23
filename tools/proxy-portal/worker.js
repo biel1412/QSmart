@@ -46,6 +46,9 @@ export default {
       }
       const h = new Headers(cors);
       h.set("Content-Type", r.headers.get("Content-Type") || "application/json");
+      // arquivos (Downloads): tamanho e nome vão junto, para a barra de progresso e o nome do arquivo
+      for (const k of ["Content-Length", "Content-Disposition"]) if (r.headers.get(k)) h.set(k, r.headers.get(k));
+      h.set("Access-Control-Expose-Headers", "Content-Length, Content-Disposition");
       return new Response(r.body, { status: r.status, headers: h });
     } catch (e) {
       return new Response(JSON.stringify({ erro: "Falha no servidor: " + (e && e.message || e) }), { status: 500, headers: { ...cors, "Content-Type": "application/json" } });
@@ -1345,6 +1348,65 @@ async function api(req, env, url) {
       return json({ ok: true, msg: { id: r.meta?.last_row_id || 0, de: u.id, para, texto, em, lida: false, expira: new Date(Date.parse(em) + CHAT_DIAS * 864e5).toISOString() } });
     }
     return erro("Rota do chat não encontrada.", 404);
+  }
+
+  // ---------- Downloads: o administrador publica arquivos (zip de automações, materiais); todos baixam ----------
+  if (rota.startsWith("downloads")) {
+    const admin = u.papel === "admin";
+    const semR2 = () => erro("O armazenamento de arquivos (R2) ainda não está ligado ao servidor. Peça ao administrador para ativar.", 503, { motivo: "r2" });
+    const item = x => ({ id: x.id, titulo: x.titulo, descricao: x.descricao, imagem: x.imagem, arquivo: x.arquivo_nome, tipo: x.tipo, tamanho: x.tamanho,
+      baixados: x.baixados, criadoEm: x.criado_em, atualizadoEm: x.atualizado_em });
+    const MAX = 100 * 1024 * 1024;
+    if (rota === "downloads" && m === "GET") {
+      const r = (await env.DB.prepare("SELECT * FROM downloads ORDER BY atualizado_em DESC").all()).results || [];
+      return json({ itens: r.map(item), admin, r2: !!env.ARQUIVOS, maxMb: 100 });
+    }
+    if (rota === "downloads/baixar" && m === "GET") {
+      const x = await env.DB.prepare("SELECT * FROM downloads WHERE id = ?").bind(Number(url.searchParams.get("id")) || 0).first();
+      if (!x || !x.arquivo_nome) return erro("Arquivo não encontrado.", 404);
+      if (!env.ARQUIVOS) return semR2();
+      const o = await env.ARQUIVOS.get("downloads/" + x.id);
+      if (!o) return erro("Arquivo não encontrado no armazenamento.", 404);
+      if (!u._visao) await env.DB.prepare("UPDATE downloads SET baixados = baixados + 1 WHERE id = ?").bind(x.id).run();
+      return new Response(o.body, { headers: { "Content-Type": x.tipo || "application/octet-stream", "Content-Length": String(o.size),
+        "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(x.arquivo_nome)}` } });
+    }
+    if (!admin) return erro("Só o administrador publica e edita os downloads.", 403);
+    if (rota === "downloads" && (m === "POST" || m === "PUT")) {
+      const b = await corpo(req);
+      const titulo = String(b.titulo || "").trim().slice(0, 120), descricao = String(b.descricao || "").trim().slice(0, 600);
+      const imagem = typeof b.imagem === "string" ? b.imagem : null;
+      if (!titulo) return erro("Dê um título ao download.");
+      if (imagem && (!imagem.startsWith("data:image/") || imagem.length > 600000)) return erro("Imagem inválida ou grande demais.");
+      if (m === "POST") {
+        const r = await env.DB.prepare("INSERT INTO downloads (titulo, descricao, imagem, criado_em, atualizado_em, por) VALUES (?, ?, ?, ?, ?, ?)")
+          .bind(titulo, descricao, imagem || "", agora(), agora(), u.id).run();
+        return json({ ok: true, id: r.meta?.last_row_id || 0 });
+      }
+      const id = Number(b.id) || 0;
+      if (!await env.DB.prepare("SELECT id FROM downloads WHERE id = ?").bind(id).first()) return erro("Download não encontrado.", 404);
+      await env.DB.prepare("UPDATE downloads SET titulo = ?, descricao = ?, imagem = COALESCE(?, imagem), atualizado_em = ? WHERE id = ?").bind(titulo, descricao, imagem, agora(), id).run();
+      return json({ ok: true, id });
+    }
+    if (rota === "downloads/arquivo" && m === "PUT") {
+      const id = Number(url.searchParams.get("id")) || 0;
+      const nome = String(url.searchParams.get("nome") || "arquivo").replace(/[\\/:*?"<>|]+/g, "_").slice(0, 150);
+      if (!await env.DB.prepare("SELECT id FROM downloads WHERE id = ?").bind(id).first()) return erro("Download não encontrado.", 404);
+      if (!env.ARQUIVOS) return semR2();
+      const tam = Number(req.headers.get("Content-Length") || 0);
+      if (tam > MAX) return erro("O arquivo passa de 100 MB.", 413);
+      const tipo = (req.headers.get("Content-Type") || "application/octet-stream").slice(0, 100);
+      const o = await env.ARQUIVOS.put("downloads/" + id, req.body, { httpMetadata: { contentType: tipo } });
+      await env.DB.prepare("UPDATE downloads SET arquivo_nome = ?, tipo = ?, tamanho = ?, atualizado_em = ? WHERE id = ?").bind(nome, tipo, o ? o.size : tam, agora(), id).run();
+      return json({ ok: true, tamanho: o ? o.size : tam });
+    }
+    if (rota === "downloads" && m === "DELETE") {
+      const id = Number(url.searchParams.get("id")) || 0;
+      if (env.ARQUIVOS) await env.ARQUIVOS.delete("downloads/" + id);
+      await env.DB.prepare("DELETE FROM downloads WHERE id = ?").bind(id).run();
+      return json({ ok: true });
+    }
+    return erro("Rota de downloads não encontrada.", 404);
   }
 
   if (rota === "notif" && m === "GET") {

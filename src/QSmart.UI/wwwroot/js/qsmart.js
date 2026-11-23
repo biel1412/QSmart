@@ -1221,7 +1221,46 @@
   const clicar = el => { if (el) el.click(); };
   nota.ver = (el, html) => { if (el) { el.contentEditable = "false"; el.innerHTML = limpar(html) || ""; } };
   const trocarUrl = (u, titulo) => { try { history.replaceState(history.state, "", u); } catch { } if (titulo) document.title = titulo; };
+  // ---------- Downloads: arquivos grandes vão e vêm direto pelo navegador, com progresso ----------
+  // capa: imagem 16:9 reduzida (até 960 px de largura)
+  const capa = async (input) => {
+    const f = input && input.files && input.files[0]; if (!f) return "";
+    const bmp = await createImageBitmap(f);
+    const w = Math.min(960, bmp.width), h = Math.round(w * bmp.height / bmp.width);
+    const c = document.createElement("canvas"); c.width = w; c.height = h;
+    c.getContext("2d").drawImage(bmp, 0, 0, w, h);
+    input.value = "";
+    return c.toDataURL("image/jpeg", 0.82);
+  };
+  const arqInfo = input => { const f = input && input.files && input.files[0]; return f ? { nome: f.name, tamanho: f.size } : null; };
+  const enviarArq = (input, url, token, ref) => new Promise((ok, falha) => {
+    const f = input && input.files && input.files[0]; if (!f) { falha(new Error("Escolha o arquivo.")); return; }
+    const x = new XMLHttpRequest();
+    x.open("PUT", url + (url.includes("?") ? "&" : "?") + "nome=" + encodeURIComponent(f.name));
+    x.setRequestHeader("Authorization", "Bearer " + token);
+    x.setRequestHeader("Content-Type", f.type || "application/octet-stream");
+    x.upload.onprogress = e => { if (e.lengthComputable && ref) ref.invokeMethodAsync("Progresso", Math.round(e.loaded * 100 / e.total)); };
+    x.onload = () => { input.value = ""; ok(x.status + "|" + x.responseText); };
+    x.onerror = () => falha(new Error("Falha de conexão ao enviar o arquivo."));
+    x.send(f);
+  });
+  const baixarArq = async (url, token, nome, ref) => {
+    const r = await fetch(url, { headers: { Authorization: "Bearer " + token } });
+    if (!r.ok) { let m = "Erro " + r.status; try { m = (await r.json()).erro || m; } catch { } throw new Error(m); }
+    const total = Number(r.headers.get("Content-Length") || 0);
+    const leitor = r.body.getReader(); const partes = []; let lido = 0, ultimo = -1;
+    for (;;) {
+      const { done, value } = await leitor.read(); if (done) break;
+      partes.push(value); lido += value.length;
+      const p = total ? Math.round(lido * 100 / total) : -1;
+      if (ref && p !== ultimo && p % 2 === 0) { ultimo = p; ref.invokeMethodAsync("Progresso", p); }
+    }
+    const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob(partes, { type: r.headers.get("Content-Type") || "application/octet-stream" }));
+    a.download = nome; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 30000);
+  };
+  const downloads = { capa, arqInfo, enviarArq, baixarArq };
   // chat: rola até a última mensagem só se a pessoa já estava perto do fim (ou se pedir)
   const chatFim = (el, forcar) => { if (!el) return; if (forcar || el.scrollHeight - el.scrollTop - el.clientHeight < 140) el.scrollTop = el.scrollHeight; };
-  window.qsmart = { chatFim, kv, cofre, rolar, ia, get, getH, req, reduzirImagem, imagem, nota, doc, grade, tela, lsGet, lsSet, lsDel, colarImagens, clicar, trocarUrl, pasta, baixar, abrir, copiar, abrirUrl, pdfPaginas, pdfJuntar, pdfLinhas, tema, aoOcultar, focar, rolarLinha, pronto };
+  window.qsmart = { downloads, chatFim, kv, cofre, rolar, ia, get, getH, req, reduzirImagem, imagem, nota, doc, grade, tela, lsGet, lsSet, lsDel, colarImagens, clicar, trocarUrl, pasta, baixar, abrir, copiar, abrirUrl, pdfPaginas, pdfJuntar, pdfLinhas, tema, aoOcultar, focar, rolarLinha, pronto };
 })();

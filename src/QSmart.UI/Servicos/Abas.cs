@@ -47,6 +47,8 @@ public static class Abas
             "Ficha 360 de um CNPJ (cadastro, sócios, linha do tempo, Junta Comercial e checagens públicas) e análise de CPF com finalidade, sem salvar nada.", "radar-smart360"),
         new("pacote", "Pacote Smart", "Pacote Smart", "pacote", "Extensão",
             "Smart Write (textos, como o Word), Smart Math (planilhas com fórmulas e gráficos, como o Excel) e Smart Note (cadernos, como o OneNote) num lugar só.", "pacote-smart"),
+        new("downloads", "Downloads", "Downloads", "download", "Ferramentas",
+            "Automações, modelos e materiais para baixar: cada item tem título, imagem e o arquivo. Quem publica é o administrador.", "downloads"),
         new("depurador", "Depurador de leitura", "Depurador", "depurador", "Ferramentas",
             "Mostra, linha a linha, o que o sistema lê de uma planilha e o que fica de fora.", "depurador"),
         new("insitalent", "InsiTalent", "InsiTalent", "talento", "Ferramentas",
@@ -74,7 +76,7 @@ public static class Abas
     public static Aba? PorRota(string rota) => Todas.FirstOrDefault(a => a.Rota == rota) ?? Internas.FirstOrDefault(a => a.Rota == rota);
 
     /// <summary>Ordem da lista de abas nas Configurações (igual ao original).</summary>
-    public static readonly string[] OrdemConfig = { "resumo", "usuarios", "evolucao", "inspecao", "volume", "monitor", "corredor", "estrategia", "dayoffpedir", "historico", "pareceres", "dayoff", "ferias", "pontos", "oneaone", "servicos3069", "radar360", "pacote", "depurador", "insitalent", "mesa" };
+    public static readonly string[] OrdemConfig = { "resumo", "usuarios", "evolucao", "inspecao", "volume", "monitor", "corredor", "estrategia", "dayoffpedir", "historico", "pareceres", "dayoff", "ferias", "pontos", "oneaone", "servicos3069", "radar360", "pacote", "downloads", "depurador", "insitalent", "mesa" };
 
     public static readonly string[] Grupos = { "Decisões", "Inspeção", "Conformidade", "Operação", "Coordenação", "Relacionamento e cooperativas", "Extensão", "Ferramentas" };
 
