@@ -436,8 +436,61 @@ async function api(req, env, url) {
       const status = ["ativo", "pendente", "bloqueado"].includes(b.status) ? b.status : alvo.status;
       const lideranca = typeof b.lideranca === "string" ? b.lideranca.trim().slice(0, 80) : alvo.lideranca;
       await env.DB.prepare("UPDATE usuarios SET papel = ?, status = ?, lideranca = ? WHERE id = ?").bind(papel, status, lideranca, alvo.id).run();
+      // o coordenador mudou o nome da coordenação: as pessoas dele acompanham
+      if (alvo.papel === "coordenador" && papel === "coordenador" && lideranca !== (alvo.lideranca || "")) {
+        const antigo = coordDoUsuario(alvo), novo = coordDoUsuario({ ...alvo, lideranca });
+        if (normN(antigo) !== normN(novo)) {
+          const r = await env.DB.prepare("SELECT id, coordenacao, dados FROM oo_pessoas WHERE id != ? AND coordenacao != ''").bind(META_OO).all();
+          const q = [];
+          for (const x of r.results || []) {
+            if (!mesmaCoord(x.coordenacao, antigo)) continue;
+            let o; try { o = JSON.parse(await decifrar(env, x.dados)); } catch { continue; }
+            if (o.Pessoas && o.Pessoas[0]) o.Pessoas[0].Coordenacao = novo;
+            q.push(env.DB.prepare("UPDATE oo_pessoas SET coordenacao = ?, dados = ? WHERE id = ?").bind(novo, await cifrar(env, JSON.stringify(o)), x.id));
+          }
+          for (let i = 0; i < q.length; i += 80) await env.DB.batch(q.slice(i, i + 80));
+        }
+      }
       if (status !== "ativo") await env.DB.prepare("DELETE FROM sessoes WHERE usuario_id = ?").bind(alvo.id).run();
       return json({ ok: true });
+    }
+    // ---------- equipes (lideranças) de cada coordenação: listar, mover para outra coordenação ou tirar ----------
+    if (rota === "admin/equipes" && m === "GET") {
+      const r = await env.DB.prepare("SELECT id, lideranca, coordenacao, dados FROM oo_pessoas WHERE id != ?").bind(META_OO).all();
+      const coords = ((await env.DB.prepare("SELECT id, nome, sobrenome, lideranca, papel FROM usuarios WHERE papel = 'coordenador'").all()).results || []);
+      const grupos = new Map();
+      for (const x of r.results || []) {
+        let arq = false;
+        try { const p = (JSON.parse(await decifrar(env, x.dados)).Pessoas || [])[0]; arq = !!(p && p.Arquivado); } catch { }
+        if (arq) continue;
+        const dono = x.coordenacao ? coords.find(c => mesmaCoord(x.coordenacao, coordDoUsuario(c))) : null;
+        const chave = normN(x.lideranca) + "|" + (dono ? "u" + dono.id : normN(x.coordenacao));
+        const g = grupos.get(chave) || { lideranca: x.lideranca || "", coordenacao: x.coordenacao || "", coordenadorId: dono ? dono.id : 0, pessoas: 0 };
+        g.pessoas++; grupos.set(chave, g);
+      }
+      return json({ equipes: [...grupos.values()].sort((a, b) => a.lideranca.localeCompare(b.lideranca, "pt-BR")) });
+    }
+    if (rota === "admin/equipes" && m === "POST") {
+      const b = await corpo(req);
+      const lid = String(b.lideranca || "").trim(), de = String(b.de || "");
+      let para = "";
+      if (b.para) {
+        const c = await env.DB.prepare("SELECT id, nome, sobrenome, lideranca, papel FROM usuarios WHERE id = ?").bind(Number(b.para)).first();
+        if (!c || c.papel !== "coordenador") return erro("Escolha um coordenador.");
+        para = coordDoUsuario(c);
+      }
+      const r = await env.DB.prepare("SELECT id, coordenacao, dados FROM oo_pessoas WHERE id != ?").bind(META_OO).all();
+      const q = [];
+      for (const x of r.results || []) {
+        let o; try { o = JSON.parse(await decifrar(env, x.dados)); } catch { continue; }
+        const p = (o.Pessoas || [])[0]; if (!p) continue;
+        if (normN(p.Lideranca) !== normN(lid)) continue;
+        if (de ? !mesmaCoord(x.coordenacao, de) : !!x.coordenacao) continue;
+        p.Coordenacao = para;
+        q.push(env.DB.prepare("UPDATE oo_pessoas SET coordenacao = ?, dados = ?, atualizado_em = ?, atualizado_por = ? WHERE id = ?").bind(para, await cifrar(env, JSON.stringify(o)), agora(), u.id, x.id));
+      }
+      for (let i = 0; i < q.length; i += 80) await env.DB.batch(q.slice(i, i + 80));
+      return json({ ok: true, pessoas: q.length, para });
     }
     if (rota === "admin/recuperacao" && m === "POST") {
       const b = await corpo(req);

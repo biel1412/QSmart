@@ -184,8 +184,13 @@
             @if (_usuarios == null) { <p class="muted"><span class="ia-spin pequeno"></span> Carregando…</p> }
             else
             {
+                @if (_equipes?.Where(g => g.CoordenadorId == 0).ToList() is { Count: > 0 } soltas)
+                {
+                    <div class="pf-eq-soltas"><Icone Nome="alerta" Tamanho="15" />
+                        <span><b>@soltas.Count equipe(s) sem coordenação</b> (só o administrador vê): @string.Join(", ", soltas.Select(g => $"{(g.Lideranca == "" ? "sem liderança" : g.Lideranca)} ({g.Pessoas})")). Atrele cada uma a um coordenador em “+ equipe”.</span></div>
+                }
                 <div class="pf-card pf-equipe">
-                    <div class="pf-eq-cab"><span>Pessoa</span><span>Papel</span><span>Equipe (liderança)</span><span>Situação</span><span></span></div>
+                    <div class="pf-eq-cab"><span>Pessoa</span><span>Papel</span><span>Equipes</span><span>Situação</span><span></span></div>
                     @foreach (var u in _usuarios)
                     {
                         var eu = u.Id == p.Id;
@@ -195,7 +200,44 @@
                                 <option value="usuario">Usuário</option><option value="lideranca">Liderança</option>
                                 <option value="coordenador">Coordenador</option><option value="admin">Administrador</option>
                             </select>
-                            <input class="campo" placeholder="@(u.Papel == "coordenador" ? "nome da coordenação (opcional)" : "—")" title="@(u.Papel == "coordenador" ? "A coordenação leva o nome do coordenador. Para usar outro nome (ex.: Coordenação Norte), escreva aqui." : "")" value="@u.Lideranca" @onchange="e => MudarEquipe(u, e.Value?.ToString())" />
+                            <div class="pf-eqs">
+                                @if (u.Papel == "coordenador")
+                                {
+                                    @foreach (var g in (_equipes ?? new()).Where(g => g.CoordenadorId == u.Id))
+                                    {
+                                        var gg = g;
+                                        bool aberto = _eqMenu == (u.Id, g.Lideranca);
+                                        <span class="pf-eq-chip @(aberto ? "on" : "")">
+                                            <button class="pf-eq-chip-bt" @onclick="() => _eqMenu = aberto ? null : (u.Id, gg.Lideranca)" title="Mover ou tirar esta equipe"><b>@(g.Lideranca == "" ? "sem liderança" : g.Lideranca)</b> · @g.Pessoas</button>
+                                            @if (aberto)
+                                            {
+                                                <span class="pf-eq-menu">
+                                                    <small>Equipe @(g.Lideranca) · @g.Pessoas pessoa(s)</small>
+                                                    <select class="campo" value="0" @onchange="e => MoverEquipe(gg, u, e.Value?.ToString())">
+                                                        <option value="0">Mover para…</option>
+                                                        @foreach (var c in _usuarios!.Where(x => x.Papel == "coordenador" && x.Id != u.Id)) { <option value="@c.Id">@c.Nome @c.Sobrenome</option> }
+                                                    </select>
+                                                    <button class="btn btn-sec btn-peq" @onclick="() => TirarEquipe(gg, u)">Tirar da coordenação</button>
+                                                </span>
+                                            }
+                                        </span>
+                                    }
+                                    <select class="campo pf-eq-add" value="" @onchange="e => AdicionarEquipe(u, e.Value?.ToString())" title="Trazer uma equipe para esta coordenação">
+                                        <option value="">+ equipe</option>
+                                        @foreach (var (g, i) in (_equipes ?? new()).Select((g, i) => (g, i)).Where(t => t.g.CoordenadorId != u.Id))
+                                        {
+                                            <option value="@i">@(g.Lideranca == "" ? "sem liderança" : g.Lideranca) · @g.Pessoas@(g.CoordenadorId == 0 ? " (sem coordenação)" : $" (hoje: {NomeCoord(g.CoordenadorId)})")</option>
+                                        }
+                                    </select>
+                                }
+                                else if (u.Papel == "lideranca")
+                                {
+                                    var minhas = (_equipes ?? new()).Where(g => Norm(g.Lideranca) == Norm($"{u.Nome} {u.Sobrenome}")).ToList();
+                                    @if (minhas.Count == 0) { <small class="pf-eq-info">Nenhuma equipe com o nome dela na base</small> }
+                                    @foreach (var g in minhas) { <small class="pf-eq-info">Equipe de @g.Pessoas pessoa(s) · @(g.CoordenadorId == 0 ? "sem coordenação" : $"coordenação de {NomeCoord(g.CoordenadorId)}")</small> }
+                                }
+                                else { <small class="pf-eq-info">—</small> }
+                            </div>
                             <span class="pf-st @u.Status">@(u.Status switch { "ativo" => "Ativo", "pendente" => "Aguardando aprovação", _ => "Bloqueado" })</span>
                             <div class="pf-eq-ac">
                                 @if (u.Status == "pendente") { <button class="btn btn-pri rx-mini" @onclick="() => Status(u, Ativo)">Aprovar</button> }
@@ -399,7 +441,52 @@
         await E.Conta.Sair();
     }
 
-    async Task CarregarUsuarios() { _usuarios = null; StateHasChanged(); _usuarios = await E.Conta.Usuarios() ?? new(); }
+    async Task CarregarUsuarios() { _usuarios = null; StateHasChanged(); _usuarios = await E.Conta.Usuarios() ?? new(); await LerEquipes(); }
+
+    // ---------- equipes (lideranças) de cada coordenação ----------
+    sealed record EquipeAdm(string Lideranca, string Coordenacao, int CoordenadorId, int Pessoas);
+    List<EquipeAdm>? _equipes;
+    (int, string)? _eqMenu;
+
+    async Task LerEquipes()
+    {
+        var r = await E.Conta.Chamar("GET", "admin/equipes");
+        _equipes = (r.Json?["equipes"] as System.Text.Json.Nodes.JsonArray ?? new()).Select(x => new EquipeAdm(Txt(x, "lideranca"), Txt(x, "coordenacao"), Num(x, "coordenadorId"), Num(x, "pessoas"))).ToList();
+    }
+
+    string NomeCoord(int id) => _usuarios?.FirstOrDefault(x => x.Id == id) is { } c ? $"{c.Nome} {c.Sobrenome}" : "?";
+
+    async Task Mover(EquipeAdm g, int para, string pergunta)
+    {
+        if (!await J.Pergunta("Equipes", pergunta)) { _eqMenu = null; StateHasChanged(); return; }
+        var r = await E.Conta.Chamar("POST", "admin/equipes", new System.Text.Json.Nodes.JsonObject { ["lideranca"] = g.Lideranca, ["de"] = g.Coordenacao, ["para"] = para });
+        _eqMenu = null;
+        if (!r.Ok) { await J.Erro("Equipes", r.Erro); return; }
+        E.OneBase = null; E.FeColabs = null;
+        await LerEquipes();
+        if (E.Conta.Perfil?.Coordenacao == true) await LerBase();
+    }
+
+    async Task AdicionarEquipe(UsuarioAdmin u, string? v)
+    {
+        if (!int.TryParse(v, out var i) || _equipes == null || i < 0 || i >= _equipes.Count) return;
+        var g = _equipes[i];
+        var nomeL = g.Lideranca == "" ? "sem liderança" : g.Lideranca;
+        await Mover(g, u.Id, $"Trazer a equipe “{nomeL}” ({g.Pessoas} pessoa(s)){(g.CoordenadorId == 0 ? "" : $", que hoje é de {NomeCoord(g.CoordenadorId)},")} para a coordenação de {u.Nome} {u.Sobrenome}?\n\nO One a One e as Férias dessas pessoas passam a ser de {u.Nome}.");
+    }
+
+    async Task MoverEquipe(EquipeAdm g, UsuarioAdmin de, string? v)
+    {
+        if (!int.TryParse(v, out var para) || para == 0) return;
+        var nomeL = g.Lideranca == "" ? "sem liderança" : g.Lideranca;
+        await Mover(g, para, $"Mover a equipe “{nomeL}” ({g.Pessoas} pessoa(s)) de {de.Nome} {de.Sobrenome} para {NomeCoord(para)}?\n\nO One a One (com o histórico de 1:1) e as Férias dessas pessoas vão junto.");
+    }
+
+    async Task TirarEquipe(EquipeAdm g, UsuarioAdmin de)
+    {
+        var nomeL = g.Lideranca == "" ? "sem liderança" : g.Lideranca;
+        await Mover(g, 0, $"Tirar a equipe “{nomeL}” ({g.Pessoas} pessoa(s)) da coordenação de {de.Nome} {de.Sobrenome}?\n\nAs pessoas e o histórico continuam guardados, mas ficam sem coordenação (só o administrador vê) até você atrelar a outro coordenador.");
+    }
 
     async Task Aplicar(Task<RespostaApi> t)
     {
