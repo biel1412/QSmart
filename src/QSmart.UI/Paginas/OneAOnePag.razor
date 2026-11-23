@@ -385,19 +385,44 @@
     </text>;
 
     RenderFragment Ficha => @<text>
-        @{ var p = _ficha!; var f = OneAOne.Faltam(p, _hoje); var fx = OneAOne.Faixa(p, _hoje); var prox = OneAOne.Proximo(p, _hoje); var vira = OneAOne.ViraAntigoEm(p); }
+        @{ var p = _ficha!; var f = OneAOne.Faltam(p, _hoje); var fx = OneAOne.Faixa(p, _hoje); var prox = OneAOne.Proximo(p, _hoje); var vira = OneAOne.ViraAntigoEm(p);
+           int ciclo = OneAOne.Ciclo(p, _hoje); var ult = p.Ultimo; int? desde = ult is DateOnly uu ? _hoje.DayNumber - uu.DayNumber : null;
+           var regs = p.Registros.OrderByDescending(r => r.Data).ToList();
+           var inter = regs.Zip(regs.Skip(1), (a, b) => a.Data.DayNumber - b.Data.DayNumber).ToList();
+           int? media = inter.Count == 0 ? null : (int)Math.Round(inter.Average());
+           int ano = p.Registros.Count(r => r.Data > _hoje.AddYears(-1));
+           double uso = desde is int dd ? Math.Clamp(dd / (double)ciclo, 0, 1.15) : 1.15; }
         <div class="oo-fundo" @onclick="Fechar"></div>
         <div class="oo-ficha" style="--l:@CorLider(p.Lideranca)">
             <div class="oo-ficha-cab">
                 <span class="oo-av grande" style="background:@CorLider(p.Lideranca)">@Iniciais(p.Nome)</span>
                 <div>
                     <b>@p.Nome</b>
-                    <small>@(p.Arquivado ? $"Arquivado em {p.ArquivadoEm:dd/MM/yyyy}" : $"Próximo 1:1: {(prox is DateOnly d ? d.ToString("dd/MM/yyyy") : "agendar")}")</small>
+                    <small>@(p.Lideranca == "" ? "sem liderança" : p.Lideranca) · @(OneAOne.EhNovo(p, _hoje) ? "Novo" : "Antigo")</small>
                 </div>
                 <span class="oo-st @Cls(fx)">@(p.Arquivado ? "arquivado" : f == null ? "sem 1:1" : f < 0 ? $"{-f} d atrasado" : f <= OneAOne.Chegando ? $"em {f} d" : "em dia")</span>
                 <button class="oo-x" @onclick="Fechar" title="Fechar"><Icone Nome="x" Tamanho="18" /></button>
             </div>
             <div class="oo-ficha-corpo">
+                @if (!p.Arquivado)
+                {
+                    <div class="of-ciclo @Cls(fx)">
+                        <div class="of-ciclo-txt">
+                            <span>@(desde is int d0 ? (d0 == 0 ? "1:1 feito hoje" : $"{Ferias.Plural(d0, "dia", "dias")} desde o último 1:1") : "Nenhum 1:1 registrado ainda")</span>
+                            <b>@(prox is DateOnly pd ? $"próximo {pd:dd/MM/yyyy}" : "agendar")</b>
+                        </div>
+                        <div class="of-ciclo-barra"><i style="width:@((Math.Min(uso, 1) * 100).ToString("0", System.Globalization.CultureInfo.InvariantCulture))%"></i><em title="limite do ciclo"></em></div>
+                        <small>Ciclo de @ciclo dias (@(OneAOne.EhNovo(p, _hoje) ? "colaborador novo" : "colaborador antigo"))@(vira is DateOnly va && OneAOne.EhNovo(p, _hoje) ? $" · vira Antigo em {va:dd/MM/yyyy}" : "")</small>
+                    </div>
+                }
+                else { <p class="muted pequeno">Arquivado em @p.ArquivadoEm?.ToString("dd/MM/yyyy"). O histórico continua guardado.</p> }
+
+                <div class="of-stats">
+                    <div><small>Último 1:1</small><b>@(ult is DateOnly u1 ? u1.ToString("dd/MM/yy") : "—")</b><span>@(desde is int d1 ? (d1 == 0 ? "hoje" : $"há {Ferias.Plural(d1, "dia", "dias")}") : "nunca")</span></div>
+                    <div><small>1:1 feitos</small><b>@p.Registros.Count</b><span>@ano nos últimos 12 meses</span></div>
+                    <div class="@(media is int m0 && m0 > ciclo ? "r" : media != null ? "g" : "")"><small>Intervalo médio</small><b>@(media is int m1 ? $"{m1} d" : "—")</b><span>@(media is int m2 ? (m2 > ciclo ? $"acima dos {ciclo} d" : $"dentro dos {ciclo} d") : "precisa de 2 registros")</span></div>
+                </div>
+
                 <div class="oo-campos">
                     <label>Liderança
                         <select class="campo" value="@p.Lideranca" disabled="@(!E.OneGere)" @onchange="e => MudarLideranca(p, e.Value?.ToString() ?? p.Lideranca)">
@@ -408,44 +433,114 @@
                             <option value="Novo">Novo (30 dias)</option><option value="Antigo">Antigo (90 dias)</option>
                         </select></label>
                 </div>
-                @if (vira is DateOnly va && OneAOne.EhNovo(p, _hoje)) { <p class="muted pequeno">Vira Antigo em @va.ToString("dd/MM/yyyy").</p> }
 
-                @if (!p.Arquivado)
+                @if (_feito != null)
                 {
-                    <div class="oo-form">
-                        <b>Registrar 1:1 feito</b>
-                        <div class="oo-campos">
-                            <label>Data<input class="campo" type="date" value="@_fData" @onchange="@(e => _fData = e.Value?.ToString() ?? "")" /></label>
-                            <label>Prazo da ação<input class="campo" type="date" value="@_fPrazo" @onchange="@(e => _fPrazo = e.Value?.ToString() ?? "")" /></label>
+                    var prx = ProximoDaFila(p);
+                    <div class="of-ok">
+                        <div class="of-ok-ic"><Icone Nome="check" Tamanho="30" /></div>
+                        <b>1:1 registrado!</b>
+                        <span>@p.Nome voltou para <em class="g">Em dia</em>@(_feitoAntes != FaixaOO.EmDia ? $" (estava {(_feitoAntes == FaixaOO.Atrasado ? "atrasado" : "chegando")})" : "").</span>
+                        <div class="of-ok-info">
+                            <div><small>Data do 1:1</small><b>@_feito.Data.ToString("dd/MM/yyyy")</b></div>
+                            <div><small>Próximo 1:1</small><b>@(prox?.ToString("dd/MM/yyyy"))</b><span>@(f is int f2 ? $"daqui a {Ferias.Plural(f2, "dia", "dias")}" : "")</span></div>
                         </div>
-                        <label>O que foi conversado<textarea class="campo area" rows="3" @bind="_fObs" placeholder="Pontos da conversa, como a pessoa está, feedbacks…"></textarea></label>
-                        <label>Ação combinada (opcional)<input class="campo" @bind="_fAcao" placeholder="Ex.: fazer o treinamento X até a data" /></label>
-                        <button class="btn btn-pri" @onclick="() => RegistrarFicha(p)"><Icone Nome="check" Tamanho="15" /> 1:1 feito</button>
+                        @if (_feito.Acao != "") { <div class="of-ok-acao"><Icone Nome="lista-check" Tamanho="14" /> Ação combinada: <b>@_feito.Acao</b>@(_feito.AcaoPrazo is DateOnly ap ? $" até {ap:dd/MM}" : "")</div> }
+                        <div class="of-ok-bts">
+                            @if (prx != null) { <button class="btn btn-pri" @onclick="() => Abrir(prx)">Próximo da fila: @Curto(prx.Nome) <Icone Nome="direita" Tamanho="14" /></button> }
+                            <button class="btn btn-sec" @onclick="Fechar">Fechar</button>
+                        </div>
+                    </div>
+                }
+                else if (!p.Arquivado)
+                {
+                    <div class="oo-form of-form">
+                        <div class="of-form-cab"><b>Registrar 1:1</b>
+                            <span class="of-dias">
+                                <button class="@(_fData == Iso(_hoje) ? "on" : "")" @onclick="() => _fData = Iso(_hoje)">Hoje</button>
+                                <button class="@(_fData == Iso(_hoje.AddDays(-1)) ? "on" : "")" @onclick="() => _fData = Iso(_hoje.AddDays(-1))">Ontem</button>
+                                <input class="campo" type="date" value="@_fData" max="@Iso(_hoje)" @onchange="@(e => _fData = e.Value?.ToString() ?? "")" />
+                            </span>
+                        </div>
+                        <div class="of-clima">
+                            <small>Como a pessoa está?</small>
+                            <div>
+                                @for (int c = 1; c <= 4; c++)
+                                {
+                                    var cc = c;
+                                    <button class="@(_fClima == cc ? "on" : "") c@(cc)" @onclick="() => _fClima = _fClima == cc ? null : cc" title="@ClimaNome(cc)"><span>@ClimaEmoji(cc)</span>@ClimaNome(cc)</button>
+                                }
+                            </div>
+                        </div>
+                        <label>O que foi conversado<textarea class="campo area" rows="3" @bind="_fObs" @bind:event="oninput" placeholder="Pontos da conversa, como a pessoa está, feedbacks…"></textarea></label>
+                        <div class="of-acao">
+                            <label>Ação combinada<input class="campo" @bind="_fAcao" @bind:event="oninput" placeholder="Opcional · ex.: fazer o treinamento X" /></label>
+                            <label>Até<input class="campo" type="date" min="@_fData" value="@_fPrazo" disabled="@(_fAcao.Trim() == "")" @onchange="@(e => _fPrazo = e.Value?.ToString() ?? "")" /></label>
+                        </div>
+                        <button class="btn btn-pri of-reg" @onclick="() => RegistrarFicha(p)"><Icone Nome="check" Tamanho="16" /> Registrar 1:1 de @(DeIso(_fData) is DateOnly fd ? (fd == _hoje ? "hoje" : fd.ToString("dd/MM")) : "…")</button>
                     </div>
                 }
 
                 @{ var abertas = p.Registros.Where(r => r.Acao != "" && !r.AcaoFeita).OrderBy(r => r.AcaoPrazo ?? DateOnly.MaxValue).ToList(); }
                 @if (abertas.Count > 0)
                 {
-                    <div class="oo-sec"><b>Ações em aberto</b>
+                    <div class="oo-sec"><b>Ações em aberto (@abertas.Count)</b>
                         @foreach (var r in abertas)
                         {
-                            <label class="oo-chk"><input type="checkbox" @onchange="() => { r.AcaoFeita = true; Salvar(); }" />
-                                <span>@r.Acao <small class="@(r.AcaoPrazo is DateOnly pz && pz < _hoje ? "r" : "muted")">@(r.AcaoPrazo is DateOnly pz2 ? $"até {pz2:dd/MM}" : "") · combinada em @r.Data.ToString("dd/MM")</small></span></label>
+                            bool venc = r.AcaoPrazo is DateOnly pz && pz < _hoje;
+                            <label class="of-acao-ab @(venc ? "venc" : "")"><input type="checkbox" @onchange="() => { r.AcaoFeita = true; Salvar(); }" />
+                                <span>@r.Acao <small>@(r.AcaoPrazo is DateOnly pz2 ? (venc ? $"venceu {pz2:dd/MM}" : $"até {pz2:dd/MM}") : "sem prazo") · combinada em @r.Data.ToString("dd/MM")</small></span></label>
                         }
                     </div>
                 }
 
-                <div class="oo-sec"><b>Histórico de 1:1 (@p.Registros.Count)</b>
-                    @if (p.Registros.Count == 0) { <small class="muted">Nenhum 1:1 registrado.</small> }
-                    <ul class="oo-hist">
-                        @foreach (var r in p.Registros.OrderByDescending(r => r.Data))
+                <div class="oo-sec">
+                    <div class="of-hist-cab"><b>Histórico</b>
+                        <div class="of-meses" title="1:1 nos últimos 12 meses">
+                            @for (int k = 11; k >= 0; k--)
+                            {
+                                var mm = new DateOnly(_hoje.Year, _hoje.Month, 1).AddMonths(-k);
+                                bool teve = p.Registros.Any(r => r.Data.Year == mm.Year && r.Data.Month == mm.Month);
+                                <i class="@(teve ? "on" : "")" title="@($"{Texto.MesesPt[mm.Month - 1]}/{mm.Year}: {(teve ? "teve 1:1" : "sem 1:1")}")">@Texto.MesesPt[mm.Month - 1][..1]</i>
+                            }
+                        </div>
+                    </div>
+                    @if (regs.Count == 0) { <small class="muted">Nenhum 1:1 registrado. O primeiro aparece aqui.</small> }
+                    <ol class="of-tl">
+                        @for (int k = 0; k < regs.Count; k++)
                         {
-                            <li><span class="oo-hd">@r.Data.ToString("dd/MM/yyyy")</span>
-                                <div>@(r.Obs == "" ? "—" : r.Obs)@if (r.Acao != "") { <small>Ação: @r.Acao@(r.AcaoFeita ? " ✓" : "")</small> }</div>
-                                <button class="oo-x peq" title="Apagar este registro" @onclick="() => ApagarRegistro(p, r)"><Icone Nome="lixo" Tamanho="14" /></button></li>
+                            var r = regs[k]; int? gap = k + 1 < regs.Count ? r.Data.DayNumber - regs[k + 1].Data.DayNumber : null;
+                            int ha = _hoje.DayNumber - r.Data.DayNumber;
+                            <li class="@(r == _feito ? "novo" : "")">
+                                <span class="of-tl-pt c@(r.Clima ?? 0)">@(r.Clima is int ci ? ClimaEmoji(ci) : "✓")</span>
+                                <div class="of-tl-cx">
+                                    <div class="of-tl-top">
+                                        <b>@r.Data.ToString("dd/MM/yyyy")</b><small>@(ha == 0 ? "hoje" : ha == 1 ? "ontem" : $"há {ha} dias")</small>
+                                        @if (gap is int g) { <span class="of-gap @(g > ciclo ? "r" : "g")" title="Intervalo desde o 1:1 anterior">+@g d</span> }
+                                        <span class="mola"></span>
+                                        <button class="oo-x peq" title="Editar" @onclick="() => EditarReg(r)"><Icone Nome="editar" Tamanho="13" /></button>
+                                        <button class="oo-x peq" title="Apagar este registro" @onclick="() => ApagarRegistro(p, r)"><Icone Nome="lixo" Tamanho="13" /></button>
+                                    </div>
+                                    @if (_editReg == r)
+                                    {
+                                        <textarea class="campo area" rows="3" @bind="_eObs" @bind:event="oninput"></textarea>
+                                        <input class="campo" @bind="_eAcao" @bind:event="oninput" placeholder="Ação combinada (opcional)" />
+                                        <div class="of-ed-bts"><button class="btn btn-pri btn-peq" @onclick="() => SalvarReg(r)">Salvar</button><button class="btn btn-sec btn-peq" @onclick="() => _editReg = null">Cancelar</button></div>
+                                    }
+                                    else
+                                    {
+                                        <p class="@(r.Obs == "" ? "muted" : "")">@(r.Obs == "" ? "Sem anotações." : r.Obs)</p>
+                                        @if (r.Acao != "")
+                                        {
+                                            bool vc = !r.AcaoFeita && r.AcaoPrazo is DateOnly pz3 && pz3 < _hoje;
+                                            <button class="of-tag @(r.AcaoFeita ? "g" : vc ? "r" : "a")" title="Clique para marcar como @(r.AcaoFeita ? "em aberto" : "feita")" @onclick="() => { r.AcaoFeita = !r.AcaoFeita; Salvar(); }">
+                                                @(r.AcaoFeita ? "✓ feita" : vc ? "vencida" : "em aberto") · @r.Acao@(r.AcaoPrazo is DateOnly pz4 ? $" (até {pz4:dd/MM})" : "")</button>
+                                        }
+                                    }
+                                </div>
+                            </li>
                         }
-                    </ul>
+                    </ol>
                 </div>
                 @if (p.Vinculos.Count > 1)
                 {
@@ -470,7 +565,26 @@
         E.Notificar();
     }
 
-    void Abrir(PessoaOO p) { _ficha = p; _fData = Iso(_hoje); _fObs = ""; _fAcao = ""; _fPrazo = ""; }
+    void Abrir(PessoaOO p) { _ficha = p; _fData = Iso(_hoje); _fObs = ""; _fAcao = ""; _fPrazo = ""; _fClima = null; _feito = null; _editReg = null; }
+    RegistroOO? _feito, _editReg;
+    FaixaOO _feitoAntes;
+    int? _fClima;
+    string _eObs = "", _eAcao = "";
+    static string ClimaEmoji(int c) => c switch { 1 => "😟", 2 => "😐", 3 => "🙂", _ => "🤩" };
+    static string ClimaNome(int c) => c switch { 1 => "Preocupa", 2 => "Neutra", 3 => "Bem", _ => "Ótima" };
+
+    /// <summary>Quem está mais urgente (atrasado/chegando) na mesma visão, sem contar a pessoa atual.</summary>
+    PessoaOO? ProximoDaFila(PessoaOO atual) => E.OneBase?.Ativos.Where(x => x != atual && Visivel(x) && OneAOne.Faixa(x, _hoje) != FaixaOO.EmDia)
+        .OrderBy(x => OneAOne.Faltam(x, _hoje) ?? int.MinValue).FirstOrDefault();
+
+    void EditarReg(RegistroOO r) { _editReg = r; _eObs = r.Obs; _eAcao = r.Acao; }
+    void SalvarReg(RegistroOO r)
+    {
+        r.Obs = _eObs.Trim();
+        var a = _eAcao.Trim();
+        if (a != r.Acao) { r.Acao = a; if (a == "") { r.AcaoPrazo = null; r.AcaoFeita = false; } }
+        _editReg = null; Salvar();
+    }
     void Fechar() => _ficha = null;
 
     async Task RegistrarFicha(PessoaOO p)
@@ -478,11 +592,14 @@
         var d = DeIso(_fData);
         if (d == null) { await J.Aviso("1:1", "Informe a data do 1:1."); return; }
         if (d > _hoje) { await J.Aviso("1:1", "A data do 1:1 não pode ser no futuro."); return; }
-        OneAOne.Registrar(p, new RegistroOO { Data = d.Value, Obs = _fObs.Trim(), Acao = _fAcao.Trim(), AcaoPrazo = _fAcao.Trim() == "" ? null : DeIso(_fPrazo) });
+        _feitoAntes = OneAOne.Faixa(p, _hoje);
+        var reg = new RegistroOO { Data = d.Value, Obs = _fObs.Trim(), Acao = _fAcao.Trim(), AcaoPrazo = _fAcao.Trim() == "" ? null : DeIso(_fPrazo), Clima = _fClima };
+        OneAOne.Registrar(p, reg);
         _ = E.Conta.Registrar(QSmart.Core.Conta.Conquistas.OoRegistro, true);
-        _fObs = ""; _fAcao = ""; _fPrazo = "";
+        _fObs = ""; _fAcao = ""; _fPrazo = ""; _fClima = null;
         Salvar();
-        _ficha = null;
+        // mostra a confirmação na própria ficha (o registro pode ter sido juntado a um do mesmo dia)
+        _feito = p.Registros.FirstOrDefault(x => x.Data == reg.Data) ?? reg;
     }
 
     async Task ApagarRegistro(PessoaOO p, RegistroOO r)

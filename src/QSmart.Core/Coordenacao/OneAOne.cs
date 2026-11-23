@@ -19,6 +19,8 @@ public sealed class RegistroOO
     public string Acao { get; set; } = "";
     public DateOnly? AcaoPrazo { get; set; }
     public bool AcaoFeita { get; set; }
+    /// <summary>Como a pessoa estava no 1:1 (1 = preocupante … 4 = ótima). Opcional.</summary>
+    public int? Clima { get; set; }
 }
 
 /// <summary>Passagem por uma liderança (histórico de times).</summary>
