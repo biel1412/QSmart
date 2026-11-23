@@ -31,6 +31,10 @@ public static class Abas
             "Une vários compilados num só e junta PDFs na ordem escolhida.", "corredor"),
         new("estrategia", "Estratégia do dia", "Estratégia", "estrategia", "Operação",
             "Resumo dos serviços, SLA e volume do dia a partir do compilado, com a mensagem da estratégia pronta para o Teams.", "estrategia"),
+        new("dayoffpedir", "Pedir day off", "Pedir day off", "estrela", "Operação",
+            "A liderança pede o day off de alguém da equipe (até 5 pessoas por dia) e acompanha os pedidos do mês: aprovados, reprovados e aguardando.", "day-off-pedidos"),
+        new("dayoff", "Day off", "Day off", "calendario", "Coordenação",
+            "Pedidos de day off das lideranças para aprovar ou reprovar e o calendário geral de quem está de folga, entre todas as coordenações.", "day-off"),
         new("ferias", "Férias", "Férias", "ferias", "Coordenação",
             "Férias de cada pessoa do One a One, por liderança: choques de datas, sugestões de novas datas e quanto o impacto diminuiu.", "ferias"),
         new("pontos", "Pontos de ação mensal", "Pontos de ação", "pontos", "Coordenação",
@@ -70,7 +74,7 @@ public static class Abas
     public static Aba? PorRota(string rota) => Todas.FirstOrDefault(a => a.Rota == rota) ?? Internas.FirstOrDefault(a => a.Rota == rota);
 
     /// <summary>Ordem da lista de abas nas Configurações (igual ao original).</summary>
-    public static readonly string[] OrdemConfig = { "resumo", "usuarios", "evolucao", "inspecao", "volume", "monitor", "corredor", "estrategia", "historico", "pareceres", "ferias", "pontos", "oneaone", "servicos3069", "radar360", "pacote", "depurador", "insitalent", "mesa" };
+    public static readonly string[] OrdemConfig = { "resumo", "usuarios", "evolucao", "inspecao", "volume", "monitor", "corredor", "estrategia", "dayoffpedir", "historico", "pareceres", "dayoff", "ferias", "pontos", "oneaone", "servicos3069", "radar360", "pacote", "depurador", "insitalent", "mesa" };
 
     public static readonly string[] Grupos = { "Decisões", "Inspeção", "Conformidade", "Operação", "Coordenação", "Relacionamento e cooperativas", "Extensão", "Ferramentas" };
 

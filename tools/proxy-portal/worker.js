@@ -303,6 +303,23 @@ async function alertasFerias(env, u, id, dadosNovos) {
   for (let i = 0; i < q.length; i += 80) await env.DB.batch(q.slice(i, i + 80));
 }
 
+// =============================== day off ===============================
+const DAYOFF_LIMITE = 5;   // pessoas por dia, somando todas as coordenações (pedidos aguardando + aprovados)
+const ddmm = d => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
+async function avisarDayoff(env, de, ids, tipo, data, texto) {
+  const q = [];
+  for (const id of new Set(ids)) if (id && id !== de)
+    q.push(env.DB.prepare("INSERT INTO notificacoes (usuario_id, tipo, de_id, post_id, ref, criado_em) VALUES (?, ?, ?, NULL, ?, ?)").bind(id, tipo, de, `${data}|${texto}`, agora()));
+  for (let i = 0; i < q.length; i += 80) await env.DB.batch(q.slice(i, i + 80));
+}
+// quem decide os pedidos de uma coordenação: o coordenador dela (sem coordenação: todos) e o administrador
+async function decisoresDayoff(env, coord) {
+  const r = (await env.DB.prepare("SELECT id, nome, sobrenome, papel, lideranca FROM usuarios WHERE status = 'ativo' AND (papel = 'coordenador' OR papel = 'admin')").all()).results || [];
+  const donos = r.filter(x => x.papel === "coordenador" && coord && mesmaCoord(coord, coordDoUsuario(x)));
+  return r.filter(x => x.papel === "admin" || donos.length === 0 || donos.includes(x)).map(x => x.id);
+}
+const podeDecidir = (u, it) => u.papel === "admin" || (u.papel === "coordenador" && (!it.coordenacao || mesmaCoord(it.coordenacao, coordDoUsuario(u))));
+
 // =============================== rotas /api ===============================
 
 async function api(req, env, url) {
@@ -781,6 +798,99 @@ async function api(req, env, url) {
     }
   }
 
+  // ---------- day off: a liderança pede, a coordenação aprova; o calendário aprovado é de todos ----------
+  if (rota.startsWith("dayoff")) {
+    const lider = u.papel === "lideranca" || u.papel === "admin";
+    const coordAc = u.papel === "coordenador" || u.papel === "admin";
+    if (!lider && !coordAc) return erro("O day off é da liderança (pedir) e da coordenação (aprovar).", 403);
+    const iso = x => /^\d{4}-\d{2}-\d{2}$/.test(x || "") && !isNaN(Date.parse(x)) ? x : null;
+    const ocupados = async (data, menosId) => (await env.DB.prepare("SELECT COUNT(*) AS n FROM dayoff WHERE data = ? AND status IN ('pendente','aprovado') AND id != ?").bind(data, menosId || 0).first()).n;
+    const abrir = async x => {
+      let d = {}; try { d = JSON.parse(await decifrar(env, x.dados)); } catch { }
+      let mot = ""; if (x.motivo) { try { mot = await decifrar(env, x.motivo); } catch { } }
+      return { id: x.id, data: x.data, status: x.status, nome: d.nome || "", aniversario: d.aniversario || null, obs: d.obs || "", hist: d.hist || [],
+        lideranca: x.lideranca, coordenacao: x.coordenacao, liderId: x.lider_id, motivo: mot, criadoEm: x.criado_em, decididoEm: x.decidido_em || null,
+        decididoPor: x.dnome ? `${x.dnome} ${x.dsob}`.trim() : "", meu: x.lider_id === u.id, decide: x.status === "pendente" && coordAc && podeDecidir(u, x) };
+    };
+    const SEL = "SELECT x.*, d.nome AS dnome, d.sobrenome AS dsob FROM dayoff x LEFT JOIN usuarios d ON d.id = x.decidido_por";
+    if (rota === "dayoff" && m === "GET") {
+      const de = iso(url.searchParams.get("de")) || hojeISO().slice(0, 8) + "01", ate = iso(url.searchParams.get("ate")) || "9999-12-31";
+      const r = (await env.DB.prepare(`${SEL} WHERE x.data >= ? AND x.data <= ? ORDER BY x.data, x.id`).bind(de, ate).all()).results || [];
+      const ocup = {}; for (const x of r) if (x.status !== "reprovado") ocup[x.data] = (ocup[x.data] || 0) + 1;
+      const itens = [];
+      for (const x of r) {
+        // coordenação vê o calendário geral; a liderança vê só os pedidos dela (dos outros, só quantas vagas sobram)
+        if (coordAc || x.lider_id === u.id) itens.push(await abrir(x));
+      }
+      // pedidos aguardando a minha decisão, de qualquer mês
+      let aguardando = [];
+      if (coordAc) for (const x of (await env.DB.prepare(`${SEL} WHERE x.status = 'pendente' ORDER BY x.data`).all()).results || []) if (podeDecidir(u, x)) aguardando.push(await abrir(x));
+      let meus = [];
+      if (lider) for (const x of (await env.DB.prepare(`${SEL} WHERE x.lider_id = ? AND (x.status = 'pendente' OR x.data >= ?) ORDER BY x.data`).bind(u.id, hojeISO()).all()).results || []) meus.push(await abrir(x));
+      let coordenacao = "";
+      if (u.papel === "coordenador") coordenacao = coordDoUsuario(u);
+      if (u.papel === "lideranca") { const e = (await equipesOO(env)).get(normN((await lideresOficiais(env))(`${u.nome} ${u.sobrenome}`))); coordenacao = e ? e.coordenacao : ""; }
+      return json({ itens, ocupacao: ocup, limite: DAYOFF_LIMITE, aguardando, meus, coordenacao, hoje: hojeISO() });
+    }
+    if (rota === "dayoff" && m === "POST") {
+      if (!lider) return erro("Quem pede o day off é a liderança.", 403);
+      const b = await corpo(req);
+      const nome = String(b.nome || "").replace(/\s+/g, " ").trim().slice(0, 120), data = iso(b.data), aniv = iso(b.aniversario), obs = String(b.obs || "").trim().slice(0, 300);
+      if (!nome || nome.split(" ").length < 2) return erro("Informe o nome completo da pessoa.");
+      if (!aniv) return erro("Informe a data de aniversário da pessoa.");
+      if (!data) return erro("Escolha a data do day off.");
+      if (data < hojeISO()) return erro("A data do day off já passou.");
+      if (await ocupados(data) >= DAYOFF_LIMITE) return erro(`O dia ${ddmm(data)} já tem ${DAYOFF_LIMITE} pessoas de day off. Escolha outra data.`, 409, { motivo: "cheio" });
+      for (const x of (await env.DB.prepare("SELECT dados FROM dayoff WHERE data = ? AND status != 'reprovado'").bind(data).all()).results || []) {
+        try { if (normN(JSON.parse(await decifrar(env, x.dados)).nome) === normN(nome)) return erro(`${nome} já tem pedido para ${ddmm(data)}.`); } catch { }
+      }
+      const lid = (await lideresOficiais(env))(`${u.nome} ${u.sobrenome}`);
+      const eq = (await equipesOO(env)).get(normN(lid));
+      const coord = eq ? eq.coordenacao : "";
+      const r = await env.DB.prepare("INSERT INTO dayoff (data, status, lider_id, lideranca, coordenacao, dados, criado_em) VALUES (?, 'pendente', ?, ?, ?, ?, ?)")
+        .bind(data, u.id, lid, coord, await cifrar(env, JSON.stringify({ nome, aniversario: aniv, obs, hist: [] })), agora()).run();
+      await avisarDayoff(env, u.id, await decisoresDayoff(env, coord), "dayoff_pedido", data, `Pedido de day off para ${ddmm(data)} · ${lid}`);
+      return json({ ok: true, id: r.meta?.last_row_id || 0 });
+    }
+    if (rota === "dayoff/decidir" && m === "POST") {
+      const b = await corpo(req);
+      const x = await env.DB.prepare("SELECT * FROM dayoff WHERE id = ?").bind(Number(b.id) || 0).first();
+      if (!x) return erro("Pedido não encontrado.", 404);
+      if (!coordAc || !podeDecidir(u, x)) return erro("Esse pedido é de outra coordenação.", 403);
+      if (x.status !== "pendente") return erro("Esse pedido já foi decidido.");
+      const ok = !!b.aprovar, mot = String(b.motivo || "").trim().slice(0, 300);
+      if (!ok && !mot) return erro("Diga o motivo para a liderança poder remarcar.");
+      await env.DB.prepare("UPDATE dayoff SET status = ?, motivo = ?, decidido_por = ?, decidido_em = ? WHERE id = ?")
+        .bind(ok ? "aprovado" : "reprovado", mot ? await cifrar(env, mot) : "", u.id, agora(), x.id).run();
+      await avisarDayoff(env, u.id, [x.lider_id], ok ? "dayoff_ok" : "dayoff_nao", x.data, ok ? `Day off de ${ddmm(x.data)} aprovado` : `Day off de ${ddmm(x.data)} reprovado: pode remarcar`);
+      return json({ ok: true });
+    }
+    if (rota === "dayoff/remarcar" && m === "POST") {
+      const b = await corpo(req);
+      const x = await env.DB.prepare("SELECT * FROM dayoff WHERE id = ?").bind(Number(b.id) || 0).first();
+      if (!x || x.lider_id !== u.id) return erro("Esse pedido não é seu.", 403);
+      if (x.status === "aprovado") return erro("Pedido aprovado não é remarcado: cancele e peça de novo.");
+      const data = iso(b.data);
+      if (!data || data < hojeISO()) return erro("Escolha uma data a partir de hoje.");
+      if (await ocupados(data, x.id) >= DAYOFF_LIMITE) return erro(`O dia ${ddmm(data)} já tem ${DAYOFF_LIMITE} pessoas de day off. Escolha outra data.`, 409, { motivo: "cheio" });
+      let d = {}; try { d = JSON.parse(await decifrar(env, x.dados)); } catch { }
+      (d.hist ||= []).push({ em: agora(), de: x.data, para: data, status: x.status });
+      await env.DB.prepare("UPDATE dayoff SET data = ?, status = 'pendente', motivo = '', decidido_por = NULL, decidido_em = NULL, dados = ? WHERE id = ?")
+        .bind(data, await cifrar(env, JSON.stringify(d)), x.id).run();
+      await avisarDayoff(env, u.id, await decisoresDayoff(env, x.coordenacao), "dayoff_pedido", data, `Day off remarcado de ${ddmm(x.data)} para ${ddmm(data)} · ${x.lideranca}`);
+      return json({ ok: true });
+    }
+    if (rota === "dayoff" && m === "DELETE") {
+      const x = await env.DB.prepare("SELECT * FROM dayoff WHERE id = ?").bind(Number(url.searchParams.get("id")) || 0).first();
+      if (!x) return json({ ok: true });
+      if (x.lider_id !== u.id && u.papel !== "admin") return erro("Só quem pediu pode cancelar.", 403);
+      await env.DB.prepare("DELETE FROM dayoff WHERE id = ?").bind(x.id).run();
+      if (x.status !== "reprovado") await avisarDayoff(env, u.id, await decisoresDayoff(env, x.coordenacao), "dayoff_cancelado", x.data, `Day off de ${ddmm(x.data)} cancelado · ${x.lideranca}`);
+      return json({ ok: true });
+    }
+    return erro("Rota do day off não encontrada.", 404);
+  }
+
   if (rota === "oo" || rota === "oo/lote") {
     const ac = acessoCoord(u);
     if (!ac) return erro("O One a One é só da coordenação. Fale com o administrador.", 403);
@@ -1189,7 +1299,7 @@ async function api(req, env, url) {
     for (const x of r.results || []) {
       if (x.de_id && !(x.de_id in fotos)) fotos[x.de_id] = x.foto ? await decifrar(env, x.foto) : "";
       if (x.tipo === "caderno" && !x.cnome) continue;
-      const t = x.tipo === "ferias" ? (x.ref || "").split("|").slice(1).join("|") : x.ptexto ? (await decifrar(env, x.ptexto)).replace(/\s+/g, " ").trim() : x.cnome ? await decifrar(env, x.cnome) : "";
+      const t = (x.tipo === "ferias" || x.tipo.startsWith("dayoff")) ? (x.ref || "").split("|").slice(1).join("|") : x.ptexto ? (await decifrar(env, x.ptexto)).replace(/\s+/g, " ").trim() : x.cnome ? await decifrar(env, x.cnome) : "";
       itens.push({ id: x.id, tipo: x.tipo, postId: x.post_id || 0, ref: x.ref || "", criadoEm: x.criado_em, lida: !!x.lida, de: x.de_id, nome: x.nome ? `${x.nome} ${x.sobrenome}`.trim() : "Alguém", trecho: t.length > 70 ? t.slice(0, 70) + "…" : t });
     }
     const n = await env.DB.prepare("SELECT COUNT(*) AS n FROM notificacoes WHERE usuario_id = ? AND lida = 0").bind(u.id).first();

@@ -1,0 +1,217 @@
+@page "/day-off"
+@inherits PaginaBase
+
+<Pagina Titulo="Day off" Grupo="@A.Grupo"
+        Sub="Os pedidos das lideranças chegam aqui para aprovar ou reprovar. O calendário mostra quem está de day off em todas as coordenações; cada dia aceita até 5 pessoas."
+        Kpis="@(_v != null ? Kpis : null)">
+    <ChildContent>
+        @if (_erro != "") { <div class="oo-bloqueio"><Icone Nome="cadeado" Tamanho="26" /><div><b>@_erro</b></div></div> }
+        else if (_v == null) { <p class="muted"><span class="ia-spin pequeno"></span> Carregando o calendário…</p> }
+        else
+        {
+            <div class="do-sec-cab">
+                <b>Pedidos para aprovar</b>
+                <span class="do-cont @(_v.Aguardando.Count > 0 ? "tem" : "")">@_v.Aguardando.Count</span>
+                <span class="muted pequeno">@(E.Conta.Perfil?.Admin == true ? "de todas as coordenações" : "da sua coordenação")</span>
+            </div>
+            @if (_v.Aguardando.Count == 0)
+            {
+                <div class="do-tudo-ok"><span>✓</span><div><b>Nenhum pedido aguardando</b><small>Quando uma liderança pedir um day off, ele aparece aqui e no sininho.</small></div></div>
+            }
+            else
+            {
+                <div class="do-fila">
+                    @foreach (var p in _v.Aguardando)
+                    {
+                        var pp = p; int n = _ocupAgu.GetValueOrDefault(p.Data); bool estoura = _aprovadosDia.GetValueOrDefault(p.Data) >= _v.Limite;
+                        <div class="do-pend @(_foco == p.Id ? "foco" : "")">
+                            <div class="do-pend-top">
+                                <span class="do-av" style="background:@DayOff.Cor(p.Coordenacao)">@DayOff.Iniciais(p.Nome)</span>
+                                <div><b>@p.Nome</b><small>@p.Lideranca@(p.Coordenacao != "" && E.Conta.Perfil?.Admin == true ? $" · {p.Coordenacao}" : "")</small></div>
+                            </div>
+                            <div class="do-pend-data">
+                                <div><small>DAY OFF</small><b>@DayOff.DiaSemana(p.Data), @p.Data.ToString("dd/MM/yyyy")</b></div>
+                                <div class="@(n >= _v.Limite ? "r" : n >= _v.Limite - 1 ? "a" : "g")"><small>NO DIA</small><b>@n/@_v.Limite</b></div>
+                            </div>
+                            <div class="do-pend-info">
+                                <span class="@(p.MesAniversario ? "aniv" : "")">🎂 Aniversário @(p.Aniversario?.ToString("dd/MM") ?? "—")@(p.MesAniversario ? " · no mês do day off" : "")</span>
+                                @if (p.Obs != "") { <span>💬 @p.Obs</span> }
+                                @if (p.Hist.Count > 0) { <span>↻ remarcado de @string.Join(", ", p.Hist.Select(h => h.De.ToString("dd/MM")))</span> }
+                                @if (estoura) { <span class="r">⚠ O dia já tem @_v.Limite aprovados</span> }
+                            </div>
+                            <div class="do-pend-bts">
+                                <button class="btn do-aprovar" disabled="@(_salvando || estoura)" @onclick="() => Decidir(pp, true)"><Icone Nome="check" Tamanho="15" /> Aprovar</button>
+                                <button class="btn do-reprovar" disabled="@_salvando" @onclick="() => Decidir(pp, false)"><Icone Nome="x" Tamanho="15" /> Reprovar</button>
+                                <button class="oo-x" title="Ver o dia no calendário" @onclick="() => VerDia(pp.Data)"><Icone Nome="calendario" Tamanho="16" /></button>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+
+            <div class="do-cal-grade">
+                <div class="do-card do-cal">
+                    <div class="do-cal-bar">
+                        <div class="do-nav">
+                            <button class="oo-x" @onclick="() => Mudar(-1)" title="Mês anterior"><Icone Nome="esquerda" Tamanho="18" /></button>
+                            <b>@DayOff.MesNome(_mes)</b>
+                            <button class="oo-x" @onclick="() => Mudar(1)" title="Próximo mês"><Icone Nome="direita" Tamanho="18" /></button>
+                        </div>
+                        <button class="btn btn-sec btn-peq" @onclick="Hoje">Hoje</button>
+                        <span class="mola"></span>
+                        @if (E.Conta.Perfil?.Admin != true && _v.Coordenacao != "")
+                        {
+                            <div class="do-seg">
+                                <button class="@(!_soMinha ? "on" : "")" @onclick="() => _soMinha = false">Todas as coordenações</button>
+                                <button class="@(_soMinha ? "on" : "")" @onclick="() => _soMinha = true">Minha coordenação</button>
+                            </div>
+                        }
+                        <label class="do-chk"><input type="checkbox" @bind="_verAguardando" /> mostrar aguardando</label>
+                    </div>
+                    <div class="do-semana">@foreach (var s in DayOff.Semana) { <span>@s</span> }</div>
+                    <div class="do-mes">
+                        @foreach (var sem in DayOff.Semanas(_mes.Year, _mes.Month))
+                        {
+                            foreach (var d in sem)
+                            {
+                                var dd = d; var ps = Do(d); int ap = _aprovadosDia.GetValueOrDefault(d); int tot = _ocupAgu.GetValueOrDefault(d);
+                                <button class="do-cel @(d.Month != _mes.Month ? "fora" : "") @(d == _v.Hoje ? "hoje" : "") @(_dia == d ? "sel" : "") @(tot >= _v.Limite ? "cheio" : "") @(d.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday ? "fds" : "")" @onclick="() => _dia = dd">
+                                    <div class="do-cel-top"><b>@d.Day</b>@if (tot > 0) { <span class="do-cel-n @(tot >= _v.Limite ? "r" : tot >= _v.Limite - 1 ? "a" : "")">@tot/@_v.Limite</span> }</div>
+                                    @foreach (var p in ps.Take(3))
+                                    {
+                                        <span class="do-chip @DayOff.StatusCls(p.Status)" style="--c:@DayOff.Cor(p.Coordenacao)"><i></i>@DayOff.Curto(p.Nome)</span>
+                                    }
+                                    @if (ps.Count > 3) { <span class="do-mais">+@(ps.Count - 3)</span> }
+                                </button>
+                            }
+                        }
+                    </div>
+                    <div class="do-leg">
+                        @foreach (var c in _coords) { <span><i style="background:@DayOff.Cor(c)"></i>@(c == "" ? "Sem coordenação" : c)</span> }
+                        <span><i class="tracejado"></i>aguardando</span>
+                    </div>
+                </div>
+
+                <div class="do-card do-detalhe">
+                    @if (_dia is DateOnly dia)
+                    {
+                        var ps = Do(dia, true); int tot = _ocupAgu.GetValueOrDefault(dia);
+                        <div class="do-det-cab">
+                            <div class="do-det-data"><b>@dia.Day.ToString("00")</b><small>@Core.Texto.MesesPt[dia.Month - 1][..3]</small></div>
+                            <div><b>@(char.ToUpper(DayOff.DiaSemana(dia)[0]) + DayOff.DiaSemana(dia)[1..])</b><small>@Ferias(ps.Count(p => p.Aprovado), "aprovado", "aprovados") · @tot de @_v.Limite vagas usadas</small></div>
+                        </div>
+                        <div class="do-det-barra">@for (int i = 0; i < _v.Limite; i++) { <i class="@(i < _aprovadosDia.GetValueOrDefault(dia) ? "ok" : i < tot ? "esp" : "")"></i> }</div>
+                        @if (ps.Count == 0) { <div class="do-vazio"><Icone Nome="estrela" Tamanho="24" /><span>Ninguém de day off neste dia.</span></div> }
+                        @foreach (var p in ps)
+                        {
+                            var pp = p;
+                            <div class="do-det-p @DayOff.StatusCls(p.Status)">
+                                <span class="do-av peq" style="background:@DayOff.Cor(p.Coordenacao)">@DayOff.Iniciais(p.Nome)</span>
+                                <div>
+                                    <b>@p.Nome</b>
+                                    <small>@p.Lideranca · @(p.Coordenacao == "" ? "sem coordenação" : p.Coordenacao)</small>
+                                    <small>🎂 @(p.Aniversario?.ToString("dd/MM") ?? "—")@(p.Aprovado && p.DecididoPor != "" ? $" · aprovado por {p.DecididoPor}" : "")</small>
+                                    @if (p.Reprovado) { <small class="r">Reprovado: @p.Motivo</small> }
+                                </div>
+                                <span class="do-st @DayOff.StatusCls(p.Status)">@DayOff.StatusNome(p.Status)</span>
+                                @if (p.Decide)
+                                {
+                                    <div class="do-det-bts">
+                                        <button class="btn do-aprovar btn-peq" disabled="@(_salvando || _aprovadosDia.GetValueOrDefault(p.Data) >= _v.Limite)" @onclick="() => Decidir(pp, true)">Aprovar</button>
+                                        <button class="btn do-reprovar btn-peq" disabled="@_salvando" @onclick="() => Decidir(pp, false)">Reprovar</button>
+                                    </div>
+                                }
+                            </div>
+                        }
+                    }
+                    else
+                    {
+                        <div class="do-vazio"><Icone Nome="calendario" Tamanho="26" /><span>Clique num dia para ver quem está de day off.</span></div>
+                    }
+                </div>
+            </div>
+        }
+    </ChildContent>
+</Pagina>
+
+@code {
+    protected override string Chave => "dayoff";
+    [SupplyParameterFromQuery(Name = "d")] public string? D { get; set; }
+
+    VisaoDO? _v;
+    string _erro = "";
+    DateOnly _mes = new(DateTime.Today.Year, DateTime.Today.Month, 1);
+    DateOnly? _dia;
+    int _foco;
+    bool _soMinha, _verAguardando = true, _salvando;
+    Dictionary<DateOnly, int> _aprovadosDia = new(), _ocupAgu = new();
+    List<string> _coords = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (DateOnly.TryParseExact(D, "yyyy-MM-dd", out var d)) { _mes = new(d.Year, d.Month, 1); _dia = d; }
+        await Carregar();
+        if (_dia is DateOnly x) _foco = _v?.Aguardando.FirstOrDefault(p => p.Data == x)?.Id ?? 0;
+        _dia ??= _v?.Hoje is DateOnly h && h.Month == _mes.Month ? h : null;
+    }
+
+    async Task Carregar()
+    {
+        // o mês inteiro mais as pontas das semanas que aparecem no calendário
+        var sem = DayOff.Semanas(_mes.Year, _mes.Month);
+        var (v, e) = await DayOff.Carregar(E.Conta, sem[0][0], sem[^1][6]);
+        if (v == null) { _erro = e; return; }
+        _erro = ""; _v = v;
+        _ocupAgu = v.Ocupacao;
+        _aprovadosDia = v.Itens.Where(p => p.Aprovado).GroupBy(p => p.Data).ToDictionary(g => g.Key, g => g.Count());
+        // os pedidos aguardando de outros meses também contam as vagas do dia deles
+        foreach (var p in v.Aguardando) if (!_ocupAgu.ContainsKey(p.Data)) _ocupAgu[p.Data] = v.Itens.Count(x => x.Data == p.Data && !x.Reprovado);
+        _coords = v.Itens.Select(p => p.Coordenacao).Distinct().OrderBy(c => c == "" ? "~" : c).ToList();
+    }
+
+    async Task Mudar(int m) { _mes = _mes.AddMonths(m); _dia = null; await Carregar(); }
+    async Task Hoje() { var h = _v!.Hoje; _mes = new(h.Year, h.Month, 1); _dia = h; await Carregar(); }
+
+    async Task VerDia(DateOnly d)
+    {
+        _dia = d;
+        if (d.Month != _mes.Month || d.Year != _mes.Year) { _mes = new(d.Year, d.Month, 1); await Carregar(); }
+    }
+
+    bool MinhaCoord(PedidoDO p) => Core.Coordenacao.Ferias.Norm(p.Coordenacao) == Core.Coordenacao.Ferias.Norm(_v!.Coordenacao);
+
+    List<PedidoDO> Do(DateOnly d, bool comReprovados = false) => _v!.Itens
+        .Where(p => p.Data == d && (comReprovados || !p.Reprovado) && (_verAguardando || !p.Pendente || comReprovados) && (!_soMinha || MinhaCoord(p)))
+        .OrderBy(p => p.Status == "aprovado" ? 0 : p.Status == "pendente" ? 1 : 2).ThenBy(p => p.Nome).ToList();
+
+    static string Ferias(int n, string um, string varios) => Core.Coordenacao.Ferias.Plural(n, um, varios);
+
+    async Task Decidir(PedidoDO p, bool aprovar)
+    {
+        string motivo = "";
+        if (!aprovar)
+        {
+            var m = await J.Entrada("Reprovar day off", $"Por que o day off de {p.Nome} em {p.Data:dd/MM} não pode? A liderança vê o motivo e remarca.", "", multilinha: true);
+            if (string.IsNullOrWhiteSpace(m)) return;
+            motivo = m.Trim();
+        }
+        else if (!await J.Pergunta("Aprovar day off", $"Aprovar o day off de {p.Nome} em {DayOff.DiaSemana(p.Data)}, {p.Data:dd/MM}? Ele entra no calendário de todas as coordenações.")) return;
+        _salvando = true;
+        var r = await DayOff.Decidir(E.Conta, p.Id, aprovar, motivo);
+        _salvando = false;
+        if (!r.Ok) { await J.Aviso("Day off", r.Erro); }
+        _foco = 0;
+        await Carregar();
+        _ = E.Sino.Carregar();
+    }
+
+    RenderFragment Kpis => @<text>
+        @{ var mes = _v!.Itens.Where(p => p.Data.Month == _mes.Month && p.Data.Year == _mes.Year).ToList();
+           int ap = mes.Count(p => p.Aprovado); int hoje = _v.Itens.Count(p => p.Aprovado && p.Data == _v.Hoje);
+           int cheios = mes.Where(p => !p.Reprovado).GroupBy(p => p.Data).Count(g => g.Count() >= _v.Limite); }
+        <Kpi Titulo="Aguardando você" Cor="amber" Valor="@Fmt(_v.Aguardando.Count)" Detalhe="@(_v.Aguardando.Count == 0 ? "nenhum pedido na fila" : $"o mais próximo em {_v.Aguardando.Min(p => p.Data):dd/MM}")" />
+        <Kpi Titulo="Aprovados no mês" Cor="green" Valor="@Fmt(ap)" Detalhe="@DayOff.MesNome(_mes)" />
+        <Kpi Titulo="De day off hoje" Cor="purple" Valor="@Fmt(hoje)" Detalhe="@(_v.Hoje.ToString("dd/MM/yyyy"))" />
+        <Kpi Titulo="Dias cheios" Cor="red" Valor="@Fmt(cheios)" Detalhe="@($"com {_v.Limite} pessoas no mês")" />
+    </text>;
+}

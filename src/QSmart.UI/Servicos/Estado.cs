@@ -743,7 +743,8 @@ public sealed class Estado
     public bool AbaAtiva(string chave) => !Prefs.AbasOff.Contains(Abas.PaiDe(chave) ?? chave) && Permitida(chave);
 
     /// <summary>A seção Coordenação é só de coordenador e administrador; liderança e usuário usam o resto.</summary>
-    public bool Permitida(string chave) => Abas.Por(Abas.PaiDe(chave) ?? chave)?.Grupo != "Coordenação" || Conta.Perfil?.Coordenacao == true;
+    public bool Permitida(string chave) => chave == "dayoffpedir" ? Conta.Perfil?.Papel is "lideranca" or "admin"
+        : Abas.Por(Abas.PaiDe(chave) ?? chave)?.Grupo != "Coordenação" || Conta.Perfil?.Coordenacao == true;
 
     public async Task SalvarPrefs()
     {
