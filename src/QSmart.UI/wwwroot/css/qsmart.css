@@ -2927,7 +2927,7 @@ a.sino-it:hover { background: var(--surface2); }
 .do-dia-barra i { display: block; height: 100%; background: var(--green); }
 .do-dia.cheio { background: repeating-linear-gradient(135deg, var(--red-soft) 0 6px, transparent 6px 12px); border-color: color-mix(in srgb, var(--red) 35%, var(--line)); cursor: not-allowed; }
 .do-dia.cheio .do-dia-barra i { background: var(--red); }
-.do-dia.fora { opacity: .4; } .do-dia.passou { opacity: .35; cursor: default; }
+.do-dia.fora:not(.passou) { background: color-mix(in srgb, var(--ink) 4%, var(--surface)); } .do-dia.fora b { color: var(--muted); } .do-dia.passou { opacity: .35; cursor: default; }
 .do-dia.hoje b { color: var(--blue); }
 .do-dia.sel { border-color: var(--green); box-shadow: 0 0 0 2px var(--green); background: var(--green-soft); }
 .do-dia-meus { position: absolute; top: 4px; right: 4px; display: flex; gap: 2px; }
@@ -2989,3 +2989,9 @@ a.sino-it:hover { background: var(--surface2); }
 .do-det-p { display: grid; grid-template-columns: auto 1fr auto; gap: 4px 10px; align-items: start; padding: 10px; border-radius: 12px; background: var(--surface2); }
 .do-det-p > div { display: flex; flex-direction: column; min-width: 0; } .do-det-p b { font-size: 13.5px; } .do-det-p small { font-size: 11.5px; color: var(--muted); } .do-det-p small.r { color: var(--red); }
 .do-det-p.nao { opacity: .7; } .do-det-bts { grid-column: 2 / 4; }
+.do-meses { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.do-meses button { border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: 12px; padding: 7px 6px; font-size: 13px; font-weight: 700; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 1px; }
+.do-meses button small { font-size: 10.5px; font-weight: 600; color: var(--muted); min-height: 13px; }
+.do-meses button.on { border-color: var(--green); background: var(--green-soft); color: var(--green); }
+.do-meses button.on small { color: var(--green); }
+.do-meses button:hover:not(.on) { border-color: color-mix(in srgb, var(--green) 50%, var(--line)); }

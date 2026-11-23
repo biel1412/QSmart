@@ -144,6 +144,15 @@
     }
 
     async Task Mudar(int m) { _mes = _mes.AddMonths(m); await Carregar(); }
+    async Task IrMes(DateOnly m) { var keep = _remarcando; _mes = m; await Carregar(); _remarcando = keep; }
+    // vagas livres do mês (dias úteis a partir de hoje); só aparece para o mês carregado
+    string VagasMes(DateOnly m)
+    {
+        if (_v == null || m != _mes) return "";
+        int livres = 0;
+        for (var d = m; d.Month == m.Month; d = d.AddDays(1)) if (d >= _v.Hoje && Ocup(d) < _v.Limite) livres++;
+        return livres == 0 ? "lotado" : $"{livres} dias livres";
+    }
 
     int Ocup(DateOnly d, int menosId = 0)
     {
@@ -246,6 +255,13 @@
                     <button class="oo-x" @onclick="() => Mudar(-1)"><Icone Nome="esquerda" Tamanho="16" /></button>
                     <button class="oo-x" @onclick="() => Mudar(1)"><Icone Nome="direita" Tamanho="16" /></button>
                 </div>
+            </div>
+            <div class="do-meses">
+                @for (int k = 0; k < 4; k++)
+                {
+                    var mm = new DateOnly(_v!.Hoje.Year, _v.Hoje.Month, 1).AddMonths(k);
+                    <button class="@(mm == _mes ? "on" : "")" @onclick="() => IrMes(mm)">@Core.Texto.MesesPt[mm.Month - 1]<small>@VagasMes(mm)</small></button>
+                }
             </div>
             <div class="do-mini">
                 @foreach (var s in DayOff.Semana) { <span class="do-mini-s">@s[..1]</span> }
