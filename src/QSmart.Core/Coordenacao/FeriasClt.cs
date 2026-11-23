@@ -51,9 +51,40 @@ public sealed record SituacaoFer(Ciclo? Ciclo, int Marcados, int Vendidos, int F
 
 public sealed record AvisoFer(bool Erro, string Texto);
 
-public sealed record SugestaoFer(DateOnly Inicio, int Dias, string Motivo, int Custo)
+/// <summary>Como está um mês para a pessoa: quantos da coordenação e do geral estariam de férias (contando ela).</summary>
+public sealed record MesImpacto(string Mes, int Coord, int Geral, int LimiteGeral)
+{
+    public bool EstouraCoord => Coord > FeriasClt.LimitePorCoordenacao;
+    public bool EstouraGeral => Geral > LimiteGeral;
+    public bool Estoura => EstouraCoord || EstouraGeral;
+}
+
+/// <summary>
+/// O impacto de tirar férias numa data: meses em que a coordenação (ou o geral) passa do limite com a pessoa
+/// e dias em que fica fora junto com alguém da mesma liderança.
+/// </summary>
+public sealed record ImpactoFer(int AcimaCoord, int AcimaGeral, int DiasLid, int PessoasLid, List<MesImpacto> Meses)
+{
+    public int Pontos => AcimaCoord * 1000 + AcimaGeral * 500 + DiasLid * 5;
+    public bool Zero => Pontos == 0;
+    public string Resumo
+    {
+        get
+        {
+            var partes = new List<string>();
+            if (AcimaCoord > 0) partes.Add(AcimaCoord == 1 ? "1 mês acima do limite da coordenação" : $"{AcimaCoord} meses acima do limite da coordenação");
+            if (AcimaGeral > 0) partes.Add(AcimaGeral == 1 ? "1 mês acima do limite geral" : $"{AcimaGeral} meses acima do limite geral");
+            if (DiasLid > 0) partes.Add($"{DiasLid} dia(s) junto com {PessoasLid} da liderança");
+            return partes.Count == 0 ? "sem impacto" : string.Join(" · ", partes);
+        }
+    }
+}
+
+public sealed record SugestaoFer(DateOnly Inicio, int Dias, ImpactoFer Depois, ImpactoFer? Antes)
 {
     public DateOnly Fim => Inicio.AddDays(Dias - 1);
+    /// <summary>Quanto o impacto cai (0 a 100). Nulo quando não há data atual para comparar.</summary>
+    public int? Reducao => Antes == null || Antes.Pontos == 0 ? null : (int)Math.Round((Antes.Pontos - Depois.Pontos) * 100.0 / Antes.Pontos);
 }
 
 public static class FeriasClt
@@ -200,60 +231,77 @@ public static class FeriasClt
         return p.F.Periodos.SelectMany(MesesDe).Distinct().Where(m => carga.Estoura(m, p.Coordenacao) || carga.EstouraGeral(m)).OrderBy(m => m).ToList();
     }
 
-    // ================================================================== sugestões
-    /// <summary>Duas datas boas e próximas para um período de <paramref name="dias"/> dias.</summary>
+    // ================================================================== impacto e sugestões
+    /// <summary>Impacto de a pessoa tirar férias de <paramref name="ini"/> por <paramref name="dias"/> dias (a carga não deve contar a própria pessoa).</summary>
+    public static ImpactoFer Impacto(ColabFer p, IEnumerable<ColabFer> todos, Carga semElaNaCarga, DateOnly ini, int dias, PeriodoFer? ignorarPeriodo = null)
+    {
+        var fim = ini.AddDays(Math.Max(1, dias) - 1);
+        var meses = new List<MesImpacto>();
+        int acC = 0, acG = 0;
+        for (var m = new DateOnly(ini.Year, ini.Month, 1); m <= fim; m = m.AddMonths(1))
+        {
+            var k = Mes(m.Year, m.Month);
+            // a carga não conta a pessoa; ela entra uma vez no mês (a não ser que seja pessoa-chave)
+            int eu = p.F.SemImpacto ? 0 : 1;
+            int nc = semElaNaCarga.Na(k, p.Coordenacao) + eu, ng = semElaNaCarga.Geral(k) + eu;
+            meses.Add(new MesImpacto(k, nc, ng, semElaNaCarga.LimiteGeral));
+            if (eu == 1 && nc > LimitePorCoordenacao) acC++;
+            if (eu == 1 && ng > semElaNaCarga.LimiteGeral && semElaNaCarga.Coordenacoes.Count > 1) acG++;   // com uma coordenação só, o geral é o mesmo limite
+        }
+        int diasLid = 0; var pessoasLid = new HashSet<string>();
+        if (!p.F.SemImpacto && p.Lideranca != "")
+            foreach (var o in todos)
+            {
+                if (o.Id == p.Id || o.F.SemImpacto || !string.Equals(o.Lideranca, p.Lideranca, StringComparison.OrdinalIgnoreCase)) continue;
+                foreach (var per in o.F.Periodos)
+                {
+                    int d = Math.Min(fim.DayNumber, per.Fim.DayNumber) - Math.Max(ini.DayNumber, per.Inicio.DayNumber) + 1;
+                    if (d > 0) { diasLid += d; pessoasLid.Add(o.Id); }
+                }
+            }
+        return new ImpactoFer(acC, acG, diasLid, pessoasLid.Count, meses);
+    }
+
+    /// <summary>
+    /// Até duas datas próximas MELHORES que a atual (menos impacto), dentro do prazo da CLT:
+    /// começa de segunda a quarta (não nos 2 dias antes do descanso), depois de liberar, termina até o limite,
+    /// não encosta em outro período da mesma pessoa. Sem data atual, traz as de menor impacto mais perto do ideal.
+    /// </summary>
     public static List<SugestaoFer> Sugerir(ColabFer p, IEnumerable<ColabFer> todos, int dias, DateOnly hoje, PeriodoFer? atual = null, int quantas = 2)
     {
         var res = new List<SugestaoFer>();
         if (p.Admissao is not { } adm || dias < 1) return res;
         var lista = todos.ToList();
         var carga = Calcular(lista, ignorar: p.Id);
-        // de que ciclo é: o do período atual, ou o que está aberto
         var ciclo = atual != null ? CicloDe(adm, atual.Inicio) : Situacao(p, hoje).Ciclo;
         if (ciclo == null) ciclo = CicloN(adm, 0);
         var de = ciclo.Libera > hoje.AddDays(7) ? ciclo.Libera : hoje.AddDays(7);
         var ate = ciclo.Limite.AddDays(-dias + 1);
-        if (ate < de) { ate = de.AddDays(60); }   // já não cabe: sugere o mais cedo possível
+        var antes = atual != null ? Impacto(p, lista, carga, atual.Inicio, atual.Dias, atual) : null;
+        if (antes != null && antes.Zero) return res;     // já está sem impacto: não há o que melhorar
         var refe = atual?.Inicio ?? (de > hoje.AddDays(30) ? de : hoje.AddDays(30));
-        // as outras férias da mesma pessoa não podem encostar
         var outras = p.F.Periodos.Where(x => x != atual).ToList();
-        // dias de férias de quem é da mesma liderança (para não deixar a equipe vazia)
-        var mesmaLid = lista.Where(x => x.Id != p.Id && !x.F.SemImpacto && x.Lideranca != "" && string.Equals(x.Lideranca, p.Lideranca, StringComparison.OrdinalIgnoreCase))
-            .SelectMany(x => x.F.Periodos).ToList();
 
-        var cands = new List<(DateOnly ini, int custo, string motivo)>();
+        var cands = new List<SugestaoFer>();
         for (var d = de; d <= ate; d = d.AddDays(1))
         {
-            if (d.DayOfWeek != DayOfWeek.Monday) continue;
+            if (d.DayOfWeek is not (DayOfWeek.Monday or DayOfWeek.Tuesday or DayOfWeek.Wednesday)) continue;
             var fim = d.AddDays(dias - 1);
             if (outras.Any(o => d <= o.Fim.AddDays(1) && fim >= o.Inicio.AddDays(-1))) continue;
-            int custo = 0, piorCoord = 0, piorGeral = 0;
-            var mesesAqui = new List<string>();
-            for (var m = new DateOnly(d.Year, d.Month, 1); m <= fim; m = m.AddMonths(1))
-            {
-                var k = Mes(m.Year, m.Month); mesesAqui.Add(k);
-                int nc = carga.Na(k, p.Coordenacao) + 1, ng = carga.Geral(k) + 1;
-                piorCoord = Math.Max(piorCoord, nc); piorGeral = Math.Max(piorGeral, ng);
-                if (nc > LimitePorCoordenacao) custo += 1000 * (nc - LimitePorCoordenacao);
-                if (ng > carga.LimiteGeral) custo += 400 * (ng - carga.LimiteGeral);
-                custo += 25 * (nc - 1);
-            }
-            int juntos = mesmaLid.Sum(o => Math.Max(0, Math.Min(fim.DayNumber, o.Fim.DayNumber) - Math.Max(d.DayNumber, o.Inicio.DayNumber) + 1));
-            custo += juntos * 8;
-            custo += Math.Abs(d.DayNumber - refe.DayNumber) / 3;
-            if (fim > ciclo.Limite) custo += 5000;
-            var motivo = $"{(piorCoord <= LimitePorCoordenacao ? $"{piorCoord} de {LimitePorCoordenacao} na coordenação" : $"coordenação com {piorCoord} (limite {LimitePorCoordenacao})")}" +
-                         $" · {(juntos == 0 ? "ninguém da liderança junto" : $"{juntos} dia(s) junto com a liderança")}";
-            cands.Add((d, custo, motivo));
+            var imp = Impacto(p, lista, carga, d, dias, atual);
+            if (antes != null && imp.Pontos >= antes.Pontos) continue;   // só o que melhora
+            cands.Add(new SugestaoFer(d, dias, imp, antes));
         }
-        foreach (var c in cands.OrderBy(c => c.custo).ThenBy(c => Math.Abs(c.ini.DayNumber - refe.DayNumber)))
-        {
-            if (atual != null && c.ini == atual.Inicio) continue;
-            if (res.Any(r => Math.Abs(r.Inicio.DayNumber - c.ini.DayNumber) < 14)) continue;
-            res.Add(new SugestaoFer(c.ini, dias, c.motivo, c.custo));
-            if (res.Count == quantas) break;
-        }
-        return res.OrderBy(r => r.Inicio).ToList();
+        // a melhor (menor impacto; empate → mais perto, preferindo segunda-feira); a segunda do outro lado da data atual se houver
+        int Dist(SugestaoFer s) => Math.Abs(s.Inicio.DayNumber - refe.DayNumber) + (s.Inicio.DayOfWeek == DayOfWeek.Monday ? 0 : 2);
+        var ord = cands.OrderBy(c => c.Depois.Pontos).ThenBy(Dist).ToList();
+        if (ord.Count == 0) return res;
+        res.Add(ord[0]);
+        var lado = ord[0].Inicio < refe ? 1 : -1;
+        var segunda = ord.Where(c => Math.Abs(c.Inicio.DayNumber - ord[0].Inicio.DayNumber) >= 14 && c.Depois.Pontos <= ord[0].Depois.Pontos + 100 && Math.Sign(c.Inicio.DayNumber - refe.DayNumber) == lado).FirstOrDefault()
+                   ?? ord.FirstOrDefault(c => Math.Abs(c.Inicio.DayNumber - ord[0].Inicio.DayNumber) >= 14);
+        if (segunda != null && quantas > 1) res.Add(segunda);
+        return res;
     }
 
     // ================================================================== planilha base

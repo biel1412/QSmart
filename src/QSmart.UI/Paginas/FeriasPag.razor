@@ -184,9 +184,13 @@
                 </div>
                 <div class="fv-prazo-txt">
                     <span class="fv-st-txt @Nivel(sit.Nivel)">@sit.Rotulo</span>
-                    <b>Limite @ci.Limite.ToString("dd/MM/yyyy")</b>
+                    <b>Limite @ci.Limite.ToString("dd/MM/yyyy")@(ci.Libera > _hoje ? $" · libera {ci.Libera:dd/MM/yyyy}" : "")</b>
                     <small>Pode tirar de @ci.Libera.ToString("dd/MM/yyyy") até @ci.Limite.ToString("dd/MM/yyyy")@(sit.Faltam > 0 && sit.InicioMax is { } im ? $" · começar até {im:dd/MM/yyyy}" : "")</small>
                     <small>Admissão @(c0.Admissao?.ToString("dd/MM/yyyy")) · @sit.Marcados dias marcados@(sit.Vendidos > 0 ? " + 10 vendidos" : "")@(sit.Faltam > 0 ? $" · faltam {sit.Faltam}" : "")</small>
+                    @if (ci.N > 0 && c0.Admissao is { } adm0 && FeriasClt.CicloN(adm0, ci.N - 1) is { } ant && ant.Limite >= _hoje && FeriasClt.Contas(c0.F, ant) is var (ma, va) && ma + va >= 30)
+                    {
+                        <small class="fv-ciclo-ant">✓ Ciclo anterior (limite @ant.Limite.ToString("dd/MM/yyyy")): 30 de 30 dias marcados. Este já é o próximo.</small>
+                    }
                 </div>
             }
             else
@@ -238,25 +242,52 @@
             </div>
         }
 
-        @if (ed && c0.Admissao != null)
+        @if (c0.Admissao != null)
         {
             var alvo = _perSel != null && c0.F.Periodos.Contains(_perSel) ? _perSel : null;
-            int diasSug = alvo?.Dias ?? Math.Max(5, sit.Faltam > 0 ? sit.Faltam - (sit.Vendidos == 0 && sit.Faltam == 30 ? 0 : 0) : 30);
-            var sugs = FeriasClt.Sugerir(c0, _todos, diasSug, _hoje, alvo);
-            <div class="fv-sec"><b>Sugestões @(alvo != null ? $"para o período de {alvo.Inicio:dd/MM}" : $"para {diasSug} dias")</b></div>
-            <p class="muted pequeno fv-sug-dica">Datas próximas que cabem no prazo, com menos gente da coordenação e da mesma liderança fora junto.</p>
-            <div class="fv-sugs">
-                @foreach (var sg in sugs)
-                {
-                    var ss = sg;
-                    <div class="fv-sug">
-                        <div class="fv-sug-data"><b>@sg.Inicio.ToString("dd/MM")</b><span>→</span><b>@sg.Fim.ToString("dd/MM")</b><small>@sg.Inicio.ToString("ddd, dd 'de' MMM yyyy", Br)</small></div>
-                        <small>@sg.Dias dias · @sg.Motivo</small>
-                        <button class="btn btn-pri btn-peq" @onclick="() => UsarSugestao(c0, alvo, ss)"><Icone Nome="check" Tamanho="14" /> @(alvo != null ? "Mudar para esta" : "Marcar esta")</button>
+            int diasSug = alvo?.Dias ?? Math.Clamp(sit.Faltam > 0 ? sit.Faltam : 30, 5, 30);
+            var cargaSem = FeriasClt.Calcular(_todos, ignorar: c0.Id);
+            var agora = alvo != null ? FeriasClt.Impacto(c0, _todos, cargaSem, alvo.Inicio, alvo.Dias, alvo) : null;
+            <div class="fv-sec"><b>@(alvo != null ? $"Impacto do período de {alvo.Inicio:dd/MM}" : "Onde encaixar as férias")</b></div>
+            @if (agora != null)
+            {
+                <div class="fv-imp @(agora.Zero ? "zero" : "")">
+                    <div class="fv-imp-meses">
+                        @foreach (var m in agora.Meses) { @MesChip(m) }
                     </div>
+                    <span class="fv-imp-lid">@(c0.F.SemImpacto ? "Pessoa-chave: fica fora da conta." : agora.DiasLid == 0 ? "Ninguém da mesma liderança de férias junto." : $"{agora.DiasLid} dia(s) de férias junto com {agora.PessoasLid} pessoa(s) da mesma liderança ({c0.Lideranca}).")</span>
+                    @if (agora.Zero) { <b class="fv-imp-ok"><Icone Nome="check" Tamanho="14" /> Esta data não tem impacto: dentro do limite e sem ninguém da liderança junto.</b> }
+                </div>
+            }
+            @if (ed && (agora == null || !agora.Zero))
+            {
+                var sugs = FeriasClt.Sugerir(c0, _todos, diasSug, _hoje, alvo);
+                <div class="fv-sec"><b>@(alvo != null ? "Datas melhores, perto desta" : $"Sugestões para {diasSug} dias")</b></div>
+                @if (sugs.Count == 0)
+                {
+                    <div class="fv-sem-sug"><Icone Nome="info" Tamanho="15" />
+                        <span>@(alvo != null ? "Não há data com menos impacto dentro do prazo" : "Não achei data livre dentro do prazo")@(sit.Ciclo is { } cc ? $" (até {cc.Limite:dd/MM/yyyy})" : ""). Dá para marcar a pessoa como chave, se a ausência dela não pesa, ou combinar a troca de data com alguém da coordenação no mês cheio.</span></div>
                 }
-                @if (sugs.Count == 0) { <span class="muted pequeno">Não achei datas livres no prazo. Veja o mapa dos meses ou marque a pessoa como chave.</span> }
-            </div>
+                <div class="fv-sugs">
+                    @foreach (var sg in sugs)
+                    {
+                        var ss = sg;
+                        <div class="fv-sug">
+                            <div class="fv-sug-top">
+                                <div class="fv-sug-data"><b>@sg.Inicio.ToString("dd/MM")</b><span>→</span><b>@sg.Fim.ToString("dd/MM")</b></div>
+                                @if (sg.Reducao is int red) { <span class="fv-sug-red">−@red%<small>de impacto</small></span> }
+                                else if (sg.Depois.Zero) { <span class="fv-sug-red">✓<small>sem impacto</small></span> }
+                            </div>
+                            <small class="fv-sug-dia">@sg.Inicio.ToString("dddd, dd 'de' MMMM", Br) · @sg.Dias dias · volta @sg.Fim.AddDays(1).ToString("dd/MM", Br)</small>
+                            <div class="fv-imp-meses">@foreach (var m in sg.Depois.Meses) { @MesChip(m) }</div>
+                            <ul class="fv-sug-porque">
+                                @foreach (var linha in Porque(sg, c0)) { <li>@linha</li> }
+                            </ul>
+                            <button class="btn btn-pri btn-peq" @onclick="() => UsarSugestao(c0, alvo, ss)"><Icone Nome="check" Tamanho="14" /> @(alvo != null ? "Mudar para esta data" : "Marcar esta data")</button>
+                        </div>
+                    }
+                </div>
+            }
         }
     </aside>
 }
@@ -435,6 +466,34 @@
         _perSel = alvo;
         _ = E.Conta.Registrar("ferias.sugestao", true);
         await Salvar(c);
+    }
+
+    RenderFragment MesChip(MesImpacto m) => __b =>
+    {
+        __b.OpenElement(0, "span");
+        __b.AddAttribute(1, "class", m.Estoura ? "fv-mc x" : m.Coord == FeriasClt.LimitePorCoordenacao ? "fv-mc cheio" : "fv-mc");
+        __b.AddAttribute(2, "title", $"{FeriasClt.MesNome(m.Mes)}: {m.Coord} de {FeriasClt.LimitePorCoordenacao} na coordenação · {m.Geral} de {m.LimiteGeral} no geral");
+        __b.AddContent(3, $"{FeriasClt.Meses[int.Parse(m.Mes[5..]) - 1]} {m.Coord}/{FeriasClt.LimitePorCoordenacao}");
+        __b.CloseElement();
+    };
+
+    /// <summary>Por que a sugestão é melhor, comparando com a data atual.</summary>
+    static IEnumerable<string> Porque(SugestaoFer s, ColabFer c)
+    {
+        var a = s.Antes; var d = s.Depois;
+        if (a != null)
+        {
+            var mesesAntes = a.Meses.Where(m => m.EstouraCoord).Select(m => FeriasClt.MesNome(m.Mes)).ToList();
+            if (a.AcimaCoord > d.AcimaCoord) yield return d.AcimaCoord == 0 ? $"Sai do mês cheio ({string.Join(", ", mesesAntes)}): a coordenação fica dentro do limite." : $"Meses acima do limite: {a.AcimaCoord} → {d.AcimaCoord}.";
+            if (a.AcimaGeral > d.AcimaGeral) yield return $"No geral, deixa de passar do limite ({a.AcimaGeral} → {d.AcimaGeral} mês).";
+            if (a.DiasLid > d.DiasLid) yield return d.DiasLid == 0 ? $"Ninguém da liderança {c.Lideranca} junto (eram {a.DiasLid} dias)." : $"Dias junto com a liderança: {a.DiasLid} → {d.DiasLid}.";
+            if (a.AcimaCoord == d.AcimaCoord && a.AcimaCoord > 0) yield return "Ainda pega um mês cheio, mas com menos impacto.";
+        }
+        else
+        {
+            yield return d.AcimaCoord == 0 ? "Todos os meses dentro do limite da coordenação." : $"{d.AcimaCoord} mês(es) acima do limite (o menor possível no prazo).";
+            yield return d.DiasLid == 0 ? "Ninguém da mesma liderança de férias junto." : $"{d.DiasLid} dia(s) junto com a liderança.";
+        }
     }
 
     // ---------------------------------------------------- exportar
