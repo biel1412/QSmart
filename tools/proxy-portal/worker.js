@@ -482,11 +482,21 @@ async function api(req, env, url) {
     }
     if (m === "POST") {
       const b = await corpo(req);
+      // a planilha é da coordenação de quem carrega; o administrador escolhe de qual coordenador ela é
+      let coordFixa = ac.admin ? "" : ac.coord;
+      if (ac.admin && b.coordenador_id) {
+        const c = coordenadores.find(k => k.id === Number(b.coordenador_id));
+        if (!c) return erro("Escolha um coordenador ativo.");
+        coordFixa = coordDoUsuario(c);
+      }
       const linhas = (Array.isArray(b.linhas) ? b.linhas : []).slice(0, 5000).map(x => ({
         nome: String(x.nome || "").replace(/\s+/g, " ").trim().slice(0, 120), admissao: /^\d{4}-\d{2}-\d{2}$/.test(x.admissao || "") ? x.admissao : null,
-        lideranca: String(x.lideranca || "").trim().slice(0, 80), coordenacao: String(x.coordenacao || "").trim().slice(0, 80),
+        lideranca: String(x.lideranca || "").trim().slice(0, 80), coordenacao: coordFixa || String(x.coordenacao || "").trim().slice(0, 80),
       })).filter(x => x.nome);
       if (linhas.length === 0) return erro("A planilha veio sem pessoas.");
+      if (linhas.some(l => !l.coordenacao)) return erro("Escolha de qual coordenador é esta planilha.");
+      // quem é de outra coordenação não muda de dono por esta planilha
+      const outras = [];
       const todos = (await env.DB.prepare("SELECT id, dados FROM oo_pessoas WHERE id != ?").bind(META_OO).all()).results || [];
       const porNome = new Map();
       for (const t of todos) { try { const o = JSON.parse(await decifrar(env, t.dados)); const p = (o.Pessoas || [])[0]; if (p) { p.Id = t.id; porNome.set(normN(p.Nome), p); } } catch { } }
@@ -497,6 +507,7 @@ async function api(req, env, url) {
       for (const l of linhas) {
         const k = normN(l.nome); if (vistos.has(k)) continue; vistos.add(k);
         let p = porNome.get(k);
+        if (p && p.Coordenacao && !mesmaCoord(p.Coordenacao, l.coordenacao) && !p.Arquivado && !ac.admin) { outras.push(l.nome); continue; }
         if (p) {
           let mudou = false;
           if (l.lideranca && p.Lideranca !== l.lideranca) {
@@ -534,7 +545,7 @@ async function api(req, env, url) {
       const resumo = {
         em: agora(), por: `${u.nome} ${u.sobrenome}`.trim(), arquivo: String(b.arquivo || "").slice(0, 120), linhas: linhas.length, novos, atualizados, arquivados,
         coordenacoes: coordsPlanilha.map(c => ({ nome: c, pessoas: linhas.filter(l => l.coordenacao === c).length, coordenador: donoDe(c) })),
-        semAdmissao: linhas.filter(l => !l.admissao).length,
+        semAdmissao: linhas.filter(l => !l.admissao).length, deOutras: outras.slice(0, 20), deOutrasN: outras.length,
       };
       q.push(env.DB.prepare("INSERT INTO kv (chave, valor) VALUES ('base_import', ?) ON CONFLICT(chave) DO UPDATE SET valor = excluded.valor").bind(JSON.stringify(resumo)));
       for (let i = 0; i < q.length; i += 80) await env.DB.batch(q.slice(i, i + 80));

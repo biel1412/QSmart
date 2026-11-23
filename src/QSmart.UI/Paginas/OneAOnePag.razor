@@ -12,7 +12,7 @@
     <ChildContent>
         @if (E.OneErro != null)
         {
-            <div class="oo-bloqueio"><Icone Nome="cadeado" Tamanho="26" /><div><b>@E.OneErro</b><p class="muted">O One a One é da coordenação: cada coordenador vê as pessoas da sua coordenação (da planilha base carregada no Perfil) e o administrador vê todas.</p></div></div>
+            <div class="oo-bloqueio"><Icone Nome="cadeado" Tamanho="26" /><div><b>@E.OneErro</b><p class="muted">O One a One é da coordenação: cada coordenador vê as pessoas da planilha que carregou no Perfil e o administrador vê todas.</p></div></div>
         }
         else if (b == null)
         {
@@ -27,7 +27,7 @@
                     <button class="btn btn-pri" @onclick="EnviarAntigo" disabled="@_enviando">@(_enviando ? "Enviando…" : "Enviar para o banco")</button></div>
             }
             <div class="fa-intro">
-                <div class="fa-passo"><span>1</span><div><b>Carregue a base no Perfil</b><p class="muted">A planilha com nome, admissão, liderança e coordenação, carregada uma vez no seu Perfil, já monta as esteiras aqui e as Férias. Ou cadastre à mão:</p>
+                <div class="fa-passo"><span>1</span><div><b>Carregue a base no Perfil</b><p class="muted">A planilha com nome, admissão e liderança, carregada uma vez no seu Perfil, já monta as esteiras aqui e as Férias. Ou cadastre à mão:</p>
                     <a class="btn btn-pri" href="perfil"><Icone Nome="upload" Tamanho="15" /> Carregar a planilha</a>
                     @if (E.OneGere) { <button class="btn btn-sec" @onclick="NovaLideranca"><Icone Nome="mais" Tamanho="15" /> Liderança</button> }</div></div>
                 <div class="fa-passo"><span>2</span><div><b>Cadastre as pessoas</b><p class="muted">Nome, liderança e tipo: Novo (1:1 a cada 30 dias) ou Antigo (a cada 90).</p>

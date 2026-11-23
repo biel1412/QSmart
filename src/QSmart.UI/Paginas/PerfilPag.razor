@@ -90,13 +90,20 @@
 
         @if (p.Coordenacao)
         {
-            <div class="pf-sec"><b>Base de colaboradores</b><span>nome, admissão, liderança e coordenação · alimenta o One a One e as Férias</span></div>
+            <div class="pf-sec"><b>Base de colaboradores</b><span>nome, admissão e liderança · alimenta o One a One e as Férias</span></div>
             <div class="pf-card pf-base">
                 <div class="pf-base-ac">
                     <span class="pf-base-ic"><Icone Nome="grade-planilha" Tamanho="26" /></span>
                     <div>
                         <b>Carregue a planilha uma vez</b>
-                        <p class="muted pequeno">Colunas: <b>Nome</b>, <b>Data de admissão</b>, <b>Liderança</b> e <b>Coordenação</b> (a ordem não importa). Quem já existe é atualizado; quem saiu da planilha é arquivado com o histórico guardado. Pode carregar de novo sempre que a base mudar.</p>
+                        <p class="muted pequeno">Colunas: <b>Nome</b>, <b>Data de admissão</b> e <b>Liderança</b> (a ordem não importa). @(p.Admin ? "Escolha de qual coordenador é a planilha." : $"Todo mundo da planilha entra na sua coordenação ({p.NomeCompleto}).") Quem já existe é atualizado; quem saiu da planilha é arquivado com o histórico guardado. Pode carregar de novo sempre que a base mudar.</p>
+                        @if (p.Admin)
+                        {
+                            <select class="campo pf-base-sel" @bind="_baseCoord">
+                                <option value="0">Planilha de qual coordenador?</option>
+                                @foreach (var co in (_usuarios ?? new()).Where(x => x.Papel == "coordenador" && x.Status == "ativo")) { <option value="@co.Id">@co.Nome @co.Sobrenome</option> }
+                            </select>
+                        }
                         <div class="pf-base-bts">
                             <label class="btn btn-pri @(_baseEnviando ? "disabled" : "")">
                                 @if (_baseEnviando) { <span class="ia-spin pequeno"></span> <span>Enviando…</span> } else { <Icone Nome="upload" Tamanho="15" /> <span>Carregar planilha (.xlsx ou .csv)</span> }
@@ -155,7 +162,7 @@
                                 <option value="usuario">Usuário</option><option value="lideranca">Liderança</option>
                                 <option value="coordenador">Coordenador</option><option value="admin">Administrador</option>
                             </select>
-                            <input class="campo" placeholder="@(u.Papel == "coordenador" ? "nome na planilha, se diferente" : "—")" title="@(u.Papel == "coordenador" ? "A coluna Coordenação da planilha é ligada a esta conta pelo nome da pessoa. Se na planilha estiver escrito diferente, escreva aqui como está lá." : "")" value="@u.Lideranca" @onchange="e => MudarEquipe(u, e.Value?.ToString())" />
+                            <input class="campo" placeholder="@(u.Papel == "coordenador" ? "nome da coordenação (opcional)" : "—")" title="@(u.Papel == "coordenador" ? "A coordenação leva o nome do coordenador. Para usar outro nome (ex.: Coordenação Norte), escreva aqui." : "")" value="@u.Lideranca" @onchange="e => MudarEquipe(u, e.Value?.ToString())" />
                             <span class="pf-st @u.Status">@(u.Status switch { "ativo" => "Ativo", "pendente" => "Aguardando aprovação", _ => "Bloqueado" })</span>
                             <div class="pf-eq-ac">
                                 @if (u.Status == "pendente") { <button class="btn btn-pri rx-mini" @onclick="() => Status(u, Ativo)">Aprovar</button> }
@@ -167,7 +174,7 @@
                         </div>
                     }
                 </div>
-                <p class="muted pequeno">Só <b>coordenador</b> e <b>administrador</b> entram na seção Coordenação (Férias, Pontos de ação e One a One); liderança e usuário usam o resto do QSmart. Cada coordenador vê no One a One as pessoas da sua coordenação (coluna Coordenação da planilha base) e, nas Férias, vê o painel geral mas marca só os seus.</p>
+                <p class="muted pequeno">Só <b>coordenador</b> e <b>administrador</b> entram na seção Coordenação (Férias, Pontos de ação e One a One); liderança e usuário usam o resto do QSmart. Cada coordenador carrega no Perfil a planilha da sua equipe: ele vê no One a One só essas pessoas e, nas Férias, vê o painel geral mas marca só as suas.</p>
             }
         }
     </div>
@@ -180,6 +187,7 @@
     List<UsuarioAdmin>? _usuarios;
     System.Text.Json.Nodes.JsonNode? _base;
     bool _baseEnviando;
+    int _baseCoord;
     int _chaveBase;
 
     async Task LerBase()
@@ -206,19 +214,24 @@
         List<QSmart.Core.Coordenacao.LinhaBase> linhas;
         try { linhas = await QSmart.Core.Coordenacao.FeriasClt.LerBase(new QSmart.Core.Planilhas.Arquivo(f.Name, bytes)); }
         catch (Exception ex) { await J.Erro("Base de colaboradores", ex.Message); return; }
-        var coords = linhas.GroupBy(l => l.Coordenacao).Select(g => $"• {(g.Key == "" ? "(sem coordenação)" : g.Key)}: {g.Count()}").ToList();
+        var eu = E.Conta.Perfil!;
+        if (eu.Admin && _baseCoord == 0) { await J.Aviso("Base de colaboradores", "Escolha primeiro de qual coordenador é esta planilha."); return; }
+        var dono = eu.Admin ? (_usuarios?.FirstOrDefault(x => x.Id == _baseCoord) is { } co ? $"{co.Nome} {co.Sobrenome}" : "?") : eu.NomeCompleto;
         int semAdm = linhas.Count(l => l.Admissao == null);
-        var msg = $"{linhas.Count} pessoas em {Math.Max(1, coords.Count)} coordenação(ões):\n{string.Join("\n", coords)}" +
+        var lids = linhas.Select(l => l.Lideranca).Where(l => l != "").Distinct().Count();
+        var msg = $"{linhas.Count} pessoas em {lids} liderança(s) entram na coordenação de {dono}." +
                   (semAdm > 0 ? $"\n\n{semAdm} sem data de admissão (as Férias delas ficam sem prazo até corrigir)." : "") +
-                  "\n\nQuem já existe é atualizado e quem não está na planilha (dessas coordenações) é arquivado. Enviar?";
+                  $"\n\nQuem já existe é atualizado e quem é da coordenação de {dono} mas não está na planilha é arquivado. Enviar?";
         if (!await J.Pergunta("Carregar base de colaboradores", msg)) return;
         _baseEnviando = true; StateHasChanged();
-        var r = await E.BaseEnviar(linhas, f.Name);
+        var r = await E.BaseEnviar(linhas, f.Name, eu.Admin ? _baseCoord : null);
         _baseEnviando = false;
         if (!r.Ok) { await J.Erro("Base de colaboradores", r.Erro); return; }
         await LerBase();
         _ = E.Conta.Registrar("base.carregar", true);
-        await J.Info("Base de colaboradores", $"Pronto! {r.Json?["novos"]?.GetValue<int>()} novas, {r.Json?["atualizados"]?.GetValue<int>()} atualizadas e {r.Json?["arquivados"]?.GetValue<int>()} arquivadas. Já estão no One a One e nas Férias.");
+        var outras = Num(r.Json, "deOutrasN");
+        await J.Info("Base de colaboradores", $"Pronto! {Num(r.Json, "novos")} novas, {Num(r.Json, "atualizados")} atualizadas e {Num(r.Json, "arquivados")} arquivadas. Já estão no One a One e nas Férias." +
+            (outras > 0 ? $"\n\n{outras} pessoa(s) da planilha já são de outra coordenação e ficaram onde estão (o administrador pode transferir): {string.Join(", ", (r.Json?["deOutras"] as System.Text.Json.Nodes.JsonArray ?? new()).Select(x => x?.ToString()))}" : ""));
     }
     static readonly string[] Ferramentas = Abas.Todas.Concat(Abas.Internas).Where(a => !a.Externo).Select(a => a.Chave).ToArray();
 

@@ -13,7 +13,7 @@ namespace QSmart.Core.Coordenacao;
 //  - quem está marcado como "não impacta" não entra nas contas.
 // =====================================================================================
 
-/// <summary>Uma linha da base de colaboradores (planilha carregada no Perfil da coordenação).</summary>
+/// <summary>Uma linha da base de colaboradores (planilha carregada no Perfil da coordenação). A coordenação é a de quem carrega.</summary>
 public sealed record LinhaBase(string Nome, DateOnly? Admissao, string Lideranca, string Coordenacao);
 
 /// <summary>Pessoa no painel de férias.</summary>
@@ -257,7 +257,7 @@ public static class FeriasClt
     }
 
     // ================================================================== planilha base
-    /// <summary>Lê a planilha base: Nome, Data de admissão, Liderança e Coordenação (a ordem das colunas não importa).</summary>
+    /// <summary>Lê a planilha base: Nome, Data de admissão e Liderança (a ordem das colunas não importa; Coordenação é opcional).</summary>
     public static async Task<List<LinhaBase>> LerBase(Arquivo arq)
     {
         var folhas = await Leitor.Ler(arq, new OpcoesLeitura { SemCabecalho = true });
@@ -272,19 +272,19 @@ public static class FeriasClt
                 int ca = Col("admissao", "data de admissao", "data admissao", "dt admissao", "admitido em");
                 int cl = Col("lideranca", "lider", "lideranca imediata", "supervisor", "supervisao", "equipe", "time");
                 int cc = Col("coordenacao", "coordenador", "coordenadora", "coord");
-                if (cn < 0 || cl < 0 || cc < 0) continue;
+                if (cn < 0 || cl < 0) continue;
                 var lista = new List<LinhaBase>();
                 for (int i = h + 1; i < f.N; i++)
                 {
                     var nome = (f.Valor(i, cn).Texto ?? "").Trim();
                     if (nome == "") continue;
                     lista.Add(new LinhaBase(System.Text.RegularExpressions.Regex.Replace(nome, @"\s+", " "), ca >= 0 ? Data(f.Valor(i, ca)) : null,
-                        (f.Valor(i, cl).Texto ?? "").Trim(), (f.Valor(i, cc).Texto ?? "").Trim()));
+                        (f.Valor(i, cl).Texto ?? "").Trim(), cc >= 0 ? (f.Valor(i, cc).Texto ?? "").Trim() : ""));
                 }
                 if (lista.Count > 0) return lista;
             }
         }
-        throw new InvalidDataException("Não achei o cabeçalho. A planilha precisa das colunas Nome, Data de admissão, Liderança e Coordenação.");
+        throw new InvalidDataException("Não achei o cabeçalho. A planilha precisa das colunas Nome, Data de admissão e Liderança.");
     }
 
     static DateOnly? Data(Celula c)
@@ -304,12 +304,12 @@ public static class FeriasClt
     {
         var wb = new XlsxWriter();
         var s = wb.Planilha("Colaboradores");
-        s.Cabecalho("Nome", "Data de admissão", "Liderança", "Coordenação");
+        s.Cabecalho("Nome", "Data de admissão", "Liderança");
         s.NegritoLinha(0);
-        s.Linha("Maria da Silva", new DateOnly(2024, 3, 11), "Diogo Machado", "Lilian Brum");
-        s.Linha("João Souza", new DateOnly(2025, 8, 4), "Larissa Muhl", "Lilian Brum");
+        s.Linha("Maria da Silva", new DateOnly(2024, 3, 11), "Diogo Machado");
+        s.Linha("João Souza", new DateOnly(2025, 8, 4), "Larissa Muhl");
         s.FormatoData(1, 1, 2);
-        foreach (var (c, w) in new[] { (0, 34.0), (1, 16.0), (2, 24.0), (3, 24.0) }) s.Largura(c, w);
+        foreach (var (c, w) in new[] { (0, 34.0), (1, 16.0), (2, 24.0) }) s.Largura(c, w);
         return wb.Salvar();
     }
 }
