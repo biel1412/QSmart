@@ -204,21 +204,22 @@ function metaFiltrada(json, minhaLid) {
   try {
     const o = JSON.parse(json);
     o.Liderancas = (o.Liderancas || []).filter(l => minhaLid(l));
-    const f = {};
-    for (const [mes, v] of Object.entries(o.Fotos || {})) { const x = {}; for (const [l, n] of Object.entries(v || {})) if (minhaLid(l)) x[l] = n; if (Object.keys(x).length) f[mes] = x; }
+    /** @type {any} */ const f = {};
+    for (const [mes, v] of Object.entries(o.Fotos || {})) { /** @type {any} */ const x = {}; for (const [l, n] of Object.entries(v || {})) if (minhaLid(l)) x[l] = n; if (Object.keys(x).length) f[mes] = x; }
     o.Fotos = f;
     return JSON.stringify(o);
   } catch { return json; }
 }
 function metaJuntar(antigo, novo, minhaLid) {
-  let a = {}, n = {};
+  /** @type {any} */ let a = {};
+  /** @type {any} */ let n = {};
   try { a = antigo ? JSON.parse(antigo) : {}; } catch { }
   try { n = JSON.parse(novo); } catch { return antigo || novo; }
-  const out = { ...a };
+  /** @type {any} */ const out = { ...a };
   out.Liderancas = (a.Liderancas || []).filter(l => !minhaLid(l)).concat((n.Liderancas || []).filter(l => minhaLid(l)));
-  const f = {};
+  /** @type {any} */ const f = {};
   for (const mes of new Set([...Object.keys(a.Fotos || {}), ...Object.keys(n.Fotos || {})])) {
-    const x = {};
+    /** @type {any} */ const x = {};
     for (const [l, v] of Object.entries((a.Fotos || {})[mes] || {})) if (!minhaLid(l)) x[l] = v;
     for (const [l, v] of Object.entries((n.Fotos || {})[mes] || {})) if (minhaLid(l)) x[l] = v;
     f[mes] = x;
@@ -230,7 +231,7 @@ const hojeISO = () => hojeBR();
 function novoIdOO() { const b = crypto.getRandomValues(new Uint8Array(6)); return [...b].map(x => x.toString(16).padStart(2, "0")).join(""); }
 // meses (yyyy-mm) em que um período de férias tem pelo menos um dia
 function mesesDoPeriodo(ini, dias) {
-  const out = []; const d0 = new Date(ini + "T12:00:00Z"); if (isNaN(d0)) return out;
+  const out = []; const d0 = new Date(ini + "T12:00:00Z"); if (isNaN(d0.getTime())) return out;
   const fim = new Date(d0.getTime() + (Math.max(1, dias) - 1) * 864e5);
   let y = d0.getUTCFullYear(), m = d0.getUTCMonth();
   while (y < fim.getUTCFullYear() || (y === fim.getUTCFullYear() && m <= fim.getUTCMonth())) { out.push(`${y}-${String(m + 1).padStart(2, "0")}`); m++; if (m > 11) { m = 0; y++; } }
