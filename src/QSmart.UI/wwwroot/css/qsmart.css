@@ -3057,3 +3057,5 @@ a.sino-it:hover { background: var(--surface2); }
 .ch-toast b { font-size: 13.5px; } .ch-toast span { font-size: 12.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ch-toast i { font-style: normal; color: var(--muted); padding: 4px; }
 .ch-toast .ch-av { color: #fff; }
+/* com o chat aberto, o botão do Mr. Smart sai da frente (volta ao fechar) */
+body:has(.ch-painel) .mr-btn, body:has(.ch-painel) .mr-dica, body:has(.ch-painel) .mr-jan { display: none !important; }
