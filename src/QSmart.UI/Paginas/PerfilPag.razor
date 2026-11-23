@@ -224,10 +224,18 @@
                                     }
                                     <select class="campo pf-eq-add" value="" @onchange="e => AdicionarEquipe(u, e.Value?.ToString())" title="Trazer uma equipe para esta coordenação">
                                         <option value="">+ equipe</option>
-                                        @foreach (var (g, i) in (_equipes ?? new()).Select((g, i) => (g, i)).Where(t => t.g.CoordenadorId != u.Id))
+                                        @if (_lideresSem.Count > 0)
                                         {
-                                            <option value="@i">@(g.Lideranca == "" ? "sem liderança" : g.Lideranca) · @g.Pessoas@(g.CoordenadorId == 0 ? " (sem coordenação)" : $" (hoje: {NomeCoord(g.CoordenadorId)})")</option>
+                                            <optgroup label="Lideranças com conta, ainda sem equipe">
+                                                @foreach (var n in _lideresSem) { <option value="@("L:" + n)">@n (nova equipe)</option> }
+                                            </optgroup>
                                         }
+                                        <optgroup label="Equipes que já existem">
+                                            @foreach (var (g, i) in (_equipes ?? new()).Select((g, i) => (g, i)).Where(t => t.g.CoordenadorId != u.Id))
+                                            {
+                                                <option value="@i">@(g.Lideranca == "" ? "sem liderança" : g.Lideranca) · @g.Pessoas@(g.CoordenadorId == 0 ? " (sem coordenação)" : $" (hoje: {NomeCoord(g.CoordenadorId)})")</option>
+                                            }
+                                        </optgroup>
                                     </select>
                                 }
                                 else if (u.Papel == "lideranca")
@@ -446,12 +454,14 @@
     // ---------- equipes (lideranças) de cada coordenação ----------
     sealed record EquipeAdm(string Lideranca, string Coordenacao, int CoordenadorId, int Pessoas);
     List<EquipeAdm>? _equipes;
+    List<string> _lideresSem = new();
     (int, string)? _eqMenu;
 
     async Task LerEquipes()
     {
         var r = await E.Conta.Chamar("GET", "admin/equipes");
         _equipes = (r.Json?["equipes"] as System.Text.Json.Nodes.JsonArray ?? new()).Select(x => new EquipeAdm(Txt(x, "lideranca"), Txt(x, "coordenacao"), Num(x, "coordenadorId"), Num(x, "pessoas"))).ToList();
+        _lideresSem = (r.Json?["lideresSemEquipe"] as System.Text.Json.Nodes.JsonArray ?? new()).Select(x => x?.ToString() ?? "").Where(x => x != "").ToList();
     }
 
     string NomeCoord(int id) => _usuarios?.FirstOrDefault(x => x.Id == id) is { } c ? $"{c.Nome} {c.Sobrenome}" : "?";
@@ -469,6 +479,12 @@
 
     async Task AdicionarEquipe(UsuarioAdmin u, string? v)
     {
+        if (v != null && v.StartsWith("L:"))
+        {
+            var lider = v[2..];
+            await Mover(new EquipeAdm(lider, "", 0, 0), u.Id, $"Criar a equipe de {lider} na coordenação de {u.Nome} {u.Sobrenome}?\n\nEla aparece como esteira no One a One de {u.Nome}; as pessoas entram pela planilha ou em “Ver, adicionar e excluir colaboradores”, com a liderança {lider}.");
+            return;
+        }
         if (!int.TryParse(v, out var i) || _equipes == null || i < 0 || i >= _equipes.Count) return;
         var g = _equipes[i];
         var nomeL = g.Lideranca == "" ? "sem liderança" : g.Lideranca;

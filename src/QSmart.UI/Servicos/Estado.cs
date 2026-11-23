@@ -396,6 +396,7 @@ public sealed class Estado
             OneVeTudo = r.Json["veTudo"]?.GetValue<bool>() ?? false;
             OneMinhaLideranca = r.Json["lideranca"]?.GetValue<string>() ?? "";
             OneCoordenacao = r.Json["coordenacao"]?.GetValue<string>() ?? "";
+            var equipes = (r.Json["equipes"] as System.Text.Json.Nodes.JsonArray)?.Select(x => x?.GetValue<string>() ?? "").Where(x => x != "").ToList() ?? new();
             var b = new QSmart.Core.Coordenacao.BaseOO();
             _oneSinc.Clear();
             if (r.Json["pessoas"] is System.Text.Json.Nodes.JsonArray a)
@@ -408,6 +409,9 @@ public sealed class Estado
                     else if (lida.Pessoas.Count > 0) { var p = lida.Pessoas[0]; p.Id = id; b.Pessoas.Add(p); _oneSinc[id] = SerPessoa(p); }
                 }
             b.Pessoas = b.Pessoas.OrderBy(p => p.Nome, StringComparer.CurrentCultureIgnoreCase).ToList();
+            // equipes da coordenação que ainda não têm ninguém também aparecem como esteira
+            foreach (var l in equipes) if (!b.Liderancas.Contains(l, StringComparer.OrdinalIgnoreCase)) b.Liderancas.Add(l);
+            if (_oneSinc.ContainsKey(IdMeta)) _oneSinc[IdMeta] = SerMeta(b);
             OneBase = b;
         }
         finally { OneCarregando = false; Notificar(); }

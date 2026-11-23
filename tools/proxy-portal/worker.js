@@ -200,6 +200,16 @@ function acessoCoord(u) {
   return null;
 }
 const META_OO = "__base";
+// equipes registradas: liderança → coordenação (vale também para equipe ainda sem pessoas)
+async function equipesOO(env) {
+  const r = await env.DB.prepare("SELECT lideranca, coordenacao FROM oo_equipes").all();
+  const m = new Map(); for (const x of r.results || []) m.set(normN(x.lideranca), x); return m;
+}
+// registra a equipe na coordenação, se ainda não for de ninguém
+async function registrarEquipe(env, lid, coord) {
+  lid = String(lid || "").trim(); if (!lid || !coord) return;
+  await env.DB.prepare("INSERT INTO oo_equipes (chave, lideranca, coordenacao) VALUES (?, ?, ?) ON CONFLICT(chave) DO NOTHING").bind(normN(lid), lid, coord).run();
+}
 function metaFiltrada(json, minhaLid) {
   try {
     const o = JSON.parse(json);
@@ -468,7 +478,16 @@ async function api(req, env, url) {
         const g = grupos.get(chave) || { lideranca: x.lideranca || "", coordenacao: x.coordenacao || "", coordenadorId: dono ? dono.id : 0, pessoas: 0 };
         g.pessoas++; grupos.set(chave, g);
       }
-      return json({ equipes: [...grupos.values()].sort((a, b) => a.lideranca.localeCompare(b.lideranca, "pt-BR")) });
+      const reg = await equipesOO(env);
+      for (const e of reg.values()) {
+        if ([...grupos.values()].some(g => normN(g.lideranca) === normN(e.lideranca))) continue;
+        const dono = coords.find(c => mesmaCoord(e.coordenacao, coordDoUsuario(c)));
+        grupos.set(normN(e.lideranca) + "|reg", { lideranca: e.lideranca, coordenacao: e.coordenacao, coordenadorId: dono ? dono.id : 0, pessoas: 0 });
+      }
+      // lideranças com conta que ainda não têm equipe: dá para criar a equipe delas já numa coordenação
+      const lideres = ((await env.DB.prepare("SELECT nome, sobrenome FROM usuarios WHERE papel = 'lideranca' AND status = 'ativo'").all()).results || [])
+        .map(x => `${x.nome} ${x.sobrenome}`.trim()).filter(n => ![...grupos.values()].some(g => mesmaCoord(g.lideranca, n)));
+      return json({ equipes: [...grupos.values()].sort((a, b) => a.lideranca.localeCompare(b.lideranca, "pt-BR")), lideresSemEquipe: lideres });
     }
     if (rota === "admin/equipes" && m === "POST") {
       const b = await corpo(req);
@@ -489,8 +508,11 @@ async function api(req, env, url) {
         p.Coordenacao = para;
         q.push(env.DB.prepare("UPDATE oo_pessoas SET coordenacao = ?, dados = ?, atualizado_em = ?, atualizado_por = ? WHERE id = ?").bind(para, await cifrar(env, JSON.stringify(o)), agora(), u.id, x.id));
       }
+      if (lid && para) q.push(env.DB.prepare("INSERT INTO oo_equipes (chave, lideranca, coordenacao) VALUES (?, ?, ?) ON CONFLICT(chave) DO UPDATE SET lideranca = excluded.lideranca, coordenacao = excluded.coordenacao").bind(normN(lid), lid, para));
+      else if (lid) q.push(env.DB.prepare("DELETE FROM oo_equipes WHERE chave = ?").bind(normN(lid)));
+      const n = q.length - (lid ? 1 : 0);
       for (let i = 0; i < q.length; i += 80) await env.DB.batch(q.slice(i, i + 80));
-      return json({ ok: true, pessoas: q.length, para });
+      return json({ ok: true, pessoas: n, para });
     }
     if (rota === "admin/recuperacao" && m === "POST") {
       const b = await corpo(req);
@@ -604,6 +626,7 @@ async function api(req, env, url) {
       q.push(env.DB.prepare("INSERT INTO kv (chave, valor) VALUES ('base_import', ?) ON CONFLICT(chave) DO UPDATE SET valor = excluded.valor").bind(JSON.stringify(resumo)));
       for (const c of new Set(linhas.map(l => normN(l.coordenacao))))
         q.push(env.DB.prepare("INSERT INTO kv (chave, valor) VALUES (?, ?) ON CONFLICT(chave) DO UPDATE SET valor = excluded.valor").bind("base_import:" + c, JSON.stringify(resumo)));
+      for (const l of linhas) if (l.lideranca) q.push(env.DB.prepare("INSERT INTO oo_equipes (chave, lideranca, coordenacao) VALUES (?, ?, ?) ON CONFLICT(chave) DO NOTHING").bind(normN(l.lideranca), l.lideranca, l.coordenacao));
       for (let i = 0; i < q.length; i += 80) await env.DB.batch(q.slice(i, i + 80));
       return json({ ok: true, ...resumo });
     }
@@ -614,12 +637,15 @@ async function api(req, env, url) {
     if (!ac) return erro("O One a One é só da coordenação. Fale com o administrador.", 403);
     // lideranças que são de pessoas de outras coordenações (para separar a "foto do mês" e a lista de lideranças)
     let lidsOutras = new Set();
+    const equipes = await equipesOO(env);
     if (!ac.admin) {
       const r = await env.DB.prepare("SELECT DISTINCT lideranca, coordenacao FROM oo_pessoas WHERE id != ?").bind(META_OO).all();
       for (const x of r.results || []) if (x.lideranca && !ac.minha(x.coordenacao)) lidsOutras.add(normN(x.lideranca));
       for (const x of r.results || []) if (x.lideranca && ac.minha(x.coordenacao)) lidsOutras.delete(normN(x.lideranca));
     }
-    const minhaLid = l => ac.admin || !lidsOutras.has(normN(l));
+    // a equipe registrada manda; sem registro, vale de quem são as pessoas
+    const minhaLid = l => { if (ac.admin) return true; const e = equipes.get(normN(l)); return e ? ac.minha(e.coordenacao) : !lidsOutras.has(normN(l)); };
+    const minhasEquipes = ac.admin ? [] : [...equipes.values()].filter(e => ac.minha(e.coordenacao)).map(e => e.lideranca);
 
     if (rota === "oo" && m === "GET") {
       const r = await env.DB.prepare("SELECT id, lideranca, coordenacao, dados, atualizado_em FROM oo_pessoas").all();
@@ -629,7 +655,7 @@ async function api(req, env, url) {
         if (!ac.admin && !ac.minha(p.coordenacao)) continue;
         pessoas.push({ id: p.id, lideranca: p.lideranca, coordenacao: p.coordenacao, dados: await decifrar(env, p.dados), atualizadoEm: p.atualizado_em });
       }
-      return json({ pessoas, veTudo: ac.admin, coordenacao: ac.coord, lideranca: "" });
+      return json({ pessoas, veTudo: ac.admin, coordenacao: ac.coord, lideranca: "", equipes: minhasEquipes });
     }
 
     const salvar = async p => {
@@ -638,6 +664,7 @@ async function api(req, env, url) {
       if (p.dados.length > 400000) return "Registro grande demais.";
       if (id === META_OO) {
         const antes = await env.DB.prepare("SELECT dados FROM oo_pessoas WHERE id = ?").bind(META_OO).first();
+        if (!ac.admin) { try { for (const l of JSON.parse(p.dados).Liderancas || []) if (minhaLid(l) && !equipes.has(normN(l))) await registrarEquipe(env, l, ac.coord); } catch { } }
         const dados = ac.admin ? p.dados : metaJuntar(antes ? await decifrar(env, antes.dados) : "", p.dados, minhaLid);
         await env.DB.prepare("INSERT INTO oo_pessoas (id, lideranca, coordenacao, dados, atualizado_em, atualizado_por) VALUES (?, '', '', ?, ?, ?) ON CONFLICT(id) DO UPDATE SET dados = excluded.dados, atualizado_em = excluded.atualizado_em, atualizado_por = excluded.atualizado_por")
           .bind(META_OO, await cifrar(env, dados), agora(), u.id).run();
@@ -648,6 +675,7 @@ async function api(req, env, url) {
       if (!ac.minha(coord)) return "Você só pode salvar pessoas da sua coordenação.";
       const antes = await env.DB.prepare("SELECT coordenacao FROM oo_pessoas WHERE id = ?").bind(id).first();
       if (antes && !ac.minha(antes.coordenacao)) return "Essa pessoa é de outra coordenação.";
+      if (lid && coord) await registrarEquipe(env, lid, coord);
       await env.DB.prepare("INSERT INTO oo_pessoas (id, lideranca, coordenacao, dados, atualizado_em, atualizado_por) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET lideranca = excluded.lideranca, coordenacao = excluded.coordenacao, dados = excluded.dados, atualizado_em = excluded.atualizado_em, atualizado_por = excluded.atualizado_por")
         .bind(id, lid, coord, await cifrar(env, p.dados), agora(), u.id).run();
       return null;
