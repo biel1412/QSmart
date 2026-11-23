@@ -2860,3 +2860,17 @@ a.sino-it:hover { background: var(--surface2); }
 .of-tag{align-self:flex-start;border:0;cursor:pointer;font-size:12px;font-weight:600;padding:4px 10px;border-radius:99px;text-align:left}
 .of-tag.g{color:var(--green);background:var(--green-soft)}.of-tag.a{color:var(--amber);background:var(--amber-soft)}.of-tag.r{color:var(--red);background:var(--red-soft)}
 .of-ed-bts{display:flex;gap:6px}
+
+/* ===== Perfil: equipe da liderança ===== */
+.pf-colab.lid { grid-template-columns: minmax(0, 1fr) 160px auto; }
+.pf-colab-nome small.pf-colab-fonte { display: inline-block; margin-top: 2px; padding: 1px 8px; border-radius: 99px; font-size: 10.5px; font-weight: 700; opacity: 1; color: #7C3AED; background: color-mix(in srgb, #7C3AED 14%, transparent); }
+.pf-lid-eq { display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 14px; background: color-mix(in srgb, currentColor 5%, transparent); margin-bottom: 10px; }
+.pf-lid-eq > div { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.pf-lid-eq small { font-size: 10.5px; font-weight: 700; letter-spacing: .05em; opacity: .6; }
+.pf-lid-eq b { font-size: 15px; }
+.pf-lid-av { width: 42px; height: 42px; border-radius: 13px; display: grid; place-items: center; color: #fff; font-weight: 800; background: linear-gradient(135deg, #7C3AED, #0891B2); flex: none; }
+.pf-lid-eq > em { font-style: normal; font-size: 22px; font-weight: 800; display: flex; flex-direction: column; align-items: center; line-height: 1.1; }
+.pf-lid-eq > em small { font-size: 11px; font-weight: 600; letter-spacing: 0; }
+.pf-lid-co { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; margin-top: 2px; }
+.pf-lid-co.ok { color: var(--green); } .pf-lid-co.sem { color: var(--amber); }
+.pf-lid-falta { display: flex; align-items: center; gap: 4px; color: var(--amber); font-weight: 600; margin: -4px 0 6px 10px; }

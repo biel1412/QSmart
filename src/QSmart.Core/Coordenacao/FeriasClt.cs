@@ -306,7 +306,7 @@ public static class FeriasClt
 
     // ================================================================== planilha base
     /// <summary>Lê a planilha base: Nome, Data de admissão e Liderança (a ordem das colunas não importa; Coordenação é opcional).</summary>
-    public static async Task<List<LinhaBase>> LerBase(Arquivo arq)
+    public static async Task<List<LinhaBase>> LerBase(Arquivo arq, bool exigeLideranca = true)
     {
         var folhas = await Leitor.Ler(arq, new OpcoesLeitura { SemCabecalho = true });
         foreach (var f in folhas)
@@ -320,19 +320,19 @@ public static class FeriasClt
                 int ca = Col("admissao", "data de admissao", "data admissao", "dt admissao", "admitido em");
                 int cl = Col("lideranca", "lider", "lideranca imediata", "supervisor", "supervisao", "equipe", "time");
                 int cc = Col("coordenacao", "coordenador", "coordenadora", "coord");
-                if (cn < 0 || cl < 0) continue;
+                if (cn < 0 || (cl < 0 && exigeLideranca)) continue;
                 var lista = new List<LinhaBase>();
                 for (int i = h + 1; i < f.N; i++)
                 {
                     var nome = (f.Valor(i, cn).Texto ?? "").Trim();
                     if (nome == "") continue;
                     lista.Add(new LinhaBase(System.Text.RegularExpressions.Regex.Replace(nome, @"\s+", " "), ca >= 0 ? Data(f.Valor(i, ca)) : null,
-                        (f.Valor(i, cl).Texto ?? "").Trim(), cc >= 0 ? (f.Valor(i, cc).Texto ?? "").Trim() : ""));
+                        cl >= 0 ? (f.Valor(i, cl).Texto ?? "").Trim() : "", cc >= 0 ? (f.Valor(i, cc).Texto ?? "").Trim() : ""));
                 }
                 if (lista.Count > 0) return lista;
             }
         }
-        throw new InvalidDataException("Não achei o cabeçalho. A planilha precisa das colunas Nome, Data de admissão e Liderança.");
+        throw new InvalidDataException(exigeLideranca ? "Não achei o cabeçalho. A planilha precisa das colunas Nome, Data de admissão e Liderança." : "Não achei o cabeçalho. A planilha precisa das colunas Nome e Data de admissão.");
     }
 
     static DateOnly? Data(Celula c)
@@ -345,6 +345,20 @@ public static class FeriasClt
             if (DateTime.TryParseExact(t, fmt, CultureInfo.InvariantCulture, DateTimeStyles.None, out var d)) return DateOnly.FromDateTime(d);
         if (double.TryParse(t, NumberStyles.Float, CultureInfo.InvariantCulture, out var n) && n > 10000 && n < 80000 && LeitorXlsx.DeSerial(n) is { } dd) return DateOnly.FromDateTime(dd);
         return null;
+    }
+
+    /// <summary>Modelo da planilha da liderança: só Nome e Data de admissão (a liderança é quem carrega).</summary>
+    public static byte[] ModeloLideranca()
+    {
+        var wb = new XlsxWriter();
+        var s = wb.Planilha("Minha equipe");
+        s.Cabecalho("Nome", "Data de admissão");
+        s.NegritoLinha(0);
+        s.Linha("Maria da Silva", new DateOnly(2024, 3, 11));
+        s.Linha("João Souza", new DateOnly(2025, 8, 4));
+        s.FormatoData(1, 1, 2);
+        foreach (var (c, w) in new[] { (0, 34.0), (1, 16.0) }) s.Largura(c, w);
+        return wb.Salvar();
     }
 
     /// <summary>Modelo em branco da planilha base.</summary>

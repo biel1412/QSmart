@@ -169,12 +169,81 @@
                 {
                     var xx = x;
                     <div class="pf-colab" @key="x.Id">
-                        <span class="pf-colab-nome"><b>@x.Nome</b>@if (p.Admin) { <small>@(x.Coordenacao == "" ? "sem coordenação" : x.Coordenacao)</small> }</span>
+                        <span class="pf-colab-nome"><b>@x.Nome</b>@if (p.Admin) { <small>@(x.Coordenacao == "" ? "sem coordenação" : x.Coordenacao)</small> }@if (x.Fonte == "lideranca") { <small class="pf-colab-fonte" title="A liderança cadastrou esta pessoa. A planilha da coordenação não sobrescreve os dados dela.">cadastrado pela liderança</small> }</span>
                         <input class="campo" type="date" title="Data de admissão" value="@(x.Admissao?.ToString("yyyy-MM-dd"))" @onchange="e => MudarAdm(xx, e)" />
                         <input class="campo" placeholder="Liderança" list="pf-lids" value="@x.Lideranca" @onchange="e => MudarLid(xx, e)" />
                         <button class="btn btn-sec btn-peq" title="Excluir colaborador" @onclick="() => ExcluirColab(xx)"><Icone Nome="lixo" Tamanho="14" /> Excluir</button>
                     </div>
                 }
+            </div>
+        }
+
+        @if (p.Papel == "lideranca")
+        {
+            <div class="pf-sec"><b>Minha equipe</b><span>nome e data de admissão · a coordenação já recebe no One a One e nas Férias</span></div>
+            <div class="pf-card pf-base">
+                <div class="pf-base-ac">
+                    <span class="pf-base-ic"><Icone Nome="usuarios" Tamanho="26" /></span>
+                    <div>
+                        <b>Cadastre seus colaboradores</b>
+                        <p class="muted pequeno">Carregue uma planilha com <b>Nome</b> e <b>Data de admissão</b> (pode ser a mesma da coordenação; a coluna Liderança é ignorada, todo mundo entra na sua equipe) ou adicione um por um abaixo.
+                            O que você informar vale mais que a planilha da coordenação. Quem é da sua equipe e não veio na planilha sai da equipe, com o histórico guardado.</p>
+                        <div class="pf-base-bts">
+                            <label class="btn btn-pri @(_lidEnviando ? "disabled" : "")">
+                                @if (_lidEnviando) { <span class="ia-spin pequeno"></span> <span>Enviando…</span> } else { <Icone Nome="upload" Tamanho="15" /> <span>Carregar planilha (.xlsx ou .csv)</span> }
+                                <InputFile OnChange="CarregarLid" accept=".xlsx,.xlsm,.csv" @key="_chaveLid" disabled="@_lidEnviando" />
+                            </label>
+                            <button class="btn btn-sec" @onclick="BaixarModeloLid"><Icone Nome="download" Tamanho="15" /> Baixar modelo</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="pf-base-info">
+                    @if (_lid == null) { <p class="muted pequeno"><span class="ia-spin pequeno"></span> Carregando…</p> }
+                    else
+                    {
+                        <div class="pf-lid-eq">
+                            <span class="pf-lid-av">@IniciaisDe(Txt(_lid, "lideranca"))</span>
+                            <div><small>SUA EQUIPE</small><b>@Txt(_lid, "lideranca")</b>
+                                @if (Txt(_lid, "coordenacao") is { Length: > 0 } co) { <span class="pf-lid-co ok"><Icone Nome="check" Tamanho="12" /> coordenação @co</span> }
+                                else { <span class="pf-lid-co sem" title="O administrador liga sua equipe a uma coordenação em Equipe e acessos. Seus cadastros ficam guardados mesmo assim."><Icone Nome="alerta" Tamanho="12" /> ainda sem coordenação</span> }
+                            </div>
+                            <em>@LidPessoas().Count<small>pessoas</small></em>
+                        </div>
+                        @if (_lid["ultima"] is System.Text.Json.Nodes.JsonObject ul)
+                        {
+                            <div class="pf-base-ult">
+                                <small>ÚLTIMA PLANILHA</small>
+                                <b>@Quando(Txt(ul, "em"))@(Txt(ul, "arquivo") is { Length: > 0 } ar ? $" · {ar}" : "")</b>
+                                <span>@(Num(ul, "linhas")) pessoas · @(Num(ul, "novos")) novas · @(Num(ul, "atualizados")) atualizadas · @(Num(ul, "arquivados")) saíram</span>
+                                @if (Num(ul, "recusadasN") > 0) { <span class="pf-base-alerta"><Icone Nome="alerta" Tamanho="13" /> @(Num(ul, "recusadasN")) não entraram (são de outra equipe ou coordenação)</span> }
+                            </div>
+                        }
+                    }
+                </div>
+            </div>
+            <div class="pf-card pf-colabs">
+                <div class="pf-colabs-cab">
+                    <b>Colaboradores da sua equipe</b>
+                    <span class="muted pequeno">nome e data de admissão são obrigatórios</span>
+                    <span class="mola"></span>
+                    <input class="campo pf-colabs-busca" placeholder="Buscar…" @bind="_colabBusca" @bind:event="oninput" />
+                </div>
+                <div class="pf-colab nova lid">
+                    <input class="campo" placeholder="Nome completo" @bind="_novoNome" @bind:event="oninput" />
+                    <input class="campo" type="date" title="Data de admissão" @bind="_novaAdm" max="@DateTime.Today.ToString("yyyy-MM-dd")" />
+                    <button class="btn btn-pri" @onclick="AdicionarLid" disabled="@(string.IsNullOrWhiteSpace(_novoNome) || _novaAdm == null || _lidSalvando)"><Icone Nome="mais" Tamanho="15" /> Adicionar</button>
+                </div>
+                @if (!string.IsNullOrWhiteSpace(_novoNome) && _novaAdm == null) { <small class="pf-lid-falta"><Icone Nome="info" Tamanho="12" /> Falta a data de admissão.</small> }
+                @foreach (var x in LidPessoas().Where(x => _colabBusca == "" || Txt(x, "nome").Contains(_colabBusca, StringComparison.CurrentCultureIgnoreCase)))
+                {
+                    var xx = x; var id = Txt(x, "id");
+                    <div class="pf-colab lid" @key="id">
+                        <span class="pf-colab-nome"><b>@Txt(x, "nome")</b><small>@(Txt(x, "fonte") == "lideranca" ? "cadastrado por você" : "veio da planilha da coordenação")</small></span>
+                        <input class="campo" type="date" title="Data de admissão" value="@Txt(x, "admissao")" @onchange="e => MudarAdmLid(xx, e)" />
+                        <button class="btn btn-sec btn-peq" title="Tirar da sua equipe" @onclick="() => TirarLid(xx)"><Icone Nome="sair" Tamanho="14" /> Tirar</button>
+                    </div>
+                }
+                @if (_lid != null && LidPessoas().Count == 0) { <p class="muted pequeno" style="padding:8px 4px">Ninguém na sua equipe ainda. Carregue a planilha ou adicione acima.</p> }
             </div>
         }
 
@@ -390,6 +459,7 @@
         _ = E.Conta.Registrar("base.carregar", true);
         var outras = Num(r.Json, "deOutrasN");
         await J.Info("Base de colaboradores", $"Pronto! {Num(r.Json, "novos")} novas, {Num(r.Json, "atualizados")} atualizadas e {Num(r.Json, "arquivados")} arquivadas. Já estão no One a One e nas Férias." +
+            (Num(r.Json, "daLiderancaN") is int dl and > 0 ? $"\n\n{dl} pessoa(s) já foram cadastradas pela própria liderança e ficaram com os dados dela (não houve conflito)." : "") +
             (outras > 0 ? $"\n\n{outras} pessoa(s) da planilha já são de outra coordenação e ficaram onde estão (o administrador pode transferir): {string.Join(", ", (r.Json?["deOutras"] as System.Text.Json.Nodes.JsonArray ?? new()).Select(x => x?.ToString()))}" : ""));
     }
     static readonly string[] Ferramentas = Abas.Todas.Concat(Abas.Internas).Where(a => !a.Externo).Select(a => a.Chave).ToArray();
@@ -400,6 +470,88 @@
         await E.Conta.CarregarEu();
         if (E.Conta.Perfil?.Coordenacao == true) await LerBase();
         if (E.Conta.Perfil?.Admin == true) await CarregarUsuarios();
+        if (E.Conta.Perfil?.Papel == "lideranca") await LerLid();
+    }
+
+    // ---------------- liderança: a própria equipe ----------------
+    System.Text.Json.Nodes.JsonNode? _lid;
+    bool _lidEnviando, _lidSalvando;
+    int _chaveLid;
+
+    async Task LerLid()
+    {
+        var r = await E.Conta.Chamar("GET", "lid/base");
+        _lid = r.Ok ? r.Json : new System.Text.Json.Nodes.JsonObject();
+        if (!r.Ok) await J.Erro("Minha equipe", r.Erro);
+    }
+
+    List<System.Text.Json.Nodes.JsonNode> LidPessoas() => (_lid?["pessoas"] as System.Text.Json.Nodes.JsonArray ?? new()).Where(x => x != null).Select(x => x!).ToList();
+
+    void PegarLista(RespostaApi r) { if (r.Ok && _lid is System.Text.Json.Nodes.JsonObject o && r.Json?["pessoas"] is System.Text.Json.Nodes.JsonArray a) o["pessoas"] = a.DeepClone(); }
+
+    static string IniciaisDe(string n) { var p = n.Split(' ', StringSplitOptions.RemoveEmptyEntries); return p.Length == 0 ? "?" : p.Length == 1 ? p[0][..1].ToUpperInvariant() : $"{p[0][0]}{p[^1][0]}".ToUpperInvariant(); }
+
+    async Task BaixarModeloLid() => await E.Nav.Baixar("Modelo minha equipe.xlsx", QSmart.Core.Coordenacao.FeriasClt.ModeloLideranca(), Navegador.MimeXlsx);
+
+    async Task AdicionarLid()
+    {
+        var nome = System.Text.RegularExpressions.Regex.Replace(_novoNome.Trim(), @"\s+", " ");
+        if (nome == "" || _novaAdm == null) { await J.Aviso("Adicionar colaborador", "Informe o nome e a data de admissão."); return; }
+        if (_novaAdm > DateTime.Today) { await J.Aviso("Adicionar colaborador", "A data de admissão não pode ser no futuro."); return; }
+        _lidSalvando = true;
+        var r = await E.Conta.Chamar("PUT", "lid/base", new System.Text.Json.Nodes.JsonObject { ["nome"] = nome, ["admissao"] = _novaAdm.Value.ToString("yyyy-MM-dd") });
+        _lidSalvando = false;
+        if (!r.Ok) { await J.Aviso("Adicionar colaborador", r.Erro); return; }
+        PegarLista(r);
+        _novoNome = ""; _novaAdm = null;
+        _ = E.Conta.Registrar("base.adicionar", true);
+    }
+
+    async Task MudarAdmLid(System.Text.Json.Nodes.JsonNode x, ChangeEventArgs e)
+    {
+        var v = e.Value?.ToString() ?? "";
+        if (v == "") { await J.Aviso("Data de admissão", "A data de admissão é obrigatória."); PegarLista(new RespostaApi(true, 200, new System.Text.Json.Nodes.JsonObject { ["pessoas"] = _lid?["pessoas"]?.DeepClone() }, "")); return; }
+        var r = await E.Conta.Chamar("PUT", "lid/base", new System.Text.Json.Nodes.JsonObject { ["id"] = Txt(x, "id"), ["nome"] = Txt(x, "nome"), ["admissao"] = v });
+        if (!r.Ok) { await J.Aviso("Data de admissão", r.Erro); return; }
+        PegarLista(r);
+    }
+
+    async Task TirarLid(System.Text.Json.Nodes.JsonNode x)
+    {
+        if (!await J.Pergunta("Tirar da equipe", $"Tirar “{Txt(x, "nome")}” da sua equipe? O histórico de 1:1 e de férias fica guardado.")) return;
+        var r = await E.Conta.Chamar("DELETE", "lid/base?id=" + Uri.EscapeDataString(Txt(x, "id")));
+        if (!r.Ok) { await J.Aviso("Tirar da equipe", r.Erro); return; }
+        PegarLista(r);
+    }
+
+    async Task CarregarLid(InputFileChangeEventArgs ev)
+    {
+        var f = ev.File;
+        byte[] bytes;
+        try { using var ms = new MemoryStream(); await f.OpenReadStream(30_000_000).CopyToAsync(ms); bytes = ms.ToArray(); }
+        catch (Exception ex) { _chaveLid++; await J.Erro("Minha equipe", "Não consegui ler o arquivo: " + ex.Message); return; }
+        _chaveLid++;
+        List<QSmart.Core.Coordenacao.LinhaBase> linhas;
+        try { linhas = await QSmart.Core.Coordenacao.FeriasClt.LerBase(new QSmart.Core.Planilhas.Arquivo(f.Name, bytes), exigeLideranca: false); }
+        catch (Exception ex) { await J.Erro("Minha equipe", ex.Message); return; }
+        int semAdm = linhas.Count(l => l.Admissao == null);
+        var atuais = LidPessoas().Select(x => QSmart.Core.Coordenacao.Ferias.Norm(Txt(x, "nome"))).ToHashSet();
+        int saem = atuais.Count(n => !linhas.Any(l => QSmart.Core.Coordenacao.Ferias.Norm(l.Nome) == n));
+        var msg = $"{linhas.Count} pessoas entram na sua equipe ({Txt(_lid, "lideranca")})." +
+                  (semAdm > 0 ? $"\n\n{semAdm} sem data de admissão: dá para completar depois na lista." : "") +
+                  (saem > 0 ? $"\n\n{saem} pessoa(s) da sua equipe não estão na planilha e saem da equipe (o histórico fica guardado)." : "") +
+                  "\n\nEnviar?";
+        if (!await J.Pergunta("Carregar minha equipe", msg)) return;
+        _lidEnviando = true; StateHasChanged();
+        var corpo = new System.Text.Json.Nodes.JsonObject { ["arquivo"] = f.Name, ["linhas"] = new System.Text.Json.Nodes.JsonArray(linhas.Select(l => (System.Text.Json.Nodes.JsonNode)new System.Text.Json.Nodes.JsonObject { ["nome"] = l.Nome, ["admissao"] = l.Admissao?.ToString("yyyy-MM-dd") }).ToArray()) };
+        var r = await E.Conta.Chamar("POST", "lid/base", corpo);
+        _lidEnviando = false;
+        if (!r.Ok) { await J.Erro("Minha equipe", r.Erro); return; }
+        await LerLid();
+        _ = E.Conta.Registrar("base.carregar", true);
+        var rec = Num(r.Json, "recusadasN");
+        await J.Info("Minha equipe", $"Pronto! {Num(r.Json, "novos")} novas, {Num(r.Json, "atualizados")} atualizadas e {Num(r.Json, "arquivados")} saíram da equipe. A coordenação já vê no One a One e nas Férias." +
+            (rec > 0 ? $"\n\n{rec} não entraram porque já estão em outra equipe ou coordenação (a coordenação pode transferir): {string.Join(", ", (r.Json?["recusadas"] as System.Text.Json.Nodes.JsonArray ?? new()).Select(x => x?.ToString()))}" : ""));
     }
 
     void Atualizar() => InvokeAsync(StateHasChanged);

@@ -48,6 +48,8 @@ public sealed class PessoaOO
     public DateOnly? Admissao { get; set; }
     /// <summary>Coordenação a que a pessoa pertence (da planilha base).</summary>
     public string Coordenacao { get; set; } = "";
+    /// <summary>"lideranca" quando a própria liderança cadastrou a pessoa: a planilha da coordenação não sobrescreve.</summary>
+    public string Fonte { get; set; } = "";
     public List<VinculoOO> Vinculos { get; set; } = new();
     public List<RegistroOO> Registros { get; set; } = new();
 

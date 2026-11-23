@@ -603,7 +603,7 @@ async function api(req, env, url) {
       const oficial = await lideresOficiais(env);
       for (const l of linhas) l.lideranca = oficial(l.lideranca);
       // quem é de outra coordenação não muda de dono por esta planilha
-      const outras = [];
+      const outras = [], daLideranca = [];
       const todos = (await env.DB.prepare("SELECT id, dados FROM oo_pessoas WHERE id != ?").bind(META_OO).all()).results || [];
       const porNome = new Map();
       for (const t of todos) { try { const o = JSON.parse(await decifrar(env, t.dados)); const p = (o.Pessoas || [])[0]; if (p) { p.Id = t.id; porNome.set(normN(p.Nome), p); } } catch { } }
@@ -614,6 +614,8 @@ async function api(req, env, url) {
       for (const l of linhas) {
         const k = normN(l.nome); if (vistos.has(k)) continue; vistos.add(k);
         let p = porNome.get(k);
+        // quem a própria liderança cadastrou vale o que a liderança informou: a planilha da coordenação não mexe
+        if (p && p.Fonte === "lideranca") { daLideranca.push(l.nome); continue; }
         if (p && p.Coordenacao && !mesmaCoord(p.Coordenacao, l.coordenacao) && !p.Arquivado && !ac.admin) { outras.push(l.nome); continue; }
         if (p) {
           let mudou = false;
@@ -644,7 +646,7 @@ async function api(req, env, url) {
       // quem saiu da planilha (nas coordenações que vieram nela) é arquivado, com o histórico guardado
       const coordsPlanilha = [...new Set(linhas.map(l => l.coordenacao).filter(Boolean))];
       for (const [k, p] of porNome) {
-        if (vistos.has(k) || p.Arquivado) continue;
+        if (vistos.has(k) || p.Arquivado || p.Fonte === "lideranca") continue;
         if (!coordsPlanilha.some(c => mesmaCoord(c, p.Coordenacao || ""))) continue;
         p.Arquivado = true; p.ArquivadoEm = hoje; arquivados++; gravar.push(p);
       }
@@ -658,6 +660,7 @@ async function api(req, env, url) {
         em: agora(), por: `${u.nome} ${u.sobrenome}`.trim(), arquivo: String(b.arquivo || "").slice(0, 120), linhas: linhas.length, novos, atualizados, arquivados,
         coordenacoes: coordsPlanilha.map(c => ({ nome: c, pessoas: linhas.filter(l => l.coordenacao === c).length, coordenador: donoDe(c) })),
         semAdmissao: linhas.filter(l => !l.admissao).length, deOutras: outras.slice(0, 20), deOutrasN: outras.length,
+        daLideranca: daLideranca.slice(0, 20), daLiderancaN: daLideranca.length,
       };
       q.push(env.DB.prepare("INSERT INTO kv (chave, valor) VALUES ('base_import', ?) ON CONFLICT(chave) DO UPDATE SET valor = excluded.valor").bind(JSON.stringify(resumo)));
       for (const c of new Set(linhas.map(l => normN(l.coordenacao))))
@@ -665,6 +668,116 @@ async function api(req, env, url) {
       for (const l of linhas) if (l.lideranca) q.push(env.DB.prepare("INSERT INTO oo_equipes (chave, lideranca, coordenacao) VALUES (?, ?, ?) ON CONFLICT(chave) DO NOTHING").bind(normN(l.lideranca), l.lideranca, l.coordenacao));
       for (let i = 0; i < q.length; i += 80) await env.DB.batch(q.slice(i, i + 80));
       return json({ ok: true, ...resumo });
+    }
+  }
+
+  // ---------- a liderança cadastra a própria equipe (planilha ou manual). O que ela informa vale mais que a planilha da coordenação ----------
+  if (rota === "lid/base") {
+    if (u.papel !== "lideranca") return erro("Só quem tem o papel de liderança cadastra a própria equipe aqui.", 403);
+    const oficial = await lideresOficiais(env);
+    const lid = oficial(`${u.nome} ${u.sobrenome}`);
+    const todos = (await env.DB.prepare("SELECT id, dados FROM oo_pessoas WHERE id != ?").bind(META_OO).all()).results || [];
+    const pessoas = [];
+    for (const t of todos) { try { const p = (JSON.parse(await decifrar(env, t.dados)).Pessoas || [])[0]; if (p) { p.Id = t.id; pessoas.push(p); } } catch { } }
+    const minha = p => normN(p.Lideranca) === normN(lid);
+    // coordenação da equipe: a registrada; se não houver, a da maioria das pessoas dela
+    const eq = (await equipesOO(env)).get(normN(lid));
+    let coord = eq ? eq.coordenacao : "";
+    if (!coord) { const c = new Map(); for (const p of pessoas) if (minha(p) && !p.Arquivado && p.Coordenacao) c.set(p.Coordenacao, (c.get(p.Coordenacao) || 0) + 1); coord = [...c.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || ""; }
+    const hoje = hojeISO();
+    const recente = d => d && (Date.parse(hoje) - Date.parse(d)) / 864e5 < 90;
+    const lista = () => pessoas.filter(p => minha(p) && !p.Arquivado).sort((a, b) => a.Nome.localeCompare(b.Nome, "pt-BR"))
+      .map(p => ({ id: p.Id, nome: p.Nome, admissao: p.Admissao || null, tipo: p.Tipo || "", fonte: p.Fonte || "" }));
+    const gravar = async lst => {
+      const q = [];
+      for (const p of lst) {
+        const dados = JSON.stringify({ Pessoas: [p], Liderancas: [], Fotos: {}, Arquivo: "", AtualizadoEm: "" });
+        q.push(env.DB.prepare("INSERT INTO oo_pessoas (id, lideranca, coordenacao, dados, atualizado_em, atualizado_por) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET lideranca = excluded.lideranca, coordenacao = excluded.coordenacao, dados = excluded.dados, atualizado_em = excluded.atualizado_em, atualizado_por = excluded.atualizado_por")
+          .bind(p.Id, p.Lideranca || "", p.Coordenacao || "", await cifrar(env, dados), agora(), u.id));
+      }
+      for (let i = 0; i < q.length; i += 80) await env.DB.batch(q.slice(i, i + 80));
+      if (coord) await registrarEquipe(env, lid, coord);
+    };
+    // aplica uma pessoa informada pela liderança: devolve a pessoa, ou um motivo para não mexer
+    const aplicar = (nome, admissao) => {
+      const k = normN(nome);
+      let p = pessoas.find(x => normN(x.Nome) === k && !x.Arquivado) || pessoas.find(x => normN(x.Nome) === k);
+      if (!p) {
+        p = { Id: novoIdOO(), Nome: nome, Lideranca: lid, Tipo: recente(admissao) ? "Novo" : "Antigo", Arquivado: false, ArquivadoEm: null,
+              Entrada: recente(admissao) ? admissao : null, MudouEm: null, Admissao: admissao, Coordenacao: coord, Fonte: "lideranca",
+              Vinculos: [{ Lideranca: lid, Desde: admissao || hoje, Ate: null }], Registros: [] };
+        pessoas.push(p); return { p, novo: true };
+      }
+      if (!minha(p) && !p.Arquivado) {
+        if (p.Fonte === "lideranca") return { motivo: `já está na equipe de ${p.Lideranca}` };
+        if (coord && p.Coordenacao && !mesmaCoord(p.Coordenacao, coord)) return { motivo: `é da coordenação ${p.Coordenacao}` };
+      }
+      if (!minha(p)) {
+        for (const v of p.Vinculos || []) if (!v.Ate) v.Ate = hoje;
+        (p.Vinculos ||= []).push({ Lideranca: lid, Desde: hoje, Ate: null });
+        if (p.Lideranca && !p.Arquivado) p.MudouEm = hoje;
+        p.Lideranca = lid;
+      }
+      if (admissao) p.Admissao = admissao;
+      if (!p.Coordenacao && coord) p.Coordenacao = coord;
+      if (p.Arquivado) { p.Arquivado = false; p.ArquivadoEm = null; }
+      p.Fonte = "lideranca";
+      return { p, novo: false };
+    };
+    const kvChave = "base_lid:" + normN(lid);
+    if (m === "GET") {
+      const kv = await env.DB.prepare("SELECT valor FROM kv WHERE chave = ?").bind(kvChave).first();
+      return json({ lideranca: lid, coordenacao: coord, pessoas: lista(), ultima: kv ? JSON.parse(kv.valor) : null });
+    }
+    if (m === "POST") {
+      const b = await corpo(req);
+      const linhas = (Array.isArray(b.linhas) ? b.linhas : []).slice(0, 2000).map(x => ({
+        nome: String(x.nome || "").replace(/\s+/g, " ").trim().slice(0, 120), admissao: /^\d{4}-\d{2}-\d{2}$/.test(x.admissao || "") ? x.admissao : null })).filter(x => x.nome);
+      if (linhas.length === 0) return erro("A planilha veio sem pessoas.");
+      const mexidas = [], recusadas = [], vistos = new Set();
+      let novos = 0, atualizados = 0, arquivados = 0;
+      for (const l of linhas) {
+        const k = normN(l.nome); if (vistos.has(k)) continue; vistos.add(k);
+        const r = aplicar(l.nome, l.admissao);
+        if (r.motivo) { recusadas.push(`${l.nome} (${r.motivo})`); continue; }
+        if (r.novo) novos++; else atualizados++;
+        mexidas.push(r.p);
+      }
+      // quem é da equipe e não veio na planilha sai da equipe (arquivado, com o histórico guardado)
+      for (const p of pessoas) if (minha(p) && !p.Arquivado && !vistos.has(normN(p.Nome))) { p.Arquivado = true; p.ArquivadoEm = hoje; p.Fonte = "lideranca"; arquivados++; mexidas.push(p); }
+      await gravar(mexidas);
+      const resumo = { em: agora(), arquivo: String(b.arquivo || "").slice(0, 120), linhas: linhas.length, novos, atualizados, arquivados,
+        semAdmissao: linhas.filter(l => !l.admissao).length, recusadas: recusadas.slice(0, 20), recusadasN: recusadas.length };
+      await env.DB.prepare("INSERT INTO kv (chave, valor) VALUES (?, ?) ON CONFLICT(chave) DO UPDATE SET valor = excluded.valor").bind(kvChave, JSON.stringify(resumo)).run();
+      return json({ ok: true, ...resumo, pessoas: lista() });
+    }
+    if (m === "PUT") {
+      const b = await corpo(req);
+      const nome = String(b.nome || "").replace(/\s+/g, " ").trim().slice(0, 120);
+      const admissao = /^\d{4}-\d{2}-\d{2}$/.test(b.admissao || "") ? b.admissao : null;
+      if (!nome || !admissao) return erro("Informe o nome e a data de admissão.");
+      if (b.id) {
+        const p = pessoas.find(x => x.Id === String(b.id));
+        if (!p || !minha(p)) return erro("Essa pessoa não é da sua equipe.", 403);
+        if (normN(nome) !== normN(p.Nome) && pessoas.some(x => x !== p && normN(x.Nome) === normN(nome) && !x.Arquivado)) return erro(`Já existe “${nome}” na base.`);
+        p.Nome = nome; p.Admissao = admissao; p.Fonte = "lideranca";
+        await gravar([p]);
+        return json({ ok: true, pessoas: lista() });
+      }
+      const ja = pessoas.find(x => normN(x.Nome) === normN(nome) && !x.Arquivado && minha(x));
+      if (ja) return erro(`“${ja.Nome}” já está na sua equipe.`);
+      const r = aplicar(nome, admissao);
+      if (r.motivo) return erro(`“${nome}” ${r.motivo}. Fale com a coordenação para transferir.`);
+      await gravar([r.p]);
+      return json({ ok: true, novo: r.novo, pessoas: lista() });
+    }
+    if (m === "DELETE") {
+      const id = url.searchParams.get("id") || "";
+      const p = pessoas.find(x => x.Id === id);
+      if (!p || !minha(p)) return erro("Essa pessoa não é da sua equipe.", 403);
+      p.Arquivado = true; p.ArquivadoEm = hoje; p.Fonte = "lideranca";
+      await gravar([p]);
+      return json({ ok: true, pessoas: lista() });
     }
   }
 
