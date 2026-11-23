@@ -2729,3 +2729,14 @@ a.sino-it:hover { background: var(--surface2); }
 .fv-sug-porque { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 3px; font-size: 12.5px; color: var(--ink2); }
 .fv-sug-porque li::marker { color: #16A34A; }
 .fv-ciclo-ant { font-size: 12px; color: #16A34A; font-weight: 700; }
+.pf-base-ver { align-self: flex-start; }
+.pf-colabs { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
+.pf-colabs-cab { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 6px; }
+.pf-colabs-busca { max-width: 220px; }
+.pf-colab { display: grid; grid-template-columns: minmax(0, 1.6fr) 150px minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 6px 8px; border-radius: 10px; }
+.pf-colab:not(.nova):hover { background: color-mix(in srgb, currentColor 5%, transparent); }
+.pf-colab.nova { padding: 10px; border: 1px dashed color-mix(in srgb, currentColor 25%, transparent); margin-bottom: 6px; }
+.pf-colab-nome { min-width: 0; } .pf-colab-nome b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.pf-colab-nome small { display: block; font-size: 11.5px; opacity: .7; }
+.pf-colab .campo { height: 32px; }
+@media (max-width: 800px) { .pf-colab { grid-template-columns: 1fr 1fr; } }

@@ -475,7 +475,8 @@ async function api(req, env, url) {
     const coordenadores = ((await env.DB.prepare("SELECT id, nome, sobrenome, papel, lideranca FROM usuarios WHERE papel = 'coordenador' AND status = 'ativo'").all()).results || []);
     const donoDe = c => { const x = coordenadores.find(k => mesmaCoord(c, coordDoUsuario(k))); return x ? `${x.nome} ${x.sobrenome}`.trim() : null; };
     if (m === "GET") {
-      const kv = await env.DB.prepare("SELECT valor FROM kv WHERE chave = 'base_import'").first();
+      // cada coordenação vê a última carga dela; o administrador, a última de todas
+      const kv = await env.DB.prepare("SELECT valor FROM kv WHERE chave = ?").bind(ac.admin ? "base_import" : "base_import:" + normN(ac.coord)).first();
       const r = await env.DB.prepare("SELECT coordenacao, COUNT(*) AS n FROM oo_pessoas WHERE id != ? GROUP BY coordenacao").bind(META_OO).all();
       const coords = (r.results || []).map(x => ({ nome: x.coordenacao || "", pessoas: x.n, coordenador: x.coordenacao ? donoDe(x.coordenacao) : null, minha: !!x.coordenacao && ac.minha(x.coordenacao) }));
       return json({ ultima: kv ? JSON.parse(kv.valor) : null, coordenacoes: coords, minhaCoord: ac.coord });
@@ -548,6 +549,8 @@ async function api(req, env, url) {
         semAdmissao: linhas.filter(l => !l.admissao).length, deOutras: outras.slice(0, 20), deOutrasN: outras.length,
       };
       q.push(env.DB.prepare("INSERT INTO kv (chave, valor) VALUES ('base_import', ?) ON CONFLICT(chave) DO UPDATE SET valor = excluded.valor").bind(JSON.stringify(resumo)));
+      for (const c of new Set(linhas.map(l => normN(l.coordenacao))))
+        q.push(env.DB.prepare("INSERT INTO kv (chave, valor) VALUES (?, ?) ON CONFLICT(chave) DO UPDATE SET valor = excluded.valor").bind("base_import:" + c, JSON.stringify(resumo)));
       for (let i = 0; i < q.length; i += 80) await env.DB.batch(q.slice(i, i + 80));
       return json({ ok: true, ...resumo });
     }
@@ -613,7 +616,7 @@ async function api(req, env, url) {
       const antes = await env.DB.prepare("SELECT coordenacao FROM oo_pessoas WHERE id = ?").bind(id).first();
       if (!antes) return json({ ok: true });
       if (!ac.minha(antes.coordenacao)) return erro("Essa pessoa é de outra coordenação.", 403);
-      await env.DB.prepare("DELETE FROM oo_pessoas WHERE id = ?").bind(id).run();
+      await env.DB.batch([env.DB.prepare("DELETE FROM oo_pessoas WHERE id = ?").bind(id), env.DB.prepare("DELETE FROM fe_pessoas WHERE id = ?").bind(id)]);
       return json({ ok: true });
     }
   }

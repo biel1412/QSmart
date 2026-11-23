@@ -127,6 +127,7 @@
                             </div>
                         }
                         else { <p class="muted pequeno">Nenhuma planilha carregada ainda.</p> }
+                        <button class="btn btn-sec pf-base-ver" @onclick="AbrirColabs"><Icone Nome="usuarios" Tamanho="15" /> @(_colabsAberto ? "Fechar a lista" : "Ver, adicionar e excluir colaboradores")</button>
                         <div class="pf-base-coords">
                             @foreach (var c in (_base["coordenacoes"] as System.Text.Json.Nodes.JsonArray ?? new()).Where(c => Txt(c, "nome") != ""))
                             {
@@ -141,6 +142,38 @@
                         </div>
                     }
                 </div>
+            </div>
+        }
+
+        @if (p.Coordenacao && _colabsAberto)
+        {
+            var lista = Colabs();
+            var lids = (E.OneBase?.Pessoas ?? new()).Select(x => x.Lideranca).Where(x => x != "").Distinct().OrderBy(x => x).ToList();
+            <div class="pf-card pf-colabs">
+                <div class="pf-colabs-cab">
+                    <b>Colaboradores @(p.Admin ? (CoordAdmin() is { } ca ? $"de {ca}" : "de todas as coordenações") : "da sua coordenação")</b>
+                    <span class="muted pequeno">@lista.Count pessoa(s) · as mudanças valem na hora no One a One e nas Férias</span>
+                    <span class="mola"></span>
+                    <input class="campo pf-colabs-busca" placeholder="Buscar…" @bind="_colabBusca" @bind:event="oninput" />
+                </div>
+                <div class="pf-colab nova">
+                    <input class="campo" placeholder="Nome completo" @bind="_novoNome" />
+                    <input class="campo" type="date" title="Data de admissão" @bind="_novaAdm" />
+                    <input class="campo" placeholder="Liderança" list="pf-lids" @bind="_novaLid" />
+                    <button class="btn btn-pri" @onclick="AdicionarColab" disabled="@(string.IsNullOrWhiteSpace(_novoNome))"><Icone Nome="mais" Tamanho="15" /> Adicionar</button>
+                </div>
+                <datalist id="pf-lids">@foreach (var l in lids) { <option value="@l"></option> }</datalist>
+                @if (E.OneBase == null) { <p class="muted pequeno"><span class="ia-spin pequeno"></span> Carregando…</p> }
+                @foreach (var x in lista.Where(x => _colabBusca == "" || x.Nome.Contains(_colabBusca, StringComparison.CurrentCultureIgnoreCase)).Take(400))
+                {
+                    var xx = x;
+                    <div class="pf-colab" @key="x.Id">
+                        <span class="pf-colab-nome"><b>@x.Nome</b>@if (p.Admin) { <small>@(x.Coordenacao == "" ? "sem coordenação" : x.Coordenacao)</small> }</span>
+                        <input class="campo" type="date" title="Data de admissão" value="@(x.Admissao?.ToString("yyyy-MM-dd"))" @onchange="e => MudarAdm(xx, e)" />
+                        <input class="campo" placeholder="Liderança" list="pf-lids" value="@x.Lideranca" @onchange="e => MudarLid(xx, e)" />
+                        <button class="btn btn-sec btn-peq" title="Excluir colaborador" @onclick="() => ExcluirColab(xx)"><Icone Nome="lixo" Tamanho="14" /> Excluir</button>
+                    </div>
+                }
             </div>
         }
 
@@ -188,6 +221,80 @@
     System.Text.Json.Nodes.JsonNode? _base;
     bool _baseEnviando;
     int _baseCoord;
+    bool _colabsAberto;
+    string _colabBusca = "", _novoNome = "", _novaLid = "";
+    DateTime? _novaAdm;
+
+    async Task AbrirColabs()
+    {
+        _colabsAberto = !_colabsAberto;
+        if (_colabsAberto) await E.CarregarOne(true);
+    }
+
+    /// <summary>Nome da coordenação escolhida pelo administrador (do coordenador selecionado), ou nulo.</summary>
+    string? CoordAdmin()
+    {
+        if (_baseCoord == 0 || _usuarios?.FirstOrDefault(x => x.Id == _baseCoord) is not { } c) return null;
+        return string.IsNullOrWhiteSpace(c.Lideranca) ? $"{c.Nome} {c.Sobrenome}".Trim() : c.Lideranca.Trim();
+    }
+
+    static string Norm(string s) => QSmart.Core.Coordenacao.Ferias.Norm(s);
+
+    List<QSmart.Core.Coordenacao.PessoaOO> Colabs()
+    {
+        var ps = (E.OneBase?.Pessoas ?? new()).Where(x => !x.Arquivado);
+        if (E.Conta.Perfil?.Admin == true && CoordAdmin() is { } c) { var n = Norm(c); ps = ps.Where(x => Norm(x.Coordenacao) == n); }
+        return ps.OrderBy(x => x.Nome, StringComparer.CurrentCultureIgnoreCase).ToList();
+    }
+
+    async Task AdicionarColab()
+    {
+        var nome = System.Text.RegularExpressions.Regex.Replace(_novoNome.Trim(), @"\s+", " ");
+        if (nome == "") return;
+        var b = E.OneBase;
+        if (b == null) { await E.CarregarOne(true); b = E.OneBase; if (b == null) return; }
+        var eu = E.Conta.Perfil!;
+        string coord;
+        if (eu.Admin) { if (CoordAdmin() is not { } ca) { await J.Aviso("Adicionar colaborador", "Escolha acima de qual coordenador é o colaborador."); return; } coord = ca; }
+        else coord = E.OneCoordenacao;
+        if (b.Pessoas.Any(x => Norm(x.Nome) == Norm(nome) && !x.Arquivado)) { await J.Aviso("Adicionar colaborador", $"“{nome}” já está na base."); return; }
+        var hoje = DateOnly.FromDateTime(DateTime.Today);
+        var adm = _novaAdm is { } d ? DateOnly.FromDateTime(d) : (DateOnly?)null;
+        bool novo = adm == null || adm.Value.AddDays(90) > hoje;
+        var lid = _novaLid.Trim();
+        var p = new QSmart.Core.Coordenacao.PessoaOO { Nome = nome, Lideranca = lid, Tipo = novo ? "Novo" : "Antigo", Entrada = novo ? (adm ?? hoje) : null, Admissao = adm, Coordenacao = coord };
+        if (lid != "") p.Vinculos.Add(new QSmart.Core.Coordenacao.VinculoOO { Lideranca = lid, Desde = adm ?? hoje });
+        b.Pessoas.Add(p);
+        if (lid != "" && !b.Liderancas.Contains(lid)) b.Liderancas.Add(lid);
+        await E.SalvarOne();
+        E.FeColabs = null;
+        _novoNome = ""; _novaAdm = null;
+        _ = E.Conta.Registrar("base.adicionar", true);
+    }
+
+    async Task MudarAdm(QSmart.Core.Coordenacao.PessoaOO x, ChangeEventArgs e)
+    {
+        x.Admissao = DateOnly.TryParseExact(e.Value?.ToString(), "yyyy-MM-dd", null, System.Globalization.DateTimeStyles.None, out var d) ? d : null;
+        await E.SalvarOne(); E.FeColabs = null;
+    }
+
+    async Task MudarLid(QSmart.Core.Coordenacao.PessoaOO x, ChangeEventArgs e)
+    {
+        var l = (e.Value?.ToString() ?? "").Trim();
+        if (l == x.Lideranca) return;
+        QSmart.Core.Coordenacao.OneAOne.TrocarLideranca(x, l, DateOnly.FromDateTime(DateTime.Today));
+        if (l != "" && E.OneBase != null && !E.OneBase.Liderancas.Contains(l)) E.OneBase.Liderancas.Add(l);
+        await E.SalvarOne(); E.FeColabs = null;
+    }
+
+    async Task ExcluirColab(QSmart.Core.Coordenacao.PessoaOO x)
+    {
+        if (!await J.Pergunta("Excluir colaborador", $"Excluir “{x.Nome}” da base? Somem também o histórico de 1:1 e as férias dele. Se a pessoa só saiu da equipe e você quer guardar o histórico, use Arquivar na ficha do One a One.")) return;
+        E.OneBase?.Pessoas.Remove(x);
+        await E.SalvarOne();
+        E.FeColabs = null;
+        await LerBase();
+    }
     int _chaveBase;
 
     async Task LerBase()
