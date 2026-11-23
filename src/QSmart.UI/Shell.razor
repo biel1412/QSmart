@@ -89,6 +89,10 @@ else
         {
             var res = Nivel();
             <div class="topo-dir">
+                <button class="td-bt @(_chat ? "on" : "")" title="Chat" @onclick="AbrirChat">
+                    <Icone Nome="conversa" Tamanho="20" />
+                    @if (E.Chat.Total > 0) { <em class="td-num ch-num">@(E.Chat.Total > 9 ? "9+" : E.Chat.Total.ToString())</em> }
+                </button>
                 <a class="td-bt @(NaRota("feed") ? "on" : "")" href="feed" title="Feed do QSmart" @onclick="FecharMovel"><Icone Nome="feed" Tamanho="20" /></a>
                 <button class="td-bt @(_sino ? "on" : "")" title="Notificações" @onclick="AbrirSino">
                     <span class="@(E.Sino.Total > 0 ? "td-sino-bal" : "")"><Icone Nome="sino" Tamanho="20" /></span>
@@ -100,6 +104,15 @@ else
                     <span class="cc-nv">@res.Nivel</span>
                 </a>
             </div>
+            @if (_chat) { <ChatPainel AoFechar="() => _chat = false" /> }
+            @if (_aviso is { } av && !_chat)
+            {
+                <button class="ch-toast" @onclick="() => AbrirChatCom(av.c.Id)">
+                    <span class="ch-av" style="background:@CorNome(av.c.Nome)">@if (av.c.Foto != "") { <img src="@av.c.Foto" alt="" /> } else { @IniciaisDe(av.c.Nome) }</span>
+                    <div><b>@av.c.Nome</b><span>@av.t</span></div>
+                    <i @onclick="() => _aviso = null" @onclick:stopPropagation="true" title="Fechar">✕</i>
+                </button>
+            }
             @if (_sino)
             {
                 <div class="sino-fundo" @onclick="() => _sino = false"></div>
@@ -168,7 +181,7 @@ else
     {
         E.Mudou += Atualizar;
         E.Conta.Mudou += AoMudarConta;
-        E.Sino.Mudou += Atualizar;
+        E.Sino.Mudou += Atualizar; E.Chat.Mudou += Atualizar; E.Chat.Chegou += ChegouMensagem;
         Rotas.LocationChanged += AoNavegar;
         await E.Iniciar();
         Proteger();
@@ -211,15 +224,45 @@ else
     HashSet<DateOnly> _novosFeriados = new();
     System.Threading.Timer? _timerSino;
     bool _logadoAntes;
+    // ---- chat: resumo a cada ~30 s com o chat fechado; aberto, a lista a cada 8 s e a conversa a cada 4 s ----
+    bool _chat;
+    System.Threading.Timer? _timerChat;
+    int _tique;
+    (QSmart.UI.Servicos.ContatoChat c, string t)? _aviso;
+    System.Threading.CancellationTokenSource? _avisoFim;
+    async Task TiqueChat()
+    {
+        _tique++;
+        if (!E.Conta.Logado) return;
+        if (_chat && E.Chat.Com != null) { await E.Chat.AtualizarConversa(); if (_tique % 3 == 0) await E.Chat.AtualizarResumo(); }
+        else if (_chat) { if (_tique % 2 == 0) await E.Chat.AtualizarResumo(); }
+        else if (_tique % 8 == 0) await E.Chat.AtualizarResumo();
+    }
+    void AbrirChat() { _chat = !_chat; _sino = false; _aviso = null; }
+    void AbrirChatCom(int id) { E.Chat.Com = id; _chat = true; _sino = false; _aviso = null; }
+    void ChegouMensagem(QSmart.UI.Servicos.ContatoChat c, string t)
+    {
+        if (_chat) return;
+        _aviso = (c, t);
+        _avisoFim?.Cancel(); _avisoFim = new();
+        var tk = _avisoFim.Token;
+        _ = Task.Delay(8000, tk).ContinueWith(x => { if (!x.IsCanceled) InvokeAsync(() => { _aviso = null; StateHasChanged(); }); });
+        Atualizar();
+    }
+
     void AoMudarConta()
     {
-        if (E.Conta.Logado && !_logadoAntes) { _logadoAntes = true; _ = E.Sino.Carregar(); _timerSino ??= new System.Threading.Timer(_ => InvokeAsync(E.Sino.Carregar), null, 60000, 60000); }
-        else if (!E.Conta.Logado) { _logadoAntes = false; _sino = false; _timerSino?.Dispose(); _timerSino = null; }
+        if (E.Conta.Logado && !_logadoAntes)
+        {
+            _logadoAntes = true; _ = E.Sino.Carregar(); _timerSino ??= new System.Threading.Timer(_ => InvokeAsync(E.Sino.Carregar), null, 60000, 60000);
+            _ = E.Chat.AtualizarResumo(); _timerChat ??= new System.Threading.Timer(_ => InvokeAsync(TiqueChat), null, 4000, 4000);
+        }
+        else if (!E.Conta.Logado) { _logadoAntes = false; _sino = false; _chat = false; _aviso = null; _timerSino?.Dispose(); _timerSino = null; _timerChat?.Dispose(); _timerChat = null; }
         Atualizar();
     }
     async Task AbrirSino()
     {
-        _sino = !_sino;
+        _sino = !_sino; _chat = false;
         if (!_sino) return;
         var hoje = DateOnly.FromDateTime(DateTime.Today);
         _novosFeriados = E.Sino.FeriadosNovos > 0 ? E.Sino.FeriadosProximos.Select(f => f.Data).ToHashSet() : new();
@@ -267,7 +310,7 @@ else
     public void Dispose()
     {
         E.Mudou -= Atualizar;
-        E.Conta.Mudou -= AoMudarConta; E.Sino.Mudou -= Atualizar; _timerSino?.Dispose();
+        E.Conta.Mudou -= AoMudarConta; E.Sino.Mudou -= Atualizar; _timerSino?.Dispose(); _timerChat?.Dispose(); E.Chat.Mudou -= Atualizar; E.Chat.Chegou -= ChegouMensagem;
         Rotas.LocationChanged -= AoNavegar;
         _ref?.Dispose();
     }

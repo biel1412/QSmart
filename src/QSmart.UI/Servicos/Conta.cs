@@ -76,7 +76,7 @@ public sealed class Conta
     public bool Visao => _tokenAdmin != null;
     public string NomeAdmin => _perfilAdmin?.NomeCompleto ?? "";
 
-    void ZerarCaches() { _e.OneBase = null; _e.OneErro = null; _e.FeDados = null; _e.FeErro = null; _e.FeColabs = null; _e.Sino.Limpar(); }
+    void ZerarCaches() { _e.OneBase = null; _e.OneErro = null; _e.FeDados = null; _e.FeErro = null; _e.FeColabs = null; _e.Sino.Limpar(); _e.Chat.Limpar(); }
 
     public async Task<string?> VerComo(int id)
     {
@@ -141,7 +141,7 @@ public sealed class Conta
         return o;
     }
 
-    void Limpar() { Token = null; Perfil = null; Uso = new(); Dias = new(); _e.OneBase = null; _e.OneErro = null; _e.FeDados = null; _e.FeErro = null; _e.Sino.Limpar(); Mudou?.Invoke(); _e.Notificar(); }
+    void Limpar() { Token = null; Perfil = null; Uso = new(); Dias = new(); _e.OneBase = null; _e.OneErro = null; _e.FeDados = null; _e.FeErro = null; _e.Sino.Limpar(); _e.Chat.Limpar(); Mudou?.Invoke(); _e.Notificar(); }
 
     // ---------------- lembrar usuário (cifrado no navegador) ----------------
 

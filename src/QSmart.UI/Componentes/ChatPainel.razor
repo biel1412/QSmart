@@ -1,0 +1,164 @@
+@using QSmart.UI.Servicos
+@inject Estado E
+@inject IJSRuntime JS
+@implements IDisposable
+
+<div class="ch-fundo" @onclick="Fechar"></div>
+<div class="ch-painel" role="dialog" aria-label="Chat">
+    @if (E.Chat.Com is int com && E.Chat.Contato(com) is { } ct)
+    {
+        <div class="ch-cab conv">
+            <button class="ch-x" title="Voltar para a lista" @onclick="Voltar"><Icone Nome="esquerda" Tamanho="18" /></button>
+            <span class="ch-av md" style="background:@Cor(ct.Nome)">@if (ct.Foto != "") { <img src="@ct.Foto" alt="" /> } else { @Ini(ct.Nome) }
+                @if (E.Chat.Online.Contains(ct.Id)) { <i class="on"></i> }</span>
+            <div class="ch-cab-txt"><b>@ct.Nome</b><small class="@(E.Chat.Online.Contains(ct.Id) ? "on" : "")">@E.Chat.Status(ct.Id) · @Papel(ct.Papel)</small></div>
+            <button class="ch-x" title="Fechar" @onclick="Fechar"><Icone Nome="x" Tamanho="18" /></button>
+        </div>
+        <div class="ch-msgs" @ref="_lista">
+            <div class="ch-aviso"><Icone Nome="relogio" Tamanho="13" /> As mensagens se apagam sozinhas @E.Chat.Dias dias depois de enviadas.</div>
+            @if (E.Chat.Msgs.Count == 0)
+            {
+                <div class="ch-vazio conv"><span class="ch-av gg" style="background:@Cor(ct.Nome)">@if (ct.Foto != "") { <img src="@ct.Foto" alt="" /> } else { @Ini(ct.Nome) }</span>
+                    <b>Comece a conversa com @Primeiro(ct.Nome)</b><small>Diga um oi 👋</small></div>
+            }
+            @{ DateTime? dia = null; int? ant = null; }
+            @foreach (var m in E.Chat.Msgs)
+            {
+                if (dia != m.Em.Date) { dia = m.Em.Date; ant = null; <div class="ch-dia"><span>@Dia(m.Em)</span></div> }
+                bool minha = m.De != com; bool junta = ant == m.De; ant = m.De;
+                var falta = m.Expira - DateTime.Now;
+                <div class="ch-msg @(minha ? "eu" : "ele") @(junta ? "junta" : "")" @key="m.Id">
+                    <div class="ch-bolha" title="@($"Enviada em {m.Em:dd/MM/yyyy HH:mm} · some {Some(falta)}")">
+                        <span class="ch-texto">@m.Texto</span>
+                        <span class="ch-hora">@m.Em.ToString("HH:mm")@if (minha) { <i class="@(m.Lida ? "lida" : "")" title="@(m.Lida ? "Lida" : "Enviada")">@(m.Lida ? "✓✓" : "✓")</i> }</span>
+                    </div>
+                    @if (falta.TotalHours < 12) { <small class="ch-some">some @Some(falta)</small> }
+                </div>
+            }
+        </div>
+        <div class="ch-escrever">
+            <textarea @ref="_caixa" class="campo" rows="1" placeholder="Escreva uma mensagem…" maxlength="2000" value="@_texto"
+                      @oninput="e => _texto = e.Value?.ToString() ?? string.Empty" @onkeydown="Tecla" @onkeydown:preventDefault="_segurarEnter"></textarea>
+            <button class="ch-enviar" title="Enviar (Enter)" disabled="@(string.IsNullOrWhiteSpace(_texto) || _enviando)" @onclick="Enviar"><Icone Nome="enviar" Tamanho="18" /></button>
+        </div>
+        @if (_erro != "") { <div class="ch-erro">@_erro</div> }
+    }
+    else
+    {
+        <div class="ch-cab">
+            <span class="ch-cab-ic"><Icone Nome="conversa" Tamanho="18" /></span>
+            <div class="ch-cab-txt"><b>Chat</b><small>@E.Chat.Online.Count(id => E.Chat.Contato(id) != null) online · @E.Chat.Contatos.Count pessoas</small></div>
+            <button class="ch-x" title="Fechar" @onclick="Fechar"><Icone Nome="x" Tamanho="18" /></button>
+        </div>
+        <div class="ch-busca"><Icone Nome="busca" Tamanho="15" /><input placeholder="Buscar pessoa…" @bind="_busca" @bind:event="oninput" /></div>
+        <div class="ch-lista">
+            @if (E.Chat.Erro != "") { <div class="ch-erro">@E.Chat.Erro</div> }
+            else if (E.Chat.Contatos.Count == 0) { <p class="muted pequeno" style="padding:16px"><span class="ia-spin pequeno"></span> Carregando…</p> }
+            @{ var lista = Filtrados(); var recentes = lista.Where(c => E.Chat.Conversas.ContainsKey(c.Id)).OrderByDescending(c => E.Chat.Conversas[c.Id].Em).ToList();
+               var outros = lista.Except(recentes).OrderByDescending(c => E.Chat.Online.Contains(c.Id)).ThenBy(c => c.Nome).ToList(); }
+            @if (recentes.Count > 0)
+            {
+                <div class="ch-sec">Conversas</div>
+                @foreach (var c in recentes) { @Linha(c) }
+            }
+            @if (outros.Count > 0)
+            {
+                <div class="ch-sec">@(recentes.Count > 0 ? "Todas as pessoas" : "Pessoas no QSmart")</div>
+                @foreach (var c in outros) { @Linha(c) }
+            }
+            @if (E.Chat.Contatos.Count > 0 && lista.Count == 0) { <p class="muted pequeno" style="padding:16px">Ninguém com esse nome.</p> }
+        </div>
+        <div class="ch-rodape"><Icone Nome="cadeado" Tamanho="12" /> Conversas criptografadas · apagadas depois de @E.Chat.Dias dias</div>
+    }
+</div>
+
+@code {
+    [Parameter] public EventCallback AoFechar { get; set; }
+    ElementReference _lista, _caixa;
+    string _busca = "", _texto = "", _erro = "";
+    bool _enviando, _segurarEnter, _rolar = true;
+    int _qtdAntes;
+
+    static readonly string[] Paleta = { "#0891B2", "#7C3AED", "#059669", "#DB2777", "#D97706", "#2563EB", "#0D9488", "#9333EA", "#DC2626", "#65A30D" };
+    static string Cor(string n) { int h = 0; foreach (var ch in n) h = unchecked(h * 31 + ch); return Paleta[(int)((uint)h % Paleta.Length)]; }
+    static string Ini(string n) { var p = n.Split(' ', StringSplitOptions.RemoveEmptyEntries); return (p.Length == 0 ? "?" : p.Length == 1 ? p[0][..1] : $"{p[0][0]}{p[^1][0]}").ToUpperInvariant(); }
+    static string Primeiro(string n) => n.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? n;
+    static string Papel(string p) => PerfilConta.NomePapel(p);
+    static string Dia(DateTime d) => d.Date == DateTime.Today ? "Hoje" : d.Date == DateTime.Today.AddDays(-1) ? "Ontem" : d.ToString("dd/MM");
+    static string Some(TimeSpan t) => t.TotalMinutes < 1 ? "em instantes" : t.TotalHours < 1 ? $"em {(int)t.TotalMinutes} min" : t.TotalHours < 24 ? $"em {(int)t.TotalHours} h" : $"em {(int)Math.Ceiling(t.TotalDays)} dias";
+    static string Quando(string iso)
+    {
+        if (!DateTime.TryParse(iso, null, System.Globalization.DateTimeStyles.RoundtripKind, out var d)) return "";
+        d = d.ToLocalTime();
+        return d.Date == DateTime.Today ? d.ToString("HH:mm") : d.Date == DateTime.Today.AddDays(-1) ? "ontem" : d.ToString("dd/MM");
+    }
+
+    List<ContatoChat> Filtrados()
+    {
+        var b = QSmart.Core.Coordenacao.Ferias.Norm(_busca);
+        return E.Chat.Contatos.Where(c => b == "" || QSmart.Core.Coordenacao.Ferias.Norm(c.Nome).Contains(b)).ToList();
+    }
+
+    RenderFragment Linha(ContatoChat c) => @<text>
+        @{ E.Chat.Conversas.TryGetValue(c.Id, out var r); bool on = E.Chat.Online.Contains(c.Id); }
+        <button class="ch-pessoa @(r?.NaoLidas > 0 ? "nova" : "")" @onclick="() => Abrir(c.Id)" @key="c.Id">
+            <span class="ch-av" style="background:@Cor(c.Nome)">@if (c.Foto != "") { <img src="@c.Foto" alt="" /> } else { @Ini(c.Nome) }
+                @if (on) { <i class="on"></i> }</span>
+            <div class="ch-p-txt">
+                <div class="ch-p-top"><b>@c.Nome</b>@if (r != null) { <small>@Quando(r.Em)</small> }</div>
+                <div class="ch-p-sub">
+                    @if (r != null) { <span>@(r.Minha ? "Você: " : "")@r.Ultima</span> }
+                    else { <span class="@(on ? "on" : "")">@(on ? "online" : Papel(c.Papel))</span> }
+                    @if (r?.NaoLidas > 0) { <em>@r.NaoLidas</em> }
+                </div>
+            </div>
+        </button>
+    </text>;
+
+    protected override async Task OnInitializedAsync()
+    {
+        E.Chat.Mudou += Atualizar;
+        E.Chat.Aberto = true;
+        if (E.Chat.Contatos.Count == 0) await E.Chat.CarregarContatos();
+        await E.Chat.AtualizarResumo();
+        if (E.Chat.Com is int c) await E.Chat.AbrirConversa(c);
+    }
+
+    void Atualizar() => InvokeAsync(StateHasChanged);
+
+    protected override async Task OnAfterRenderAsync(bool primeiro)
+    {
+        if (E.Chat.Com == null) return;
+        if (_rolar || E.Chat.Msgs.Count != _qtdAntes)
+        {
+            try { await JS.InvokeVoidAsync("qsmart.chatFim", _lista, _rolar); } catch { }
+            if (_rolar) { try { await _caixa.FocusAsync(); } catch { } }
+            _rolar = false; _qtdAntes = E.Chat.Msgs.Count;
+        }
+    }
+
+    async Task Abrir(int id) { _rolar = true; _erro = ""; _texto = ""; await E.Chat.AbrirConversa(id); }
+    void Voltar() { E.Chat.Com = null; _texto = ""; _ = E.Chat.AtualizarResumo(); }
+    async Task Fechar() => await AoFechar.InvokeAsync();
+
+    void Tecla(KeyboardEventArgs e)
+    {
+        _segurarEnter = e.Key == "Enter" && !e.ShiftKey;
+        if (_segurarEnter) _ = Enviar();
+    }
+
+    async Task Enviar()
+    {
+        var t = _texto;
+        if (string.IsNullOrWhiteSpace(t) || _enviando) return;
+        _enviando = true; _texto = ""; _erro = "";
+        StateHasChanged();
+        var erro = await E.Chat.Enviar(t);
+        _enviando = false;
+        if (erro != null) { _erro = erro; _texto = t; }
+        else { _rolar = true; _ = E.Conta.Registrar("chat.enviar", true); }
+        StateHasChanged();
+    }
+
+    public void Dispose() { E.Chat.Mudou -= Atualizar; E.Chat.Aberto = false; }
+}

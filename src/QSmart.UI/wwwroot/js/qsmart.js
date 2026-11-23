@@ -1221,5 +1221,7 @@
   const clicar = el => { if (el) el.click(); };
   nota.ver = (el, html) => { if (el) { el.contentEditable = "false"; el.innerHTML = limpar(html) || ""; } };
   const trocarUrl = (u, titulo) => { try { history.replaceState(history.state, "", u); } catch { } if (titulo) document.title = titulo; };
-  window.qsmart = { kv, cofre, rolar, ia, get, getH, req, reduzirImagem, imagem, nota, doc, grade, tela, lsGet, lsSet, lsDel, colarImagens, clicar, trocarUrl, pasta, baixar, abrir, copiar, abrirUrl, pdfPaginas, pdfJuntar, pdfLinhas, tema, aoOcultar, focar, rolarLinha, pronto };
+  // chat: rola até a última mensagem só se a pessoa já estava perto do fim (ou se pedir)
+  const chatFim = (el, forcar) => { if (!el) return; if (forcar || el.scrollHeight - el.scrollTop - el.clientHeight < 140) el.scrollTop = el.scrollHeight; };
+  window.qsmart = { chatFim, kv, cofre, rolar, ia, get, getH, req, reduzirImagem, imagem, nota, doc, grade, tela, lsGet, lsSet, lsDel, colarImagens, clicar, trocarUrl, pasta, baixar, abrir, copiar, abrirUrl, pdfPaginas, pdfJuntar, pdfLinhas, tema, aoOcultar, focar, rolarLinha, pronto };
 })();

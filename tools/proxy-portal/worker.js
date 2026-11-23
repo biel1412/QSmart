@@ -1290,6 +1290,63 @@ async function api(req, env, url) {
   }
 
   // ---------- Notificações (sininho) ----------
+  // ---------- chat: conversas 1 a 1 entre todos os usuários; cada mensagem se apaga 3 dias depois de enviada ----------
+  if (rota.startsWith("chat")) {
+    const CHAT_DIAS = 3, ONLINE_MS = 2.5 * 60 * 1000;
+    const limite = new Date(Date.now() - CHAT_DIAS * 864e5).toISOString();
+    // limpeza contínua: o que passou de 3 dias sai do banco
+    await env.DB.prepare("DELETE FROM chat_msgs WHERE criado_em < ?").bind(limite).run();
+    const presenca = async () => { if (!u._visao) await env.DB.prepare("INSERT INTO chat_presenca (usuario_id, em) VALUES (?, ?) ON CONFLICT(usuario_id) DO UPDATE SET em = excluded.em").bind(u.id, agora()).run(); };
+    const abrirMsg = async x => ({ id: x.id, de: x.de_id, para: x.para_id, texto: await decifrar(env, x.texto), em: x.criado_em, lida: !!x.lida,
+      expira: new Date(Date.parse(x.criado_em) + CHAT_DIAS * 864e5).toISOString() });
+    if (rota === "chat/contatos" && m === "GET") {
+      const r = (await env.DB.prepare("SELECT id, nome, sobrenome, papel, foto FROM usuarios WHERE status = 'ativo' AND id != ? ORDER BY nome, sobrenome").bind(u.id).all()).results || [];
+      const contatos = [];
+      for (const x of r) contatos.push({ id: x.id, nome: `${x.nome} ${x.sobrenome}`.trim(), papel: x.papel, foto: x.foto ? await decifrar(env, x.foto) : "" });
+      return json({ contatos, dias: CHAT_DIAS });
+    }
+    if (rota === "chat/resumo" && m === "GET") {
+      await presenca();
+      const pres = (await env.DB.prepare("SELECT usuario_id, em FROM chat_presenca").all()).results || [];
+      const vistos = {}, online = [];
+      for (const p of pres) { if (p.usuario_id === u.id) continue; vistos[p.usuario_id] = p.em; if (Date.now() - Date.parse(p.em) < ONLINE_MS) online.push(p.usuario_id); }
+      const msgs = (await env.DB.prepare("SELECT * FROM chat_msgs WHERE de_id = ? OR para_id = ? ORDER BY id DESC LIMIT 600").bind(u.id, u.id).all()).results || [];
+      const conv = new Map();
+      for (const x of msgs) {
+        const com = x.de_id === u.id ? x.para_id : x.de_id;
+        let c = conv.get(com);
+        if (!c) { let t = ""; try { t = (await decifrar(env, x.texto)).replace(/\s+/g, " ").trim(); } catch { } c = { com, ultima: t.length > 70 ? t.slice(0, 70) + "…" : t, em: x.criado_em, minha: x.de_id === u.id, lida: !!x.lida, naoLidas: 0 }; conv.set(com, c); }
+        if (x.para_id === u.id && !x.lida) c.naoLidas++;
+      }
+      const conversas = [...conv.values()];
+      return json({ online, vistos, conversas, total: conversas.reduce((a, c) => a + c.naoLidas, 0), dias: CHAT_DIAS });
+    }
+    if (rota === "chat/conversa" && m === "GET") {
+      const com = Number(url.searchParams.get("com")) || 0;
+      if (!com || com === u.id) return erro("Conversa inválida.");
+      await presenca();
+      if (!u._visao) await env.DB.prepare("UPDATE chat_msgs SET lida = 1 WHERE para_id = ? AND de_id = ? AND lida = 0").bind(u.id, com).run();
+      const r = (await env.DB.prepare("SELECT * FROM (SELECT * FROM chat_msgs WHERE (de_id = ? AND para_id = ?) OR (de_id = ? AND para_id = ?) ORDER BY id DESC LIMIT 400) ORDER BY id").bind(u.id, com, com, u.id).all()).results || [];
+      const msgs = []; for (const x of r) msgs.push(await abrirMsg(x));
+      const p = await env.DB.prepare("SELECT em FROM chat_presenca WHERE usuario_id = ?").bind(com).first();
+      return json({ msgs, visto: p ? p.em : null, online: !!p && Date.now() - Date.parse(p.em) < ONLINE_MS });
+    }
+    if (rota === "chat" && m === "POST") {
+      const b = await corpo(req);
+      const para = Number(b.para) || 0, texto = String(b.texto || "").replace(/\r/g, "").trim();
+      if (!texto) return erro("Escreva a mensagem.");
+      if (texto.length > 2000) return erro("Mensagem longa demais (até 2.000 caracteres).");
+      if (!para || para === u.id) return erro("Escolha com quem conversar.");
+      const d = await env.DB.prepare("SELECT id FROM usuarios WHERE id = ? AND status = 'ativo'").bind(para).first();
+      if (!d) return erro("Essa pessoa não está ativa no QSmart.", 404);
+      const em = agora();
+      const r = await env.DB.prepare("INSERT INTO chat_msgs (de_id, para_id, texto, criado_em) VALUES (?, ?, ?, ?)").bind(u.id, para, await cifrar(env, texto), em).run();
+      await presenca();
+      return json({ ok: true, msg: { id: r.meta?.last_row_id || 0, de: u.id, para, texto, em, lida: false, expira: new Date(Date.parse(em) + CHAT_DIAS * 864e5).toISOString() } });
+    }
+    return erro("Rota do chat não encontrada.", 404);
+  }
+
   if (rota === "notif" && m === "GET") {
     await env.DB.prepare("DELETE FROM notificacoes WHERE usuario_id = ? AND criado_em < ?").bind(u.id, new Date(Date.now() - 60 * 864e5).toISOString()).run();
     const r = await env.DB.prepare(
