@@ -2995,3 +2995,4 @@ a.sino-it:hover { background: var(--surface2); }
 .do-meses button.on { border-color: var(--green); background: var(--green-soft); color: var(--green); }
 .do-meses button.on small { color: var(--green); }
 .do-meses button:hover:not(.on) { border-color: color-mix(in srgb, var(--green) 50%, var(--line)); }
+.do-aniv-sel { display: grid; grid-template-columns: 74px 1fr; gap: 6px; }

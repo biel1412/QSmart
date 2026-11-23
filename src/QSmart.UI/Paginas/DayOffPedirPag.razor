@@ -27,7 +27,17 @@
                             <input class="campo" list="do-equipe" placeholder="Nome e sobrenome" @bind="_nome" @bind:event="oninput" @onchange="SugerirAniv" /></label>
                         <datalist id="do-equipe">@foreach (var n in _equipe) { <option value="@n"></option> }</datalist>
                         <div class="do-2">
-                            <label>Aniversário da pessoa<input class="campo" type="date" @bind="_aniv" max="@_v.Hoje.ToString("yyyy-MM-dd")" /></label>
+                            <label>Aniversário da pessoa
+                                <span class="do-aniv-sel">
+                                    <select class="campo" value="@_anivDia" @onchange="@(e => { _anivDia = int.Parse(e.Value?.ToString() ?? "0"); })">
+                                        <option value="0">Dia</option>
+                                        @for (int i = 1; i <= 31; i++) { <option value="@i">@i.ToString("00")</option> }
+                                    </select>
+                                    <select class="campo" value="@_anivMes" @onchange="@(e => { _anivMes = int.Parse(e.Value?.ToString() ?? "0"); })">
+                                        <option value="0">Mês</option>
+                                        @for (int i = 1; i <= 12; i++) { <option value="@i">@Core.Texto.MesesPt[i - 1]</option> }
+                                    </select>
+                                </span></label>
                             <label>Dia do day off<input class="campo" type="date" value="@(_data?.ToString("yyyy-MM-dd"))" min="@_v.Hoje.ToString("yyyy-MM-dd")" @onchange="MudarData" /></label>
                         </div>
                         @if (_data is DateOnly dd)
@@ -116,7 +126,9 @@
 
     VisaoDO? _v;
     string _erro = "", _filtro = "", _nome = "", _obs = "";
-    DateTime? _aniv;
+    int _anivDia, _anivMes;
+    // o ano não importa: guarda com 2000 (ano bissexto, aceita 29/02)
+    DateTime? _aniv => _anivDia > 0 && _anivMes > 0 && _anivDia <= DateTime.DaysInMonth(2000, _anivMes) ? new DateTime(2000, _anivMes, _anivDia) : null;
     DateOnly? _data, _novaData, _destaque;
     DateOnly _mes = new(DateTime.Today.Year, DateTime.Today.Month, 1);
     PedidoDO? _remarcando;
@@ -165,16 +177,17 @@
 
     bool PodeEnviar => Falta == "" && _data != null;
     string Falta =>
-        _nome.Trim() == "" && _aniv == null && _data == null ? "" :
+        _nome.Trim() == "" && _anivDia == 0 && _anivMes == 0 && _data == null ? "" :
         _nome.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries).Length < 2 ? "Falta o nome completo (nome e sobrenome)." :
-        _aniv == null ? "Falta a data de aniversário." :
+        _anivDia > 0 && _anivMes > 0 && _aniv == null ? "Esse dia não existe nesse mês." :
+        _aniv == null ? "Falta o dia e o mês do aniversário." :
         _data == null ? "Falta o dia do day off." :
         _data < _v!.Hoje ? "Essa data já passou." :
         Ocup(_data.Value) >= _v.Limite ? "Esse dia já está cheio." : "";
 
     void SugerirAniv()
     {
-        if (_aniv == null && _anivs.TryGetValue(Core.Coordenacao.Ferias.Norm(_nome), out var a)) _aniv = a.ToDateTime(TimeOnly.MinValue);
+        if (_aniv == null && _anivs.TryGetValue(Core.Coordenacao.Ferias.Norm(_nome), out var a)) { _anivDia = a.Day; _anivMes = a.Month; }
     }
 
     async Task MudarData(ChangeEventArgs e)
@@ -205,7 +218,7 @@
         _salvando = false;
         if (!r.Ok) { await J.Aviso("Pedir day off", r.Erro); await Carregar(); return; }
         _destaque = _data; _filtro = "";
-        _nome = ""; _aniv = null; _obs = ""; _data = null;
+        _nome = ""; _anivDia = 0; _anivMes = 0; _obs = ""; _data = null;
         await Carregar();
         _ = E.Conta.Registrar("dayoff.pedir", true);
         await J.Info("Pedido enviado", $"O pedido de {nome} para {_destaque:dd/MM} foi para a coordenação. Você recebe a resposta no sininho.");
