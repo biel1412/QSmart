@@ -997,6 +997,27 @@ async function api(req, env, url) {
     }
   }
 
+  // ---------- palavras de exclusão de fluxo (aba Usuários): uma lista só para todo mundo ----------
+  if (rota === "exclusao/termos") {
+    const PADRAO = ["EXCLUSAO", "EXCLUIDAS", "EXCLUIDOS", "EXCLUIDA", "EXCLUIDO", "EXCLUIR", "EXCL", "EXC"];
+    const ler = async () => {
+      const kv = await env.DB.prepare("SELECT valor FROM kv WHERE chave = 'palavras_exclusao'").first();
+      try { const v = kv ? JSON.parse(kv.valor) : null; if (v && Array.isArray(v.termos)) return v; } catch { }
+      return { termos: PADRAO, por: "", em: "" };
+    };
+    const podeEditar = u.papel === "admin" || u.papel === "coordenador";
+    if (m === "GET") return json({ ...(await ler()), podeEditar });
+    if (m === "PUT") {
+      if (!podeEditar) return erro("Só o administrador e a coordenação mudam as palavras de exclusão.", 403);
+      const b = await corpo(req);
+      const norm = t => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 40);
+      const termos = [...new Set((Array.isArray(b.termos) ? b.termos : []).map(norm).filter(t => t.length >= 2))].slice(0, 200);
+      const v = { termos, por: `${u.nome} ${u.sobrenome}`.trim(), em: agora() };
+      await env.DB.prepare("INSERT INTO kv (chave, valor) VALUES ('palavras_exclusao', ?) ON CONFLICT(chave) DO UPDATE SET valor = excluded.valor").bind(JSON.stringify(v)).run();
+      return json({ ...v, podeEditar });
+    }
+  }
+
   // ---------- day off: a liderança pede, a coordenação aprova; o calendário aprovado é de todos ----------
   if (rota.startsWith("dayoff")) {
     const lider = u.papel === "lideranca" || u.papel === "admin";

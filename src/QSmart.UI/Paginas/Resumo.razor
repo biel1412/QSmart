@@ -109,15 +109,16 @@
         var classes = new Dictionary<string, string>(E.ClassesProc);
         await E.Executar(async prog =>
         {
-            var cubo = await Volume.Carregar(new[] { a }, prog);
+            var (cubo, fluxos) = await Volume.CarregarComFluxos(new[] { a }, prog);
             var op = Volume.Opcoes(cubo);
             var r = Volume.CalcularResumo(cubo, classes, new FiltrosVolume(), a.Nome);
-            return (cubo, op, r);
+            return (cubo, op, r, fluxos);
         },
         async x =>
         {
-            (E.CuboResumo, E.OpcoesResumo, E.Resultado) = x;
+            (E.CuboResumo, E.OpcoesResumo, E.Resultado, E.FluxosResumo) = x;
             E.FiltrosResumo = new();
+            E.RecalcularTma();
             E.ArquivoResumo = a;
             E.AtualizarSubResumo();
             await Task.CompletedTask;

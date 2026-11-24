@@ -1,8 +1,22 @@
 @page "/usuarios"
 @inherits PaginaBase
-@{ var linhas = Linhas(); }
+@{ var linhas = Linhas(); var t = E.Tma; }
 
 <Pagina Titulo="Usuários" Grupo="@A.Grupo" Sub="@Sub()">
+    <Kpis>
+        @if (t != null)
+        {
+            <Kpi Titulo="TMA médio geral" Cor="blue" Valor="@Tma.Hms(t.Tma)" Tamanho="26"
+                 Detalhe="tempo de execução · fluxos iniciados e concluídos no mesmo dia" />
+            <Kpi Titulo="Fluxos considerados" Cor="green" Valor="@Fmt(t.Considerados)" Tamanho="26"
+                 Detalhe="@($"de {Fmt(t.Fluxos)} da planilha · os outros atravessam o dia (seria SLA, não TMA)")" Proporcao="@(t.Fluxos == 0 ? 0 : t.Considerados / (double)t.Fluxos)" />
+            <Kpi Titulo="TMA suspeito" Cor="@(t.Suspeitos > 0 ? "amber" : "green")" Valor="@Fmt(t.Suspeitos)" Tamanho="26"
+                 Detalhe="@($"fluxos com menos de {Tma.LimiteSuspeito} segundos")" />
+            <Kpi Titulo="Exclusões identificadas" Cor="purple" Valor="@Fmt(t.Exclusoes)" Tamanho="26"
+                 Detalhe="justificativas com as palavras de exclusão" />
+        }
+    </Kpis>
+    <ChildContent>
     <Painel Sangrar="true">
         <div class="barra-ferr dentro">
             <div class="campo-busca larga"><Icone Nome="busca" Tamanho="16" />
@@ -14,27 +28,133 @@
             <button class="btn btn-sec @(E.Ordem == "mais" ? "ativo" : "")" @onclick="@(() => E.Ordem = "mais")">Mais devolutivas</button>
             <button class="btn btn-sec @(E.Ordem == "menos" ? "ativo" : "")" @onclick="@(() => E.Ordem = "menos")">Menos devolutivas</button>
         </div>
-        <Tabela Colunas="_cols" Linhas="linhas" Altura="calc(100vh - 330px)"
+        <Tabela Colunas="_cols" Linhas="linhas" Altura="calc(100vh - 430px)"
                 Vazio="@(E.Resultado == null ? "Carregue a planilha na aba Resumo." : "Nenhum usuário encontrado para essa busca.")" />
     </Painel>
+
+    @if (t != null)
+    {
+        var segs = t.Segmentos;
+        <div class="tm2-cab">
+            <h3><Icone Nome="relogio" Tamanho="18" /> TMA por segmento</h3>
+            <span class="muted pequeno">TMA = tempo de execução de cada fluxo (DATAHORAFIMATIVIDADE − DATAHORAINICIOATIVIDADE), só dos fluxos que começam e terminam no mesmo dia, igual ao sistema atual. Não é SLA: o tempo de espera de um dia para o outro fica de fora. Segmento = começo do IDREGISTROCONTROLADO (antes do #).</span>
+            <span class="mola"></span>
+        </div>
+        @if (!t.TemDatas)
+        {
+            <p class="muted">A planilha não tem as colunas DATAHORAINICIOATIVIDADE e DATAHORAFIMATIVIDADE, então não dá para calcular o TMA. As exclusões continuam sendo contadas.</p>
+        }
+        <div class="tm2-segs">
+            @foreach (var s in segs)
+            {
+                var ss = s.Segmento;
+                <button class="tm2-seg @(_seg == ss ? "on" : "")" @onclick="() => EscolherSeg(ss)">
+                    <span class="tm2-seg-nome">@s.Nome</span>
+                    <b>@(s.Considerados > 0 ? Tma.Hms(s.Tma) : "—")</b>
+                    <small>@Fmt(s.Considerados) de @Fmt(s.Fluxos) fluxos</small>
+                    <span class="tm2-seg-tags">
+                        @if (s.Suspeitos > 0) { <em class="sus" title="TMA suspeito: menos de @Tma.LimiteSuspeito segundos">⚠ @Fmt(s.Suspeitos) suspeito(s)</em> }
+                        @if (s.Exclusoes > 0) { <em class="exc">@Fmt(s.Exclusoes) exclusão(ões)</em> }
+                    </span>
+                </button>
+            }
+        </div>
+
+        <Painel Sangrar="true" Classe="tm2-det">
+            <div class="barra-ferr dentro">
+                <b class="tm2-det-tit">Por usuário e segmento</b>
+                <span class="muted pequeno">@(E.BuscaUsuarios != "" ? $"filtrado pela busca “{E.BuscaUsuarios}”" : "use a busca acima para ver um usuário")</span>
+                <span class="mola"></span>
+                <select class="campo tm2-sel" @bind="_seg">
+                    <option value="">Todos os segmentos</option>
+                    @foreach (var s in segs) { <option value="@s.Segmento">@s.Nome</option> }
+                </select>
+                <label class="tm2-chave"><input type="checkbox" @bind="_soSuspeitos" /><span>Só com TMA suspeito</span></label>
+            </div>
+            <Tabela Colunas="_colsTma" Linhas="LinhasTma()" Altura="calc(100vh - 380px)" Vazio="Nenhum usuário com fluxos nesse filtro." />
+        </Painel>
+
+        <div class="tm2-duas">
+            <Painel Titulo="@($"TMA suspeito · {Fmt(t.SuspeitosLista.Count)} fluxo(s) com menos de {Tma.LimiteSuspeito} s")" Classe="tm2-bloco">
+                <p class="muted pequeno">Fluxos concluídos rápido demais para uma análise real: vale conferir se não foram aprovados ou encaminhados sem olhar.</p>
+                @{ var sus = SuspeitosFiltrados(); }
+                @if (sus.Count == 0) { <p class="muted">Nenhum fluxo suspeito@(E.BuscaUsuarios != "" || _seg != "" ? " nesse filtro" : "").</p> }
+                else
+                {
+                    <div class="tm2-lista">
+                        <table class="tm2-tab">
+                            <thead><tr><th>Usuário</th><th>Registro</th><th>Procedimento</th><th>Início</th><th>Duração</th></tr></thead>
+                            <tbody>
+                                @foreach (var x in sus.Take(_verTodosSus ? 1000 : 12))
+                                {
+                                    <tr><td>@x.Usuario</td><td><code>@x.Registro</code></td><td>@x.Procedimento</td><td>@x.Inicio.ToString("dd/MM HH:mm:ss")</td><td class="sus">@x.Segundos s</td></tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                    @if (sus.Count > 12) { <button class="btn btn-sec btn-peq" @onclick="() => _verTodosSus = !_verTodosSus">@(_verTodosSus ? "Mostrar menos" : $"Ver todos os {sus.Count}")</button> }
+                }
+            </Painel>
+
+            <Painel Titulo="Palavras de exclusão de fluxo" Classe="tm2-bloco">
+                <p class="muted pequeno">Termos que identificam fluxos de exclusão nas justificativas (cada um escreve de um jeito). Conta como exclusão quando a justificativa tem a <b>palavra inteira</b>: “EXC” pega “EXC.” mas não “EXCEPTION” nem “EXCEDE”. Acentos e maiúsculas não importam. A lista vale para todo mundo.</p>
+                @if (E.TermosPodeEditar)
+                {
+                    <div class="tm2-add">
+                        <input class="campo" placeholder="Novo termo (ex.: EXCLUÍDO, CANCELADO…)" @bind="_novoTermo" @bind:event="oninput" @onkeydown="TeclaTermo" />
+                        <button class="btn btn-pri" disabled="@(string.IsNullOrWhiteSpace(_novoTermo) || _salvandoTermos)" @onclick="AdicionarTermo">Adicionar</button>
+                    </div>
+                }
+                <div class="tm2-termos">
+                    @foreach (var termo in E.TermosExclusao)
+                    {
+                        var tt = termo;
+                        <span class="tm2-termo">@termo @if (E.TermosPodeEditar) { <button title="Tirar “@termo”" @onclick="() => TirarTermo(tt)"><Icone Nome="x" Tamanho="12" /></button> }</span>
+                    }
+                    @if (E.TermosExclusao.Count == 0) { <span class="muted pequeno">Nenhuma palavra: nenhuma exclusão será identificada.</span> }
+                </div>
+                <small class="muted">@(E.TermosPodeEditar ? "Você pode editar (administrador e coordenação)." : "Só o administrador e a coordenação editam a lista.")@(E.TermosPor != "" ? $" Última mudança: {E.TermosPor}." : "")</small>
+            </Painel>
+        </div>
+    }
+    </ChildContent>
 </Pagina>
 
 @code {
     protected override string Chave => "usuarios";
     readonly List<ColunaTab> _cols = new()
     {
-        new("#", 70, 'c'), new("Usuário", 0, 'e'), new("Devolutivas", 130, 'c'), new("Aprovações", 130, 'c'),
-        new("Total de ações", 140, 'c'), new("% devolvidas", 130, 'c'),
+        new("#", 60, 'c'), new("Usuário", 0, 'e'), new("Devolutivas", 110, 'c'), new("Aprovações", 110, 'c'),
+        new("Total de ações", 120, 'c'), new("% devolvidas", 110, 'c'),
+        new("TMA médio", 110, 'c', "Média dos fluxos considerados do usuário (HH:MM:SS)"),
+        new("TMA suspeito", 110, 'c', $"Fluxos com menos de {Tma.LimiteSuspeito} segundos"),
+        new("Exclusões identificadas", 160, 'c', "Fluxos com palavras de exclusão na justificativa"),
+    };
+    readonly List<ColunaTab> _colsTma = new()
+    {
+        new("Usuário", 0, 'e'), new("Segmento", 170, 'e'), new("Fluxos", 90, 'c'), new("Considerados", 110, 'c'),
+        new("TMA médio", 110, 'c'), new("TMA suspeito", 110, 'c'), new("Exclusões identificadas", 160, 'c'),
     };
     List<LinhaTab>? _cache;
-    (object?, string, string)? _chaveCache;
+    (object?, string, string, object?)? _chaveCache;
     int _mostrando, _total;
+    string _seg = "", _novoTermo = "";
+    bool _soSuspeitos, _verTodosSus, _salvandoTermos;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!E.TermosLidos) { await E.CarregarTermos(); StateHasChanged(); }
+    }
+
+    static string Fmt(long n) => Texto.Fmt(n);
 
     string Sub() => E.Resultado == null ? "Carregue a planilha na aba Resumo." : $"Mostrando {_mostrando} de {_total} usuários";
 
+    string[] Termos() => Texto.NormalizarBusca(E.BuscaUsuarios).Split(' ', StringSplitOptions.RemoveEmptyEntries);
+
     List<LinhaTab> Linhas()
     {
-        var k = ((object?)E.Resultado, E.Ordem, E.BuscaUsuarios);
+        var k = ((object?)E.Resultado, E.Ordem, E.BuscaUsuarios, (object?)E.Tma);
         if (_cache != null && _chaveCache.Equals(k)) return _cache;
         _chaveCache = k;
         if (E.Resultado == null) { _mostrando = _total = 0; return _cache = new(); }
@@ -44,13 +164,74 @@
             : todos.OrderByDescending(x => x.Devolutivas).ThenByDescending(x => x.Acoes).ThenBy(x => x.Usuario, StringComparer.Ordinal);
         var lista = ord.Select((x, i) => (x, pos: i + 1)).ToList();
         _total = lista.Count;
-        var termos = Texto.NormalizarBusca(E.BuscaUsuarios).Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var termos = Termos();
         if (termos.Length > 0) lista = lista.Where(t => termos.All(tt => t.x.Busca.Contains(tt))).ToList();
         _mostrando = lista.Count;
-        return _cache = lista.Select(t => new LinhaTab
+        return _cache = lista.Select(t =>
         {
-            Valores = new object?[] { t.pos, t.x.Usuario, t.x.Devolutivas, t.x.Aprovacoes, t.x.Acoes, $"{F1(t.x.Taxa * 100)}%" },
-            Chaves = new object?[] { t.pos, t.x.Usuario, t.x.Devolutivas, t.x.Aprovacoes, t.x.Acoes, t.x.Taxa },
+            TmaUsuario? m = null;
+            E.Tma?.Usuarios.TryGetValue(t.x.Usuario, out m);
+            var tmaTxt = m == null || m.Considerados == 0 ? "—" : Tma.Hms(m.Tma);
+            return new LinhaTab
+            {
+                Valores = new object?[] { t.pos, t.x.Usuario, t.x.Devolutivas, t.x.Aprovacoes, t.x.Acoes, $"{F1(t.x.Taxa * 100)}%", tmaTxt,
+                    m?.Suspeitos > 0 ? $"⚠ {m.Suspeitos}" : "0", m?.Exclusoes ?? 0 },
+                Chaves = new object?[] { t.pos, t.x.Usuario, t.x.Devolutivas, t.x.Aprovacoes, t.x.Acoes, t.x.Taxa, m?.Considerados > 0 ? m.Tma : -1,
+                    m?.Suspeitos ?? 0, m?.Exclusoes ?? 0 },
+            };
         }).ToList();
+    }
+
+    List<LinhaTab> LinhasTma()
+    {
+        if (E.Tma == null) return new();
+        var termos = Termos();
+        var linhas = new List<LinhaTab>();
+        foreach (var u in E.Tma.Usuarios.Values.OrderBy(x => x.Usuario, StringComparer.Ordinal))
+        {
+            if (termos.Length > 0 && !termos.All(tt => u.Busca.Contains(tt))) continue;
+            foreach (var s in u.PorSegmento)
+            {
+                if (_seg != "" && s.Segmento != _seg) continue;
+                if (_soSuspeitos && s.Suspeitos == 0) continue;
+                linhas.Add(new LinhaTab
+                {
+                    Valores = new object?[] { u.Usuario, s.Nome, s.Fluxos, s.Considerados, s.Considerados > 0 ? Tma.Hms(s.Tma) : "—", s.Suspeitos > 0 ? $"⚠ {s.Suspeitos}" : "0", s.Exclusoes },
+                    Chaves = new object?[] { u.Usuario, s.Nome, s.Fluxos, s.Considerados, s.Considerados > 0 ? s.Tma : -1, s.Suspeitos, s.Exclusoes },
+                });
+            }
+        }
+        return linhas;
+    }
+
+    List<FluxoSuspeito> SuspeitosFiltrados()
+    {
+        if (E.Tma == null) return new();
+        var termos = Termos();
+        return E.Tma.SuspeitosLista.Where(x => (_seg == "" || x.Segmento == _seg) && (termos.Length == 0 || termos.All(tt => Texto.NormalizarBusca(x.Usuario).Contains(tt)))).ToList();
+    }
+
+    void EscolherSeg(string s) => _seg = _seg == s ? "" : s;
+
+    async Task TeclaTermo(KeyboardEventArgs e) { if (e.Key == "Enter") await AdicionarTermo(); }
+
+    async Task AdicionarTermo()
+    {
+        var novos = _novoTermo.Split(new[] { ',', ';', ' ' }, StringSplitOptions.RemoveEmptyEntries).Select(Tma.NormTermo).Where(x => x.Length >= 2).ToList();
+        if (novos.Count == 0) { await J.Aviso("Palavras de exclusão", "Digite um termo com pelo menos 2 letras."); return; }
+        var lista = E.TermosExclusao.Concat(novos).Distinct().ToList();
+        _salvandoTermos = true;
+        var erro = await E.SalvarTermos(lista);
+        _salvandoTermos = false;
+        if (erro != null) { await J.Aviso("Palavras de exclusão", erro); return; }
+        _novoTermo = "";
+        _ = E.Conta.Registrar("usuarios.termo", true);
+    }
+
+    async Task TirarTermo(string termo)
+    {
+        if (!await J.Pergunta("Palavras de exclusão", $"Tirar “{termo}” da lista? Vale para todo mundo.")) return;
+        var erro = await E.SalvarTermos(E.TermosExclusao.Where(x => x != termo).ToList());
+        if (erro != null) await J.Aviso("Palavras de exclusão", erro);
     }
 }

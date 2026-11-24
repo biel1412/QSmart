@@ -35,6 +35,37 @@ public sealed class Estado
     public List<CuboVolume>? CuboResumo;
     public OpcoesVolume? OpcoesResumo;
     public FiltrosVolume FiltrosResumo = new();
+    // ---------------- TMA, exclusões e TMA suspeito (aba Usuários) ----------------
+    public FluxosTma? FluxosResumo;
+    public ResultadoTma? Tma;
+    public List<string> TermosExclusao = Core.Tma.TermosPadrao.ToList();
+    public bool TermosPodeEditar, TermosLidos;
+    public string TermosPor = "", TermosEm = "";
+
+    public void RecalcularTma() => Tma = FluxosResumo == null ? null : Core.Tma.Calcular(FluxosResumo, FiltrosResumo, TermosExclusao);
+
+    public async Task CarregarTermos()
+    {
+        var r = await Conta.Chamar("GET", "exclusao/termos");
+        if (!r.Ok || r.Json == null) return;
+        LerTermos(r.Json);
+    }
+    public async Task<string?> SalvarTermos(List<string> termos)
+    {
+        var r = await Conta.Chamar("PUT", "exclusao/termos", new System.Text.Json.Nodes.JsonObject { ["termos"] = new System.Text.Json.Nodes.JsonArray(termos.Select(t => (System.Text.Json.Nodes.JsonNode)t).ToArray()) });
+        if (!r.Ok || r.Json == null) return r.Erro;
+        LerTermos(r.Json);
+        return null;
+    }
+    void LerTermos(System.Text.Json.Nodes.JsonNode j)
+    {
+        TermosExclusao = (j["termos"] as System.Text.Json.Nodes.JsonArray ?? new()).Select(x => x?.ToString() ?? "").Where(x => x != "").ToList();
+        TermosPodeEditar = j["podeEditar"]?.GetValue<bool>() ?? false;
+        TermosPor = j["por"]?.ToString() ?? ""; TermosEm = j["em"]?.ToString() ?? "";
+        TermosLidos = true;
+        RecalcularTma();
+        Notificar();
+    }
     public Arquivo? ArquivoResumo;
     public string SubResumo = "Nenhuma planilha carregada. Clique em “Abrir planilha” para começar.";
     public string Ordem = "mais";
@@ -863,6 +894,7 @@ public sealed class Estado
     {
         if (CuboResumo == null) return;
         Resultado = Volume.CalcularResumo(CuboResumo, ClassesProc, FiltrosResumo, Resultado?.Arquivo ?? ArquivoResumo?.Nome ?? "");
+        RecalcularTma();
         AtualizarSubResumo();
     }
 

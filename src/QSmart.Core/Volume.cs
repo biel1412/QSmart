@@ -212,11 +212,21 @@ public static class Volume
 
     /// <summary>carregar_volume: devolve o CUBO compacto (uma linha por combinação, com a contagem N).</summary>
     public static async Task<List<CuboVolume>> Carregar(IEnumerable<Arquivo> arquivos, Progresso? prog = null)
+        => (await CarregarComFluxos(arquivos, prog, false)).cubo;
+
+    /// <summary>Igual ao Carregar, e também guarda cada fluxo (tempos, segmento, justificativa) para o TMA da aba Usuários.</summary>
+    public static async Task<(List<CuboVolume> cubo, FluxosTma? fluxos)> CarregarComFluxos(IEnumerable<Arquivo> arquivos, Progresso? prog = null, bool comFluxos = true)
     {
         var tabs = new List<Tabela>();
         foreach (var a in arquivos) tabs.Add(await LerPlanilha(a, prog));
         Tabela df = tabs.Count == 1 ? tabs[0] : Concat(tabs);
         var d = Derivar(df);
+        var fluxos = comFluxos ? Tma.Montar(df, d) : null;
+        return (Cubo(df, d), fluxos);
+    }
+
+    static List<CuboVolume> Cubo(Tabela df, Derivado d)
+    {
         var cont = new Dictionary<(string, string, string, string, string), long>();
         for (int i = 0; i < df.Linhas.Count; i++)
         {
