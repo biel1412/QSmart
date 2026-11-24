@@ -45,8 +45,8 @@ public sealed class ResultadoTma
 /// <summary>
 /// TMA (tempo médio de atendimento) por usuário e por segmento, exclusões identificadas e TMA suspeito.
 /// Fluxo = cada linha do compilado. Tempo = DATAHORAFIMATIVIDADE − DATAHORAINICIOATIVIDADE.
-/// TMA é tempo de execução, não SLA: só entram fluxos que começam e terminam no mesmo dia (igual ao sistema atual);
-/// o que atravessa a noite carrega o tempo de fila e ficaria parecido com SLA. A média é simples e corta os segundos quebrados. Segmento = prefixo do IDREGISTROCONTROLADO (antes do #).
+/// Entram todos os fluxos que têm início e fim (de qualquer dia); a opção soMesmoDia reproduz o sistema antigo,
+/// que só olhava fluxos iniciados e concluídos no mesmo dia. A média é simples e corta os segundos quebrados. Segmento = prefixo do IDREGISTROCONTROLADO (antes do #).
 /// </summary>
 public static class Tma
 {
@@ -132,7 +132,7 @@ public static class Tma
         return r;
     }
 
-    public static ResultadoTma Calcular(FluxosTma f, FiltrosVolume filtros, IEnumerable<string> termos, bool soMesmoDia = true)
+    public static ResultadoTma Calcular(FluxosTma f, FiltrosVolume filtros, IEnumerable<string> termos, bool soMesmoDia = false)
     {
         var t = termos.Select(NormTermo).Where(x => x != "").ToHashSet(StringComparer.Ordinal);
         var excJ = f.Justificativas.Select(j => TemExclusao(j, t)).ToArray();

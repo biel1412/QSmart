@@ -42,7 +42,7 @@ public sealed class Estado
     public bool TermosPodeEditar, TermosLidos;
     public string TermosPor = "", TermosEm = "";
 
-    public void RecalcularTma() => Tma = FluxosResumo == null ? null : Core.Tma.Calcular(FluxosResumo, FiltrosResumo, TermosExclusao);
+    public void RecalcularTma() => Tma = FluxosResumo == null ? null : Core.Tma.Calcular(FluxosResumo, FiltrosResumo, TermosExclusao, soMesmoDia: false);
 
     public async Task CarregarTermos()
     {

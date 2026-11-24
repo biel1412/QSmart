@@ -24,7 +24,7 @@
         var segs = t.Segmentos;
         <div class="tm2-cab">
             <h3><Icone Nome="relogio" Tamanho="18" /> TMA por segmento</h3>
-            <span class="muted pequeno">TMA = tempo de execução de cada fluxo (DATAHORAFIMATIVIDADE − DATAHORAINICIOATIVIDADE), só dos fluxos que começam e terminam no mesmo dia, igual ao sistema atual. Não é SLA: o tempo de espera de um dia para o outro fica de fora. Segmento = começo do IDREGISTROCONTROLADO (antes do #).</span>
+            <span class="muted pequeno">TMA = média do tempo de cada fluxo (DATAHORAFIMATIVIDADE − DATAHORAINICIOATIVIDADE), considerando todos os fluxos da planilha que têm início e fim, de qualquer dia. Segmento = começo do IDREGISTROCONTROLADO (antes do #). As exclusões são contadas em todos os fluxos.</span>
             <span class="mola"></span>
         </div>
         @if (!t.TemDatas)
