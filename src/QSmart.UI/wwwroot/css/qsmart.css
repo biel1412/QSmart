@@ -3166,3 +3166,174 @@ label.dl-form-arq { flex-direction: row !important; align-items: center; gap: 10
 .us-nota { display: flex; gap: 8px; align-items: flex-start; margin: 16px 0 8px; line-height: 1.5; }
 .us-nota svg { flex: none; margin-top: 3px; }
 @media (max-width: 760px) { .us-cols { gap: 2px; height: 130px; } .us-duas { grid-template-columns: 1fr; } .us-avisos { grid-template-columns: 1fr; } }
+
+/* ===================================================================== */
+/* ===== Temas comemorativos (o administrador escolhe; vale para todos) ===== */
+/* ===================================================================== */
+/* --- Natal --- */
+html[data-festa="natal"] {
+  --accent: #C0262D; --accent-h: #9F1D23; --on-accent: #FFFFFF; --accent-soft: #FDE8E8; --accent2: #15803D;
+  --grad: linear-gradient(135deg, #B91C1C 0%, #DC2626 38%, #15803D 100%);
+  --side-bar: #FCA5A5; --side-active: linear-gradient(90deg, rgba(220,38,38,.30), rgba(22,163,74,.24)); --bg: #FBF7F5;
+}
+html[data-festa="natal"][data-tema="escuro"] {
+  --accent: #F87171; --accent-h: #FCA5A5; --on-accent: #2B0507; --accent-soft: #3A1416; --accent2: #4ADE80; --bg: #0D0A0C;
+}
+html[data-festa="natal"] .lateral { background: radial-gradient(90% 38% at 0% 0%, rgba(220,38,38,.48), transparent 60%), radial-gradient(95% 42% at 100% 32%, rgba(22,163,74,.42), transparent 66%), radial-gradient(80% 32% at 0% 82%, rgba(185,28,28,.26), transparent 66%), radial-gradient(60% 25% at 100% 100%, rgba(250,204,21,.12), transparent 65%), linear-gradient(180deg, #230B0E, #0A1A10); }
+html[data-festa="natal"] .marca-nome b { background: linear-gradient(90deg, #FCA5A5, #FDE68A, #86EFAC); -webkit-background-clip: text; background-clip: text; }
+
+/* --- Páscoa --- */
+html[data-festa="pascoa"] {
+  --accent: #9333EA; --accent-h: #7E22CE; --on-accent: #FFFFFF; --accent-soft: #F3E8FF; --accent2: #EC4899;
+  --grad: linear-gradient(135deg, #A855F7 0%, #EC4899 50%, #F59E0B 100%);
+  --side-bar: #F0ABFC; --side-active: linear-gradient(90deg, rgba(192,132,252,.30), rgba(244,114,182,.26)); --bg: #FBF8FE;
+}
+html[data-festa="pascoa"][data-tema="escuro"] {
+  --accent: #C084FC; --accent-h: #D8B4FE; --on-accent: #1E0533; --accent-soft: #2E1745; --accent2: #F9A8D4; --bg: #0E0A14;
+}
+html[data-festa="pascoa"] .lateral { background: radial-gradient(90% 38% at 0% 0%, rgba(192,132,252,.45), transparent 60%), radial-gradient(95% 42% at 100% 32%, rgba(244,114,182,.40), transparent 66%), radial-gradient(80% 32% at 0% 82%, rgba(253,224,71,.16), transparent 66%), radial-gradient(60% 25% at 100% 100%, rgba(134,239,172,.16), transparent 65%), linear-gradient(180deg, #2A1438, #160D24); }
+html[data-festa="pascoa"] .marca-nome b { background: linear-gradient(90deg, #F0ABFC, #FDE68A, #86EFAC); -webkit-background-clip: text; background-clip: text; }
+
+/* --- Ano Novo --- */
+html[data-festa="anonovo"] {
+  --accent: #A16207; --accent-h: #854D0E; --on-accent: #FFFFFF; --accent-soft: #FEF3C7; --accent2: #7C3AED;
+  --grad: linear-gradient(135deg, #F59E0B 0%, #EAB308 35%, #7C3AED 100%);
+  --side-bar: #FDE68A; --side-active: linear-gradient(90deg, rgba(234,179,8,.28), rgba(124,58,237,.24)); --bg: #FAF8F2;
+}
+html[data-festa="anonovo"][data-tema="escuro"] {
+  --accent: #FBBF24; --accent-h: #FCD34D; --on-accent: #1F1300; --accent-soft: #3A2A0A; --accent2: #A78BFA; --bg: #08091A;
+}
+html[data-festa="anonovo"] .lateral { background: radial-gradient(90% 38% at 0% 0%, rgba(234,179,8,.34), transparent 60%), radial-gradient(95% 42% at 100% 32%, rgba(124,58,237,.40), transparent 66%), radial-gradient(80% 32% at 0% 82%, rgba(250,204,21,.16), transparent 66%), radial-gradient(60% 25% at 100% 100%, rgba(255,255,255,.08), transparent 65%), linear-gradient(180deg, #0D1233, #05060F); }
+html[data-festa="anonovo"] .marca-nome b { background: linear-gradient(90deg, #FDE68A, #FBBF24, #E9D5FF); -webkit-background-clip: text; background-clip: text; }
+
+/* --- acessório no logo (menu e tela de entrada) --- */
+html[data-festa] .marca-link, html[data-festa] .ac-logo { position: relative; }
+html[data-festa] .marca-link::after, html[data-festa] .ac-logo::after { content: ""; position: absolute; pointer-events: none; background: no-repeat center / contain; filter: drop-shadow(0 2px 3px rgba(0,0,0,.35)); }
+html[data-festa="natal"] .marca-link::after, html[data-festa="natal"] .ac-logo::after {
+  width: 78%; height: 78%; top: -42%; right: -26%; transform: rotate(22deg);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M10 46 C14 24 30 8 48 10 C44 20 46 30 52 40 Z' fill='%23DC2626'/%3E%3Cpath d='M30 14 C38 10 44 10 48 10 C44 20 46 30 52 40 L46 42 C42 32 40 22 30 14Z' fill='%23B91C1C'/%3E%3Crect x='6' y='42' width='50' height='12' rx='6' fill='%23fff'/%3E%3Ccircle cx='52' cy='40' r='7' fill='%23fff'/%3E%3C/svg%3E");
+}
+html[data-festa="pascoa"] .marca-link::after, html[data-festa="pascoa"] .ac-logo::after {
+  width: 80%; height: 80%; top: -58%; left: 10%;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cellipse cx='20' cy='30' rx='9' ry='26' transform='rotate(-12 20 30)' fill='%23fff'/%3E%3Cellipse cx='20' cy='32' rx='4.5' ry='19' transform='rotate(-12 20 32)' fill='%23F9A8D4'/%3E%3Cellipse cx='44' cy='30' rx='9' ry='26' transform='rotate(12 44 30)' fill='%23fff'/%3E%3Cellipse cx='44' cy='32' rx='4.5' ry='19' transform='rotate(12 44 32)' fill='%23F9A8D4'/%3E%3C/svg%3E");
+}
+html[data-festa="anonovo"] .marca-link::after, html[data-festa="anonovo"] .ac-logo::after {
+  width: 62%; height: 62%; top: -44%; right: -14%; transform: rotate(18deg);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M32 6 L52 56 L12 56 Z' fill='%23FBBF24'/%3E%3Cpath d='M32 6 L38 21 L26 21 Z M23 29 L41 29 L44 37 L20 37Z M17 45 L47 45 L50 52 L14 52Z' fill='%237C3AED'/%3E%3Crect x='10' y='52' width='44' height='7' rx='3.5' fill='%23FDE68A'/%3E%3Cpath d='M32 0 l2.6 5.4 5.9.9-4.3 4.1 1 5.9L32 13.5 26.8 16.3l1-5.9-4.3-4.1 5.9-.9Z' fill='%23FEF3C7'/%3E%3C/svg%3E");
+}
+html[data-festa] .app.recolhido .marca-link::after { top: -34%; }
+
+/* --- camada de enfeites animados --- */
+.fx-camada { position: fixed; inset: 0; pointer-events: none; z-index: 45; overflow: hidden; }
+html[data-enfeites="off"] .fx-camada { display: none; }
+@media (prefers-reduced-motion: reduce) { .fx-camada { display: none; } }
+
+/* neve */
+.fx-neve { position: absolute; top: -14px; width: var(--s); height: var(--s); border-radius: 50%; opacity: var(--o);
+  background: radial-gradient(circle, #fff 0 38%, rgba(186,230,253,.95) 62%, transparent 72%); filter: drop-shadow(0 0 3px rgba(148,197,255,.9));
+  animation: fx-cai var(--t) linear var(--d) infinite; }
+html[data-tema="claro"] .fx-neve, html:not([data-tema]) .fx-neve { background: radial-gradient(circle, #F0F9FF 0 30%, #93C5FD 58%, transparent 70%); filter: drop-shadow(0 0 2px rgba(59,130,246,.45)); }
+@keyframes fx-cai { 0% { transform: translate3d(0, -20px, 0); } 50% { transform: translate3d(calc(var(--dx) * -.6), 52vh, 0); } 100% { transform: translate3d(var(--dx), 104vh, 0); } }
+
+/* pisca-pisca no topo */
+.fx-luzes { position: absolute; top: 0; left: 0; right: 0; height: 22px; display: flex; justify-content: space-around; align-items: flex-start;
+  background: radial-gradient(120% 22px at 50% -6px, transparent 20px, rgba(30,41,59,.55) 21px, transparent 23px) 0 0 / 64px 22px repeat-x; }
+.fx-luzes i { width: 8px; height: 12px; margin-top: 5px; border-radius: 50% 50% 45% 45%; background: var(--b); position: relative;
+  box-shadow: 0 0 10px 2px var(--b); animation: fx-pisca 1.8s ease-in-out calc(var(--i) * -.37s) infinite; }
+.fx-luzes i::before { content: ""; position: absolute; top: -3px; left: 2px; width: 4px; height: 4px; border-radius: 1px; background: #334155; }
+.fx-luzes i:nth-child(4n+1) { --b: #EF4444; } .fx-luzes i:nth-child(4n+2) { --b: #FACC15; } .fx-luzes i:nth-child(4n+3) { --b: #22C55E; } .fx-luzes i:nth-child(4n) { --b: #38BDF8; }
+@keyframes fx-pisca { 0%, 100% { opacity: 1; } 50% { opacity: .25; box-shadow: none; } }
+
+/* ovinhos de Páscoa */
+.fx-ovo { position: absolute; top: -40px; width: var(--s); height: calc(var(--s) * 1.3); border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%; opacity: .78;
+  background: linear-gradient(180deg, transparent 30%, rgba(255,255,255,.75) 30% 38%, transparent 38% 58%, rgba(255,255,255,.75) 58% 64%, transparent 64%), var(--c1);
+  box-shadow: inset -3px -4px 0 rgba(0,0,0,.08); animation: fx-ovo var(--t) ease-in-out var(--d) infinite; }
+.fx-ovo.c0 { --c1: #F9A8D4; } .fx-ovo.c1 { --c1: #C4B5FD; } .fx-ovo.c2 { --c1: #FDE68A; } .fx-ovo.c3 { --c1: #86EFAC; } .fx-ovo.c4 { --c1: #93C5FD; }
+@keyframes fx-ovo { 0% { transform: translate3d(0, -40px, 0) rotate(-20deg); } 25% { transform: translate3d(calc(var(--dx) * .5), 26vh, 0) rotate(18deg); } 50% { transform: translate3d(calc(var(--dx) * -.4), 52vh, 0) rotate(-14deg); } 75% { transform: translate3d(calc(var(--dx) * .6), 78vh, 0) rotate(16deg); } 100% { transform: translate3d(var(--dx), 106vh, 0) rotate(-10deg); } }
+
+/* fogos e confete de Ano Novo */
+.fx-fogo { position: absolute; width: 0; height: 0; }
+.fx-fogo i { position: absolute; left: -3px; top: -3px; width: 6px; height: 6px; border-radius: 50%; background: var(--f); box-shadow: 0 0 8px 2px var(--f); opacity: 0;
+  animation: fx-estoura 5.2s ease-out var(--d) infinite; }
+.fx-fogo.c0 { --f: #FBBF24; } .fx-fogo.c1 { --f: #F472B6; } .fx-fogo.c2 { --f: #A78BFA; } .fx-fogo.c3 { --f: #67E8F9; }
+@keyframes fx-estoura {
+  0% { transform: rotate(calc(var(--k) * 30deg)) translateY(0) scale(.6); opacity: 0; }
+  4% { opacity: 1; }
+  28% { transform: rotate(calc(var(--k) * 30deg)) translateY(-72px) scale(1); opacity: .9; }
+  42% { transform: rotate(calc(var(--k) * 30deg)) translateY(-86px) scale(.4); opacity: 0; }
+  100% { opacity: 0; }
+}
+.fx-confete { position: absolute; top: -16px; width: 7px; height: 13px; border-radius: 2px; background: var(--f); opacity: .85; animation: fx-confete var(--t) linear var(--d) infinite; }
+.fx-confete.c0 { --f: #FBBF24; } .fx-confete.c1 { --f: #A78BFA; } .fx-confete.c2 { --f: #F472B6; } .fx-confete.c3 { --f: #E5E7EB; } .fx-confete.c4 { --f: #FDE68A; }
+@keyframes fx-confete { 0% { transform: translate3d(0, -20px, 0) rotate(0) rotateY(0); } 100% { transform: translate3d(var(--dx), 104vh, 0) rotate(540deg) rotateY(720deg); } }
+
+/* saudação (aparece uma vez por tema; some ao fechar) */
+.fx-saudacao { position: fixed; left: 50%; bottom: 54px; transform: translateX(-50%); z-index: 70; display: flex; align-items: center; gap: 14px;
+  width: min(620px, calc(100vw - 32px)); padding: 14px 16px 14px 18px; border-radius: 18px; background: var(--surface); color: var(--ink);
+  border: 1px solid var(--line); box-shadow: var(--shadow-3); animation: fx-entra .5s cubic-bezier(.2,.9,.3,1.2); overflow: hidden; }
+.fx-saudacao::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 4px; background: var(--grad); }
+.fx-s-emoji { font-size: 34px; line-height: 1; animation: fx-balanca 2.4s ease-in-out infinite; }
+.fx-saudacao > div { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.fx-saudacao b { font-size: 16px; } .fx-saudacao small { color: var(--muted); font-size: 12.5px; line-height: 1.4; }
+.fx-s-bt { border: 1px solid var(--line); background: var(--surface2); color: var(--ink2); border-radius: 99px; padding: 6px 12px; font-size: 12px; cursor: pointer; white-space: nowrap; }
+.fx-s-bt:hover { border-color: var(--accent); color: var(--accent); }
+.fx-s-x { border: 0; background: none; color: var(--muted); cursor: pointer; padding: 4px; border-radius: 8px; display: grid; }
+.fx-s-x:hover { background: var(--surface2); }
+@keyframes fx-entra { from { transform: translate(-50%, 30px); opacity: 0; } }
+@keyframes fx-balanca { 0%, 100% { transform: rotate(-8deg); } 50% { transform: rotate(8deg); } }
+@media (max-width: 760px) { .fx-saudacao { flex-wrap: wrap; bottom: 16px; } .fx-s-bt { order: 3; } }
+.fx-item-ic { width: 20px; text-align: center; font-size: 16px; line-height: 1; flex: none; }
+
+/* seletor de tema (Perfil › administrador) */
+.tm-card { padding: 16px; }
+.tm-opcoes { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; }
+.tm-op { position: relative; display: flex; flex-direction: column; gap: 3px; text-align: left; padding: 10px 10px 12px; border-radius: 16px; border: 2px solid var(--line); background: var(--surface); color: var(--ink); cursor: pointer; transition: border-color .15s, transform .15s; }
+.tm-op:hover { transform: translateY(-2px); }
+.tm-op.sel { border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft); }
+.tm-op small { color: var(--muted); font-size: 11.5px; line-height: 1.35; }
+.tm-prev { position: relative; height: 74px; border-radius: 11px; margin-bottom: 6px; overflow: hidden; display: grid; grid-template-columns: 26% 1fr; grid-template-rows: 1fr 1fr; gap: 4px; padding: 6px; }
+.tm-prev i { border-radius: 6px; background: rgba(255,255,255,.85); }
+.tm-prev i:first-child { grid-row: span 2; background: var(--ps); }
+.tm-prev i:nth-child(3) { background: var(--pa); opacity: .85; }
+.tm-prev em { position: absolute; right: 8px; bottom: 4px; font-size: 26px; font-style: normal; filter: drop-shadow(0 2px 3px rgba(0,0,0,.25)); }
+.tm-padrao .tm-prev { --ps: linear-gradient(180deg, #0A1F2E, #0A1424); --pa: #0D9488; background: linear-gradient(135deg, #E1F6F2, #EDE9FE); }
+.tm-natal .tm-prev { --ps: linear-gradient(180deg, #230B0E, #0A1A10); --pa: #C0262D; background: linear-gradient(135deg, #FDE8E8, #DCFCE7); }
+.tm-pascoa .tm-prev { --ps: linear-gradient(180deg, #2A1438, #160D24); --pa: #9333EA; background: linear-gradient(135deg, #F3E8FF, #FCE7F3 55%, #FEF9C3); }
+.tm-anonovo .tm-prev { --ps: linear-gradient(180deg, #0D1233, #05060F); --pa: #EAB308; background: linear-gradient(135deg, #FEF3C7, #EDE9FE); }
+.tm-tag { position: absolute; top: 14px; left: 14px; font-size: 10.5px; font-weight: 700; padding: 2px 8px; border-radius: 99px; background: var(--accent); color: var(--on-accent); }
+.tm-pe { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; margin-top: 14px; }
+.tm-ate { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13px; }
+.tm-ate input { padding: 6px 8px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); }
+.tm-ate small { color: var(--muted); font-size: 11.5px; }
+/* seletor dentro do Perfil (fundo escuro) */
+.tm-card { align-items: stretch !important; }
+.tm-card .tm-op { background: rgba(255,255,255,.04); color: #E6EDF7; border-color: rgba(255,255,255,.12); }
+.tm-card .tm-op:hover { border-color: rgba(255,255,255,.3); }
+.tm-card .tm-op.sel { border-color: var(--accent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 30%, transparent); }
+.tm-card .tm-op small, .tm-card .tm-ate small, .tm-card .tm-pe .muted { color: #9AA8C2; }
+.tm-card .tm-ate { color: #E6EDF7; }
+.tm-card .tm-ate input { background: rgba(255,255,255,.06); color: #E6EDF7; border-color: rgba(255,255,255,.16); color-scheme: dark; }
+
+/* Início no clima do tema */
+html[data-festa="natal"] .conteudo:has(.inicio) {
+  background: radial-gradient(1px 1px at 12% 18%, rgba(255,255,255,.7), transparent), radial-gradient(1px 1px at 33% 64%, rgba(255,255,255,.5), transparent),
+    radial-gradient(1.3px 1.3px at 71% 22%, rgba(255,255,255,.6), transparent), radial-gradient(1px 1px at 88% 74%, rgba(255,255,255,.5), transparent),
+    radial-gradient(55% 60% at 55% 75%, rgba(127,29,29,.55), transparent 70%), radial-gradient(40% 45% at 10% 20%, rgba(22,163,74,.22), transparent 70%),
+    radial-gradient(40% 45% at 92% 14%, rgba(220,38,38,.26), transparent 70%), linear-gradient(180deg, #160A10, #07070B);
+  background-attachment: fixed; }
+html[data-festa="natal"] .dk-tit span { background-image: linear-gradient(90deg, #FCA5A5, #FDE68A, #86EFAC); }
+html[data-festa="pascoa"] .conteudo:has(.inicio) {
+  background: radial-gradient(1px 1px at 12% 18%, rgba(255,255,255,.7), transparent), radial-gradient(1px 1px at 33% 64%, rgba(255,255,255,.5), transparent),
+    radial-gradient(1.3px 1.3px at 71% 22%, rgba(255,255,255,.6), transparent), radial-gradient(1px 1px at 88% 74%, rgba(255,255,255,.5), transparent),
+    radial-gradient(55% 60% at 55% 75%, rgba(126,34,206,.45), transparent 70%), radial-gradient(40% 45% at 10% 20%, rgba(244,114,182,.22), transparent 70%),
+    radial-gradient(40% 45% at 92% 14%, rgba(253,224,71,.14), transparent 70%), linear-gradient(180deg, #1A0F26, #0A0712);
+  background-attachment: fixed; }
+html[data-festa="pascoa"] .dk-tit span { background-image: linear-gradient(90deg, #F0ABFC, #F9A8D4, #FDE68A); }
+html[data-festa="anonovo"] .conteudo:has(.inicio) {
+  background: radial-gradient(1.2px 1.2px at 12% 18%, rgba(253,230,138,.8), transparent), radial-gradient(1px 1px at 33% 64%, rgba(255,255,255,.6), transparent),
+    radial-gradient(1.4px 1.4px at 71% 22%, rgba(253,230,138,.8), transparent), radial-gradient(1px 1px at 88% 74%, rgba(255,255,255,.6), transparent),
+    radial-gradient(1px 1px at 52% 8%, rgba(253,230,138,.7), transparent), radial-gradient(1px 1px at 6% 88%, rgba(255,255,255,.5), transparent),
+    radial-gradient(55% 60% at 55% 75%, rgba(76,29,149,.5), transparent 70%), radial-gradient(40% 45% at 10% 20%, rgba(234,179,8,.18), transparent 70%),
+    radial-gradient(40% 45% at 92% 14%, rgba(250,204,21,.16), transparent 70%), linear-gradient(180deg, #0A0D26, #04050C);
+  background-attachment: fixed; }
+html[data-festa="anonovo"] .dk-tit span { background-image: linear-gradient(90deg, #FDE68A, #FBBF24, #C4B5FD); }

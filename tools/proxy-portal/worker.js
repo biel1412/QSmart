@@ -149,6 +149,16 @@ function notarIA(r) {
   marcarValor("ia_lim_tok_min", h("x-ratelimit-limit-tokens"));
 }
 
+// =============================== tema sazonal ===============================
+const TEMAS = ["", "natal", "pascoa", "anonovo"];
+async function temaAtual(env) {
+  const r = await env.DB.prepare("SELECT valor FROM kv WHERE chave = 'tema_sazonal'").first().catch(() => null);
+  let v = {};
+  try { v = r ? JSON.parse(r.valor) : {}; } catch { v = {}; }
+  const ativo = v.tema && TEMAS.includes(v.tema) && (!v.ate || v.ate >= hojeBR());   // depois da data escolhida, volta sozinho ao normal
+  return { tema: ativo ? v.tema : "", ate: ativo ? (v.ate || "") : "", por: v.por || "", em: v.em || "" };
+}
+
 // =============================== painel de uso (administrador) ===============================
 const LIMITES_USO = {
   plano: "Cloudflare Workers Free + Groq (plano grátis)",
@@ -514,6 +524,8 @@ async function api(req, env, url) {
   const m = req.method;
 
   // ---------- públicas ----------
+  // tema sazonal (Natal, Páscoa, Ano Novo): o administrador escolhe e vale para todo mundo, inclusive na tela de entrada
+  if (rota === "tema" && m === "GET") return json(await temaAtual(env));
   if (rota === "cadastro" && m === "POST") {
     const b = await corpo(req);
     const usuario = String(b.usuario || "").trim().toLowerCase();
@@ -658,6 +670,16 @@ async function api(req, env, url) {
       return json({ usuarios: r.results || [] });
     }
     if (rota === "admin/uso" && m === "GET") return json(await painelUso(env));
+    if (rota === "admin/tema" && m === "PUT") {
+      const b = await corpo(req);
+      const tema = String(b.tema || "");
+      if (!TEMAS.includes(tema)) return erro("Tema inválido.");
+      const ate = /^\d{4}-\d{2}-\d{2}$/.test(String(b.ate || "")) ? String(b.ate) : "";
+      if (ate && ate < hojeBR()) return erro("A data para desligar já passou.");
+      const valor = { tema, ate: tema ? ate : "", por: `${u.nome} ${u.sobrenome}`.trim(), em: agora() };
+      await env.DB.prepare("INSERT INTO kv (chave, valor) VALUES ('tema_sazonal', ?) ON CONFLICT(chave) DO UPDATE SET valor = excluded.valor").bind(JSON.stringify(valor)).run();
+      return json({ ok: true, ...(await temaAtual(env)) });
+    }
     if (rota === "admin/usuario" && m === "POST") {
       const b = await corpo(req);
       const alvo = await env.DB.prepare("SELECT * FROM usuarios WHERE id = ?").bind(b.id).first();

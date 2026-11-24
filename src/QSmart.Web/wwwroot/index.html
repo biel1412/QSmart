@@ -19,6 +19,7 @@
             const teste = /\/teste\/?$/.test(new URL(document.baseURI).pathname);   // versão de teste: …/teste/
             if (teste) document.documentElement.dataset.ambiente = 'teste';
             try { const p = JSON.parse(localStorage.getItem((teste ? 'qsmart-teste' : 'qsmart') + ':tema') || 'null'); if (p) document.documentElement.dataset.tema = p; } catch (e) { }
+            try { const ns = teste ? 'qsmart-teste' : 'qsmart', f = JSON.parse(localStorage.getItem(ns + ':festa') || 'null'); if (f) document.documentElement.dataset.festa = f; if (localStorage.getItem(ns + ':enfeites') === '"off"') document.documentElement.dataset.enfeites = 'off'; } catch (e) { }
         }
     </script>
     <style>

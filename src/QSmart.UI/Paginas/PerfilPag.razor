@@ -249,6 +249,31 @@
 
         @if (p.Admin)
         {
+            <div class="pf-sec"><b>Tema da plataforma</b><span>layout comemorativo · vale para todo mundo, inclusive na tela de entrada</span></div>
+            <div class="pf-card tm-card">
+                <div class="tm-opcoes">
+                    @foreach (var (k, nome, emoji, desc) in TemasFesta)
+                    {
+                        var kk = k;
+                        <button class="tm-op tm-@(k == "" ? "padrao" : k) @(_temaSel == k ? "sel" : "") @(E.Festa == k ? "ativo" : "")" @onclick="() => _temaSel = kk">
+                            <span class="tm-prev"><i></i><i></i><i></i><em>@emoji</em></span>
+                            <b>@nome</b><small>@desc</small>
+                            @if (E.Festa == k) { <span class="tm-tag">em uso</span> }
+                        </button>
+                    }
+                </div>
+                <div class="tm-pe">
+                    @if (_temaSel != "")
+                    {
+                        <label class="tm-ate">Voltar ao normal sozinho em <input type="date" @bind="_temaAte" min="@DateTime.Today.ToString("yyyy-MM-dd")" /><small>opcional · a partir desse dia volta ao padrão</small></label>
+                    }
+                    <span class="mola"></span>
+                    @if (E.FestaPor != "" && E.FestaEm != "") { <small class="muted">Última troca: @E.FestaPor · @DataFesta(E.FestaEm)</small> }
+                    <button class="btn btn-pri" disabled="@(_salvandoTema || (_temaSel == E.Festa && (_temaAte?.ToString("yyyy-MM-dd") ?? "") == E.FestaAte))" @onclick="AplicarTema">
+                        <Icone Nome="check" Tamanho="15" /> @(_temaSel == "" ? "Voltar ao padrão para todos" : "Aplicar para todos")</button>
+                </div>
+            </div>
+
             <div class="pf-sec"><b>Equipe e acessos</b><span>aprovar cadastros, definir papéis e equipes</span>
                 <button class="btn btn-sec pf-rec" @onclick="CarregarUsuarios"><Icone Nome="atualizar" Tamanho="14" /> Atualizar</button></div>
             @if (_usuarios == null) { <p class="muted"><span class="ia-spin pequeno"></span> Carregando…</p> }
@@ -335,6 +360,36 @@
 }
 
 @code {
+    // ---------------- tema da plataforma (administrador) ----------------
+    static readonly (string k, string nome, string emoji, string desc)[] TemasFesta =
+    {
+        ("", "Padrão", "✨", "o visual de sempre"),
+        ("natal", "Natal", "🎄", "vermelho e verde, neve, pisca-pisca e gorro no logo"),
+        ("pascoa", "Páscoa", "🐰", "tons pastel, ovinhos e orelhas de coelho"),
+        ("anonovo", "Ano Novo", "🥂", "dourado, fogos e confete"),
+    };
+    string? _temaEscolha;
+    string _temaSel { get => _temaEscolha ?? E.Festa; set => _temaEscolha = value; }
+    DateTime? _temaAteEsc;
+    bool _temaAteMexeu;
+    DateTime? _temaAte { get => _temaAteMexeu ? _temaAteEsc : DateTime.TryParse(E.FestaAte, out var a) ? a : null; set { _temaAteEsc = value; _temaAteMexeu = true; } }
+    bool _salvandoTema;
+    static string DataFesta(string iso) => DateTime.TryParse(iso, null, System.Globalization.DateTimeStyles.AdjustToUniversal, out var d) ? d.AddHours(-3).ToString("dd/MM/yyyy HH:mm") : "";
+    async Task AplicarTema()
+    {
+        _salvandoTema = true;
+        try
+        {
+            var r = await E.Conta.Chamar("PUT", "admin/tema", new System.Text.Json.Nodes.JsonObject { ["tema"] = _temaSel, ["ate"] = _temaSel == "" ? "" : _temaAte?.ToString("yyyy-MM-dd") ?? "" });
+            if (!r.Ok) { await J.Aviso("Tema da plataforma", r.Erro); return; }
+            E.Festa = "\u0000";   // força reler e mostrar a saudação nova
+            await E.CarregarFesta();
+            _temaEscolha = null; _temaAteMexeu = false;
+            _ = E.Conta.Registrar("tema." + (_temaSel == "" ? "padrao" : _temaSel), true);
+        }
+        finally { _salvandoTema = false; }
+    }
+
     const string Ativo = "ativo", Bloqueado = "bloqueado";
     string _atual = "", _nova = "", _nova2 = "";
     bool _enviando;

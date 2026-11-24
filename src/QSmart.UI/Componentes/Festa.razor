@@ -1,0 +1,78 @@
+@* Enfeites do tema sazonal (Natal, Páscoa, Ano Novo). As cores ficam no CSS (html[data-festa]); aqui só as partes animadas e a saudação. *@
+@implements IDisposable
+@inject Estado E
+
+@if (E.Festa != "")
+{
+    @if (E.Enfeites)
+    {
+        <div class="fx-camada fx-@E.Festa" aria-hidden="true">
+            @switch (E.Festa)
+            {
+                case "natal":
+                    <div class="fx-luzes">@for (int i = 0; i < 42; i++) { <i style="--i:@i"></i> }</div>
+                    @foreach (var p in Particulas)
+                    {
+                        <span class="fx-neve" style="left:@(p.x)%; --t:@(p.t)s; --d:@(p.d)s; --s:@(p.s)px; --o:@(p.o); --dx:@(p.dx)px"></span>
+                    }
+                    break;
+                case "pascoa":
+                    @foreach (var p in Particulas.Take(12))
+                    {
+                        <span class="fx-ovo c@(p.c)" style="left:@(p.x)%; --t:@(p.t * 1.6)s; --d:@(p.d)s; --s:@(p.s * 2 + 9)px; --dx:@(p.dx)px"></span>
+                    }
+                    break;
+                case "anonovo":
+                    @for (int i = 0; i < 6; i++)
+                    {
+                        <span class="fx-fogo c@(i % 4)" style="left:@(Fogos[i].x)%; top:@(Fogos[i].y)%; --d:@(i * 1.3)s">
+                            @for (int k = 0; k < 12; k++) { <i style="--k:@k"></i> }
+                        </span>
+                    }
+                    @foreach (var p in Particulas.Take(26))
+                    {
+                        <span class="fx-confete c@(p.c)" style="left:@(p.x)%; --t:@(p.t)s; --d:@(p.d)s; --dx:@(p.dx)px"></span>
+                    }
+                    break;
+            }
+        </div>
+    }
+    @if (!E.SaudacaoFechada)
+    {
+        <div class="fx-saudacao fx-s-@E.Festa" role="status">
+            <span class="fx-s-emoji">@Emoji</span>
+            <div><b>@Titulo</b><small>@Frase</small></div>
+            <button class="fx-s-bt" @onclick="E.AlternarEnfeites" title="Só para você: as cores continuam, as animações param">@(E.Enfeites ? "Pausar animações" : "Ligar animações")</button>
+            <button class="fx-s-x" @onclick="Fechar" title="Fechar"><Icone Nome="x" Tamanho="14" /></button>
+        </div>
+    }
+}
+
+@code {
+    sealed record P(double x, double t, double d, int s, double o, int dx, int c);
+    static readonly List<P> Particulas = Gerar();
+    static readonly (int x, int y)[] Fogos = { (18, 18), (72, 12), (45, 30), (85, 40), (28, 52), (60, 60) };
+
+    static List<P> Gerar()
+    {
+        var r = new Random(2026);
+        return Enumerable.Range(0, 44).Select(_ => new P(
+            Math.Round(r.NextDouble() * 100, 1), Math.Round(9 + r.NextDouble() * 12, 1), Math.Round(-r.NextDouble() * 20, 1),
+            3 + r.Next(5), Math.Round(.45 + r.NextDouble() * .5, 2), r.Next(-60, 60), r.Next(5))).ToList();
+    }
+
+    static int AnoNovo => DateTime.Today.Month >= 6 ? DateTime.Today.Year + 1 : DateTime.Today.Year;
+    string Emoji => E.Festa switch { "natal" => "🎄", "pascoa" => "🐰", _ => "🥂" };
+    string Titulo => E.Festa switch { "natal" => "Feliz Natal!", "pascoa" => "Feliz Páscoa!", _ => $"Feliz {AnoNovo}!" };
+    string Frase => E.Festa switch
+    {
+        "natal" => "Boas festas de toda a equipe QSmart. Que seja um tempo de descanso e de gente querida por perto.",
+        "pascoa" => "Que a Páscoa traga renovação, chocolate e boas conversas. Um abraço da equipe QSmart.",
+        _ => $"Que {AnoNovo} venha cheio de grandes conquistas, feitas de pequenas atitudes diárias.",
+    };
+
+    protected override void OnInitialized() => E.Mudou += Redesenhar;
+    void Redesenhar() => InvokeAsync(StateHasChanged);
+    public void Dispose() => E.Mudou -= Redesenhar;
+    Task Fechar() => E.FecharSaudacao();
+}

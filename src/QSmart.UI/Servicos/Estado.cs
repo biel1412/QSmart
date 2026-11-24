@@ -495,6 +495,40 @@ public sealed class Estado
     public bool FeAdmin;
     /// <summary>Situação geral do painel de uso (só administrador): pinta o botão no topo.</summary>
     public QSmart.Core.Admin.NivelUso? UsoNivel;
+
+    // ---------------- tema sazonal (vale para todos; o administrador escolhe em Perfil) ----------------
+    public string Festa = "", FestaAte = "", FestaPor = "", FestaEm = "";
+    /// <summary>Preferência de cada pessoa: enfeites animados (neve, ovos, fogos) ligados ou pausados.</summary>
+    public bool Enfeites = true;
+    public bool SaudacaoFechada;
+    public async Task CarregarFesta()
+    {
+        try
+        {
+            var r = await Conta.Chamar("GET", "tema");
+            if (!r.Ok || r.Json == null) return;
+            var novo = r.Json["tema"]?.GetValue<string>() ?? "";
+            FestaAte = r.Json["ate"]?.GetValue<string>() ?? ""; FestaPor = r.Json["por"]?.GetValue<string>() ?? ""; FestaEm = r.Json["em"]?.GetValue<string>() ?? "";
+            if (novo != Festa) { Festa = novo; try { SaudacaoFechada = novo != "" && await Nav.LsGet("qsmart.saudacao") == novo + FestaEm; } catch { SaudacaoFechada = false; } }
+            await Nav.Festa(Festa, Enfeites);
+            Notificar();
+        }
+        catch { }
+    }
+    /// <summary>Fecha a saudação do tema; ela só volta quando o administrador trocar (ou reaplicar) o tema.</summary>
+    public async Task FecharSaudacao()
+    {
+        SaudacaoFechada = true;
+        try { await Nav.LsSet("qsmart.saudacao", Festa + FestaEm); } catch { }
+        Notificar();
+    }
+    public async Task AlternarEnfeites()
+    {
+        Enfeites = !Enfeites;
+        await Nav.LsSet("qsmart.enfeites", Enfeites ? "on" : "off");
+        await Nav.Festa(Festa, Enfeites);
+        Notificar();
+    }
     public string FeCoordenacao = "";
     readonly Dictionary<string, string> _feSinc2 = new();
 
@@ -713,6 +747,8 @@ public sealed class Estado
         Historico = await Dados.CarregarHistorico();
         CarregarPareceres(await Dados.CarregarPareceres());
         await Nav.Tema(Prefs.Tema);
+        try { Enfeites = await Nav.LsGet("qsmart.enfeites") != "off"; } catch { }
+        _ = CarregarFesta();
         await CarregarCoordenacao();
         Iniciado = true;
         await AtualizarRodapeBackup();

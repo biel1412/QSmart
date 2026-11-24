@@ -205,6 +205,13 @@
   }
 
   // ---------- tela ----------
+  // tema sazonal (Natal, Páscoa, Ano Novo) escolhido pelo administrador; "enfeites" é a preferência de cada pessoa (animações ligadas ou pausadas)
+  function festa(nome, enfeites) {
+    const h = document.documentElement;
+    if (nome) h.dataset.festa = nome; else delete h.dataset.festa;
+    if (enfeites === false) h.dataset.enfeites = 'off'; else delete h.dataset.enfeites;
+    try { localStorage.setItem(NS + ':festa', JSON.stringify(nome || '')); localStorage.setItem(NS + ':enfeites', JSON.stringify(enfeites === false ? 'off' : 'on')); } catch { }
+  }
   function tema(nome) {
     document.documentElement.dataset.tema = nome;
     try { localStorage.setItem(NS + ':tema', JSON.stringify(nome)); } catch { }
@@ -1270,5 +1277,5 @@
     try { if (navigator.storage && navigator.storage.estimate) { const e = await navigator.storage.estimate(); usado = e.usage || 0; cota = e.quota || 0; } } catch { }
     return { local, usado, cota };
   };
-  window.qsmart = { armazenamento, downloads, chatFim, kv, cofre, rolar, ia, get, getH, req, reduzirImagem, imagem, nota, doc, grade, tela, lsGet, lsSet, lsDel, colarImagens, clicar, trocarUrl, pasta, baixar, abrir, copiar, abrirUrl, pdfPaginas, pdfJuntar, pdfLinhas, tema, aoOcultar, focar, rolarLinha, pronto };
+  window.qsmart = { festa, armazenamento, downloads, chatFim, kv, cofre, rolar, ia, get, getH, req, reduzirImagem, imagem, nota, doc, grade, tela, lsGet, lsSet, lsDel, colarImagens, clicar, trocarUrl, pasta, baixar, abrir, copiar, abrirUrl, pdfPaginas, pdfJuntar, pdfLinhas, tema, aoOcultar, focar, rolarLinha, pronto };
 })();

@@ -37,6 +37,7 @@ public sealed class Navegador
     public ValueTask<bool> Copiar(string texto) => _js.InvokeAsync<bool>("qsmart.copiar", texto);
     public ValueTask AbrirUrl(string url) => _js.InvokeVoidAsync("qsmart.abrirUrl", url);
     public ValueTask Tema(string nome) => _js.InvokeVoidAsync("qsmart.tema", nome);
+    public ValueTask Festa(string nome, bool enfeites) => _js.InvokeVoidAsync("qsmart.festa", nome, enfeites);
     public ValueTask Focar(string id) => _js.InvokeVoidAsync("qsmart.focar", id);
     public sealed record RespostaHttp(int Status, string Texto);
     public ValueTask<RespostaHttp> IA(string url, string chave, string corpo) => _js.InvokeAsync<RespostaHttp>("qsmart.ia", url, chave, corpo);
