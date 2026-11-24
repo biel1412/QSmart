@@ -64,7 +64,7 @@ else
             @if (E.Festa != "")
             {
                 <button class="item fx-item" @onclick="E.AlternarEnfeites" title="Só para você: as cores do tema continuam">
-                    <span class="fx-item-ic">@(E.Festa switch { "natal" => "🎄", "pascoa" => "🐰", _ => "🥂" })</span><span class="item-txt">@(E.Enfeites ? "Pausar animações" : "Ligar animações")</span>
+                    <span class="fx-item-ic">@(E.Festa switch { "natal" or "natalsuave" => "🎄", "pascoa" => "🐰", _ => "🥂" })</span><span class="item-txt">@(E.Enfeites ? "Pausar animações" : "Ligar animações")</span>
                 </button>
             }
             <button class="item" @onclick="E.AlternarTema" title="@(E.Prefs.Tema == "claro" ? "Modo escuro" : "Modo claro")">

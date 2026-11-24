@@ -16,6 +16,17 @@
                         <span class="fx-neve" style="left:@(p.x)%; --t:@(p.t)s; --d:@(p.d)s; --s:@(p.s)px; --o:@(p.o); --dx:@(p.dx)px"></span>
                     }
                     break;
+                case "natalsuave":
+                    @for (int i = 0; i < Bolas.Length; i++)
+                    {
+                        var bo = Bolas[i];
+                        <span class="fx-bola @(bo.lat ? "lat" : "")" style="left:@(bo.lat ? $"{bo.x}px" : $"{bo.x}%"); --h:@(bo.h)px; --t:@(bo.t)px; --d:@(i * -0.7)s"><i class="c@(i % 3)"></i></span>
+                    }
+                    @foreach (var p in Particulas.Take(12))
+                    {
+                        <span class="fx-neve leve" style="left:@(p.x)%; --t:@(p.t * 1.8)s; --d:@(p.d)s; --s:@(p.s - 1)px; --o:@(p.o * .7); --dx:@(p.dx)px"></span>
+                    }
+                    break;
                 case "pascoa":
                     @foreach (var p in Particulas.Take(12))
                     {
@@ -51,6 +62,8 @@
 @code {
     sealed record P(double x, double t, double d, int s, double o, int dx, int c);
     static readonly List<P> Particulas = Gerar();
+    // três no menu lateral (à direita do nome) e três no topo, entre o título e os botões — nunca em cima de nada clicável
+    static readonly (bool lat, int x, int h, int t)[] Bolas = { (true, 176, 30, 14), (true, 202, 46, 17), (true, 228, 24, 13), (false, 41, 10, 15), (false, 45, 22, 13), (false, 49, 14, 16) };
     static readonly (int x, int y)[] Fogos = { (18, 18), (72, 12), (45, 30), (85, 40), (28, 52), (60, 60) };
 
     static List<P> Gerar()
@@ -62,11 +75,11 @@
     }
 
     static int AnoNovo => DateTime.Today.Month >= 6 ? DateTime.Today.Year + 1 : DateTime.Today.Year;
-    string Emoji => E.Festa switch { "natal" => "🎄", "pascoa" => "🐰", _ => "🥂" };
-    string Titulo => E.Festa switch { "natal" => "Feliz Natal!", "pascoa" => "Feliz Páscoa!", _ => $"Feliz {AnoNovo}!" };
+    string Emoji => E.Festa switch { "natal" or "natalsuave" => "🎄", "pascoa" => "🐰", _ => "🥂" };
+    string Titulo => E.Festa switch { "natal" or "natalsuave" => "Feliz Natal!", "pascoa" => "Feliz Páscoa!", _ => $"Feliz {AnoNovo}!" };
     string Frase => E.Festa switch
     {
-        "natal" => "Boas festas de toda a equipe QSmart. Que seja um tempo de descanso e de gente querida por perto.",
+        "natal" or "natalsuave" => "Boas festas de toda a equipe QSmart. Que seja um tempo de descanso e de gente querida por perto.",
         "pascoa" => "Que a Páscoa traga renovação, chocolate e boas conversas. Um abraço da equipe QSmart.",
         _ => $"Que {AnoNovo} venha cheio de grandes conquistas, feitas de pequenas atitudes diárias.",
     };

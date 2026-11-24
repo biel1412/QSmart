@@ -255,11 +255,23 @@
                     @foreach (var (k, nome, emoji, desc) in TemasFesta)
                     {
                         var kk = k;
-                        <button class="tm-op tm-@(k == "" ? "padrao" : k) @(_temaSel == k ? "sel" : "") @(E.Festa == k ? "ativo" : "")" @onclick="() => _temaSel = kk">
+                        var ehNatal = k == "natal";
+                        var chave = ehNatal ? NatalVar : k;
+                        var emUso = Grupo(E.Festa) == k;
+                        <div class="tm-op tm-@(k == "" ? "padrao" : chave) @(Grupo(_temaSel) == k ? "sel" : "")" role="button" tabindex="0" @onclick="() => _temaSel = ehNatal ? NatalVar : kk">
                             <span class="tm-prev"><i></i><i></i><i></i><em>@emoji</em></span>
-                            <b>@nome</b><small>@desc</small>
-                            @if (E.Festa == k) { <span class="tm-tag">em uso</span> }
-                        </button>
+                            <b>@nome</b>
+                            @if (ehNatal)
+                            {
+                                <span class="tm-var">
+                                    <button class="@(NatalVar == "natal" ? "on" : "")" @onclick:stopPropagation="true" @onclick="@(() => { _natalVar = "natal"; _temaSel = "natal"; })">Clássico</button>
+                                    <button class="@(NatalVar == "natalsuave" ? "on" : "")" @onclick:stopPropagation="true" @onclick="@(() => { _natalVar = "natalsuave"; _temaSel = "natalsuave"; })">Suave</button>
+                                </span>
+                                <small>@(NatalVar == "natal" ? "vermelho e verde, neve, pisca-pisca e gorro no logo" : "cores delicadas, bolinhas penduradas e neve leve")</small>
+                            }
+                            else { <small>@desc</small> }
+                            @if (emUso) { <span class="tm-tag">em uso@(ehNatal ? (E.Festa == "natal" ? " · clássico" : " · suave") : "")</span> }
+                        </div>
                     }
                 </div>
                 <div class="tm-pe">
@@ -364,11 +376,15 @@
     static readonly (string k, string nome, string emoji, string desc)[] TemasFesta =
     {
         ("", "Padrão", "✨", "o visual de sempre"),
-        ("natal", "Natal", "🎄", "vermelho e verde, neve, pisca-pisca e gorro no logo"),
+        ("natal", "Natal", "🎄", ""),
         ("pascoa", "Páscoa", "🐰", "tons pastel, ovinhos e orelhas de coelho"),
         ("anonovo", "Ano Novo", "🥂", "dourado, fogos e confete"),
     };
     string? _temaEscolha;
+    string? _natalVar;
+    // Natal tem duas versões dentro do mesmo bloco: Clássico (natal) e Suave (natalsuave)
+    string NatalVar => _natalVar ?? (_temaSel == "natalsuave" ? "natalsuave" : "natal");
+    static string Grupo(string t) => t.StartsWith("natal") ? "natal" : t;
     string _temaSel { get => _temaEscolha ?? E.Festa; set => _temaEscolha = value; }
     DateTime? _temaAteEsc;
     bool _temaAteMexeu;

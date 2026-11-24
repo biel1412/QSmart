@@ -150,7 +150,7 @@ function notarIA(r) {
 }
 
 // =============================== tema sazonal ===============================
-const TEMAS = ["", "natal", "pascoa", "anonovo"];
+const TEMAS = ["", "natal", "natalsuave", "pascoa", "anonovo"];
 async function temaAtual(env) {
   const r = await env.DB.prepare("SELECT valor FROM kv WHERE chave = 'tema_sazonal'").first().catch(() => null);
   let v = {};

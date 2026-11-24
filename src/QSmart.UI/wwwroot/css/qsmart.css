@@ -3209,7 +3209,8 @@ html[data-festa="anonovo"] .marca-nome b { background: linear-gradient(90deg, #F
 /* --- acessório no logo (menu e tela de entrada) --- */
 html[data-festa] .marca-link, html[data-festa] .ac-logo { position: relative; }
 html[data-festa] .marca-link::after, html[data-festa] .ac-logo::after { content: ""; position: absolute; pointer-events: none; background: no-repeat center / contain; filter: drop-shadow(0 2px 3px rgba(0,0,0,.35)); }
-html[data-festa="natal"] .marca-link::after, html[data-festa="natal"] .ac-logo::after {
+html[data-festa="natal"] .marca-link::after, html[data-festa="natal"] .ac-logo::after,
+html[data-festa="natalsuave"] .marca-link::after, html[data-festa="natalsuave"] .ac-logo::after {
   width: 78%; height: 78%; top: -42%; right: -26%; transform: rotate(22deg);
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M10 46 C14 24 30 8 48 10 C44 20 46 30 52 40 Z' fill='%23DC2626'/%3E%3Cpath d='M30 14 C38 10 44 10 48 10 C44 20 46 30 52 40 L46 42 C42 32 40 22 30 14Z' fill='%23B91C1C'/%3E%3Crect x='6' y='42' width='50' height='12' rx='6' fill='%23fff'/%3E%3Ccircle cx='52' cy='40' r='7' fill='%23fff'/%3E%3C/svg%3E");
 }
@@ -3337,3 +3338,39 @@ html[data-festa="anonovo"] .conteudo:has(.inicio) {
     radial-gradient(40% 45% at 92% 14%, rgba(250,204,21,.16), transparent 70%), linear-gradient(180deg, #0A0D26, #04050C);
   background-attachment: fixed; }
 html[data-festa="anonovo"] .dk-tit span { background-image: linear-gradient(90deg, #FDE68A, #FBBF24, #C4B5FD); }
+
+/* --- Natal suave: as mesmas datas, cores delicadas e pouca animação --- */
+html[data-festa="natalsuave"] {
+  --accent: #A8423D; --accent-h: #8C3530; --on-accent: #FFFFFF; --accent-soft: #F6E8E4; --accent2: #3F7D5A;
+  --grad: linear-gradient(135deg, #B85450 0%, #D4A373 50%, #4F7F63 100%);
+  --side-bar: #E9C9A8; --side-active: linear-gradient(90deg, rgba(212,163,115,.24), rgba(79,127,99,.22)); --bg: #FAF7F2;
+}
+html[data-festa="natalsuave"][data-tema="escuro"] {
+  --accent: #E39A92; --accent-h: #F0B7AF; --on-accent: #2A0D0B; --accent-soft: #3A2220; --accent2: #8CC5A2; --bg: #0E0D0C;
+}
+html[data-festa="natalsuave"] .lateral { background: radial-gradient(90% 38% at 100% 0%, rgba(212,163,115,.22), transparent 60%), radial-gradient(80% 32% at 0% 85%, rgba(168,66,61,.20), transparent 66%), linear-gradient(180deg, #1F3A2F, #12241D); }
+html[data-festa="natalsuave"] .marca-nome b { background: linear-gradient(90deg, #F2C9C2, #E9C9A8, #B7D8C2); -webkit-background-clip: text; background-clip: text; }
+html[data-festa="natalsuave"] .conteudo:has(.inicio) {
+  background: radial-gradient(1px 1px at 12% 18%, rgba(255,255,255,.6), transparent), radial-gradient(1px 1px at 33% 64%, rgba(255,255,255,.45), transparent),
+    radial-gradient(1.2px 1.2px at 71% 22%, rgba(255,240,220,.6), transparent), radial-gradient(1px 1px at 88% 74%, rgba(255,255,255,.45), transparent),
+    radial-gradient(55% 60% at 55% 75%, rgba(63,125,90,.30), transparent 70%), radial-gradient(40% 45% at 92% 14%, rgba(212,163,115,.18), transparent 70%),
+    linear-gradient(180deg, #121614, #08090A);
+  background-attachment: fixed; }
+html[data-festa="natalsuave"] .dk-tit span { background-image: linear-gradient(90deg, #F2C9C2, #E9C9A8, #B7D8C2); }
+.tm-natalsuave .tm-prev { --ps: linear-gradient(180deg, #1F3A2F, #12241D); --pa: #A8423D; background: linear-gradient(135deg, #FAF7F2, #F6E8E4 55%, #E6F0EA); }
+
+/* bolinhas penduradas (Natal suave) */
+.fx-bola { position: absolute; top: 0; display: flex; flex-direction: column; align-items: center; transform-origin: top center; animation: fx-pendulo 5s ease-in-out var(--d) infinite; }
+.fx-bola::before { content: ""; width: 1.5px; height: var(--h); background: rgba(168,162,158,.75); }
+.fx-bola i { position: relative; width: var(--t); height: var(--t); border-radius: 50%; box-shadow: 0 5px 10px rgba(0,0,0,.18);
+  background: radial-gradient(circle at 32% 30%, rgba(255,255,255,.85) 0 8%, var(--c) 32%, color-mix(in srgb, var(--c) 60%, #000) 100%); }
+.fx-bola i::before { content: ""; position: absolute; top: -4px; left: 50%; width: 8px; height: 5px; margin-left: -4px; border-radius: 2px; background: linear-gradient(90deg, #C9B79C, #F5EBDD, #C9B79C); }
+.fx-bola i.c0 { --c: #B85450; } .fx-bola i.c1 { --c: #D4A373; } .fx-bola i.c2 { --c: #4F7F63; }
+@keyframes fx-pendulo { 0%, 100% { transform: rotate(-3deg); } 50% { transform: rotate(3deg); } }
+.fx-neve.leve { filter: none; }
+html:has(.app.recolhido) .fx-bola.lat { display: none; }
+@media (max-width: 900px) { .fx-bola { display: none; } }
+
+.tm-var { display: inline-flex; gap: 2px; padding: 3px; border-radius: 99px; background: rgba(255,255,255,.08); margin: 2px 0 3px; align-self: flex-start; }
+.tm-var button { border: 0; background: none; color: #9AA8C2; font-size: 11.5px; font-weight: 600; padding: 4px 11px; border-radius: 99px; cursor: pointer; }
+.tm-var button.on { background: var(--accent); color: var(--on-accent); }
