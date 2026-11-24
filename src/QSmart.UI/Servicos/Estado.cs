@@ -35,14 +35,14 @@ public sealed class Estado
     public List<CuboVolume>? CuboResumo;
     public OpcoesVolume? OpcoesResumo;
     public FiltrosVolume FiltrosResumo = new();
-    // ---------------- TMA, exclusões e TMA suspeito (aba Usuários) ----------------
-    public FluxosTma? FluxosResumo;
-    public ResultadoTma? Tma;
-    public List<string> TermosExclusao = Core.Tma.TermosPadrao.ToList();
+    // ---------------- exclusões identificadas (aba Usuários) ----------------
+    public FluxosExclusao? FluxosResumo;
+    public ResultadoExclusoes? ExclusoesResumo;
+    public List<string> TermosExclusao = Core.Exclusoes.TermosPadrao.ToList();
     public bool TermosPodeEditar, TermosLidos;
     public string TermosPor = "", TermosEm = "";
 
-    public void RecalcularTma() => Tma = FluxosResumo == null ? null : Core.Tma.Calcular(FluxosResumo, FiltrosResumo, TermosExclusao, soMesmoDia: false);
+    public void RecalcularExclusoes() => ExclusoesResumo = FluxosResumo == null ? null : Core.Exclusoes.Calcular(FluxosResumo, FiltrosResumo, TermosExclusao);
 
     public async Task CarregarTermos()
     {
@@ -63,7 +63,7 @@ public sealed class Estado
         TermosPodeEditar = j["podeEditar"]?.GetValue<bool>() ?? false;
         TermosPor = j["por"]?.ToString() ?? ""; TermosEm = j["em"]?.ToString() ?? "";
         TermosLidos = true;
-        RecalcularTma();
+        RecalcularExclusoes();
         Notificar();
     }
     public Arquivo? ArquivoResumo;
@@ -894,7 +894,7 @@ public sealed class Estado
     {
         if (CuboResumo == null) return;
         Resultado = Volume.CalcularResumo(CuboResumo, ClassesProc, FiltrosResumo, Resultado?.Arquivo ?? ArquivoResumo?.Nome ?? "");
-        RecalcularTma();
+        RecalcularExclusoes();
         AtualizarSubResumo();
     }
 

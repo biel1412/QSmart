@@ -118,7 +118,7 @@
         {
             (E.CuboResumo, E.OpcoesResumo, E.Resultado, E.FluxosResumo) = x;
             E.FiltrosResumo = new();
-            E.RecalcularTma();
+            E.RecalcularExclusoes();
             E.ArquivoResumo = a;
             E.AtualizarSubResumo();
             await Task.CompletedTask;

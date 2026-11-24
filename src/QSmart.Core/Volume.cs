@@ -214,14 +214,14 @@ public static class Volume
     public static async Task<List<CuboVolume>> Carregar(IEnumerable<Arquivo> arquivos, Progresso? prog = null)
         => (await CarregarComFluxos(arquivos, prog, false)).cubo;
 
-    /// <summary>Igual ao Carregar, e também guarda cada fluxo (tempos, segmento, justificativa) para o TMA da aba Usuários.</summary>
-    public static async Task<(List<CuboVolume> cubo, FluxosTma? fluxos)> CarregarComFluxos(IEnumerable<Arquivo> arquivos, Progresso? prog = null, bool comFluxos = true)
+    /// <summary>Igual ao Carregar, e também guarda cada fluxo (usuário, segmento, justificativa) para as exclusões da aba Usuários.</summary>
+    public static async Task<(List<CuboVolume> cubo, FluxosExclusao? fluxos)> CarregarComFluxos(IEnumerable<Arquivo> arquivos, Progresso? prog = null, bool comFluxos = true)
     {
         var tabs = new List<Tabela>();
         foreach (var a in arquivos) tabs.Add(await LerPlanilha(a, prog));
         Tabela df = tabs.Count == 1 ? tabs[0] : Concat(tabs);
         var d = Derivar(df);
-        var fluxos = comFluxos ? Tma.Montar(df, d) : null;
+        var fluxos = comFluxos ? Exclusoes.Montar(d) : null;
         return (Cubo(df, d), fluxos);
     }
 

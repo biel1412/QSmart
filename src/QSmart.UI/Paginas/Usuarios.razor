@@ -1,6 +1,6 @@
 @page "/usuarios"
 @inherits PaginaBase
-@{ var linhas = Linhas(); var t = E.Tma; }
+@{ var linhas = Linhas(); }
 
 <Pagina Titulo="Usuários" Grupo="@A.Grupo" Sub="@Sub()">
     <ChildContent>
@@ -19,46 +19,8 @@
                 Vazio="@(E.Resultado == null ? "Carregue a planilha na aba Resumo." : "Nenhum usuário encontrado para essa busca.")" />
     </Painel>
 
-    @if (t != null)
+    @if (true)
     {
-        var segs = t.Segmentos;
-        <div class="tm2-cab">
-            <h3><Icone Nome="relogio" Tamanho="18" /> TMA por segmento</h3>
-            <span class="muted pequeno">TMA = média do tempo de cada fluxo (DATAHORAFIMATIVIDADE − DATAHORAINICIOATIVIDADE), considerando todos os fluxos da planilha que têm início e fim, de qualquer dia. Segmento = começo do IDREGISTROCONTROLADO (antes do #). As exclusões são contadas em todos os fluxos.</span>
-            <span class="mola"></span>
-        </div>
-        @if (!t.TemDatas)
-        {
-            <p class="muted">A planilha não tem as colunas DATAHORAINICIOATIVIDADE e DATAHORAFIMATIVIDADE, então não dá para calcular o TMA. As exclusões continuam sendo contadas.</p>
-        }
-        <div class="tm2-segs">
-            @foreach (var s in segs)
-            {
-                var ss = s.Segmento;
-                <button class="tm2-seg @(_seg == ss ? "on" : "")" @onclick="() => EscolherSeg(ss)">
-                    <span class="tm2-seg-nome">@s.Nome</span>
-                    <b>@(s.Considerados > 0 ? Tma.Hms(s.Tma) : "—")</b>
-                    <small>@Fmt(s.Considerados) de @Fmt(s.Fluxos) fluxos</small>
-                    <span class="tm2-seg-tags">
-                        @if (s.Exclusoes > 0) { <em class="exc">@Fmt(s.Exclusoes) exclusão(ões)</em> }
-                    </span>
-                </button>
-            }
-        </div>
-
-        <Painel Sangrar="true" Classe="tm2-det">
-            <div class="barra-ferr dentro">
-                <b class="tm2-det-tit">Por usuário e segmento</b>
-                <span class="muted pequeno">@(E.BuscaUsuarios != "" ? $"filtrado pela busca “{E.BuscaUsuarios}”" : "use a busca acima para ver um usuário")</span>
-                <span class="mola"></span>
-                <select class="campo tm2-sel" @bind="_seg">
-                    <option value="">Todos os segmentos</option>
-                    @foreach (var s in segs) { <option value="@s.Segmento">@s.Nome</option> }
-                </select>
-            </div>
-            <Tabela Colunas="_colsTma" Linhas="LinhasTma()" Altura="calc(100vh - 380px)" Vazio="Nenhum usuário com fluxos nesse filtro." />
-        </Painel>
-
         <div class="tm2-duas so-um">
             <Painel Titulo="Palavras de exclusão de fluxo" Classe="tm2-bloco">
                 <p class="muted pequeno">Termos que identificam fluxos de exclusão nas justificativas (cada um escreve de um jeito). Conta como exclusão quando a justificativa tem a <b>palavra inteira</b>: “EXC” pega “EXC.” mas não “EXCEPTION” nem “EXCEDE”. Acentos e maiúsculas não importam. A lista vale para todo mundo.</p>
@@ -90,18 +52,12 @@
     {
         new("#", 60, 'c'), new("Usuário", 0, 'e'), new("Devolutivas", 110, 'c'), new("Aprovações", 110, 'c'),
         new("Total de ações", 120, 'c'), new("% devolvidas", 110, 'c'),
-        new("TMA médio", 110, 'c', "Média dos fluxos considerados do usuário (HH:MM:SS)"),
-        new("Exclusões identificadas", 160, 'c', "Fluxos com palavras de exclusão na justificativa"),
-    };
-    readonly List<ColunaTab> _colsTma = new()
-    {
-        new("Usuário", 0, 'e'), new("Segmento", 170, 'e'), new("Fluxos", 90, 'c'), new("Considerados", 110, 'c'),
-        new("TMA médio", 110, 'c'), new("Exclusões identificadas", 160, 'c'),
+        new("Exclusões identificadas", 185, 'c', "Fluxos com palavras de exclusão na justificativa"),
     };
     List<LinhaTab>? _cache;
     (object?, string, string, object?)? _chaveCache;
     int _mostrando, _total;
-    string _seg = "", _novoTermo = "";
+    string _novoTermo = "";
     bool _salvandoTermos;
 
     protected override async Task OnInitializedAsync()
@@ -117,7 +73,7 @@
 
     List<LinhaTab> Linhas()
     {
-        var k = ((object?)E.Resultado, E.Ordem, E.BuscaUsuarios, (object?)E.Tma);
+        var k = ((object?)E.Resultado, E.Ordem, E.BuscaUsuarios, (object?)E.ExclusoesResumo);
         if (_cache != null && _chaveCache.Equals(k)) return _cache;
         _chaveCache = k;
         if (E.Resultado == null) { _mostrando = _total = 0; return _cache = new(); }
@@ -132,45 +88,20 @@
         _mostrando = lista.Count;
         return _cache = lista.Select(t =>
         {
-            TmaUsuario? m = null;
-            E.Tma?.Usuarios.TryGetValue(t.x.Usuario, out m);
-            var tmaTxt = m == null || m.Considerados == 0 ? "—" : Tma.Hms(m.Tma);
+            long exc = E.ExclusoesResumo?.PorUsuario.GetValueOrDefault(t.x.Usuario) ?? 0;
             return new LinhaTab
             {
-                Valores = new object?[] { t.pos, t.x.Usuario, t.x.Devolutivas, t.x.Aprovacoes, t.x.Acoes, $"{F1(t.x.Taxa * 100)}%", tmaTxt, m?.Exclusoes ?? 0 },
-                Chaves = new object?[] { t.pos, t.x.Usuario, t.x.Devolutivas, t.x.Aprovacoes, t.x.Acoes, t.x.Taxa, m?.Considerados > 0 ? m.Tma : -1, m?.Exclusoes ?? 0 },
+                Valores = new object?[] { t.pos, t.x.Usuario, t.x.Devolutivas, t.x.Aprovacoes, t.x.Acoes, $"{F1(t.x.Taxa * 100)}%", exc },
+                Chaves = new object?[] { t.pos, t.x.Usuario, t.x.Devolutivas, t.x.Aprovacoes, t.x.Acoes, t.x.Taxa, exc },
             };
         }).ToList();
     }
-
-    List<LinhaTab> LinhasTma()
-    {
-        if (E.Tma == null) return new();
-        var termos = Termos();
-        var linhas = new List<LinhaTab>();
-        foreach (var u in E.Tma.Usuarios.Values.OrderBy(x => x.Usuario, StringComparer.Ordinal))
-        {
-            if (termos.Length > 0 && !termos.All(tt => u.Busca.Contains(tt))) continue;
-            foreach (var s in u.PorSegmento)
-            {
-                if (_seg != "" && s.Segmento != _seg) continue;
-                linhas.Add(new LinhaTab
-                {
-                    Valores = new object?[] { u.Usuario, s.Nome, s.Fluxos, s.Considerados, s.Considerados > 0 ? Tma.Hms(s.Tma) : "—", s.Exclusoes },
-                    Chaves = new object?[] { u.Usuario, s.Nome, s.Fluxos, s.Considerados, s.Considerados > 0 ? s.Tma : -1, s.Exclusoes },
-                });
-            }
-        }
-        return linhas;
-    }
-
-    void EscolherSeg(string s) => _seg = _seg == s ? "" : s;
 
     async Task TeclaTermo(KeyboardEventArgs e) { if (e.Key == "Enter") await AdicionarTermo(); }
 
     async Task AdicionarTermo()
     {
-        var novos = _novoTermo.Split(new[] { ',', ';', ' ' }, StringSplitOptions.RemoveEmptyEntries).Select(Tma.NormTermo).Where(x => x.Length >= 2).ToList();
+        var novos = _novoTermo.Split(new[] { ',', ';', ' ' }, StringSplitOptions.RemoveEmptyEntries).Select(Exclusoes.NormTermo).Where(x => x.Length >= 2).ToList();
         if (novos.Count == 0) { await J.Aviso("Palavras de exclusão", "Digite um termo com pelo menos 2 letras."); return; }
         var lista = E.TermosExclusao.Concat(novos).Distinct().ToList();
         _salvandoTermos = true;

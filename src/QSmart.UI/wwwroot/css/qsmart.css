@@ -3382,37 +3382,10 @@ html:has(.app.recolhido) .fx-bola.lat { display: none; }
 @media (max-width: 760px) { .pf-colab.nova.rot { display: none; } .pf-colab.lid { grid-template-columns: 1fr 1fr; } }
 .pf-colabs > .pf-colab.lid { align-self: stretch; }
 
-/* ===== Usuários: TMA por segmento, suspeitos e exclusões ===== */
-.tm2-cab { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; margin: 26px 0 12px; }
-.tm2-cab h3 { display: flex; align-items: center; gap: 8px; font-size: 16px; margin: 0; }
-.tm2-cab .muted { flex: 1 1 420px; }
-.tm2-segs { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; margin-bottom: 14px; }
-.tm2-seg { display: flex; flex-direction: column; gap: 2px; text-align: left; padding: 12px 14px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); cursor: pointer; transition: transform .15s, border-color .15s; position: relative; overflow: hidden; }
-.tm2-seg::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 4px; background: var(--grad); }
-.tm2-seg:hover { transform: translateY(-2px); }
-.tm2-seg.on { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
-.tm2-seg-nome { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; }
-.tm2-seg b { font-size: 24px; font-weight: 800; font-variant-numeric: tabular-nums; }
-.tm2-seg small { color: var(--muted); font-size: 12px; }
-.tm2-seg-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; min-height: 20px; }
-.tm2-seg-tags em, .tm2-tab td.sus { font-style: normal; }
-.tm2-seg-tags em { font-size: 11px; font-weight: 600; padding: 2px 7px; border-radius: 99px; }
-.tm2-seg-tags em.sus { background: color-mix(in srgb, #F59E0B 18%, transparent); color: #B45309; }
-.tm2-seg-tags em.exc { background: color-mix(in srgb, #8B5CF6 16%, transparent); color: #7C3AED; }
-[data-tema="escuro"] .tm2-seg-tags em.sus { color: #FCD34D; } [data-tema="escuro"] .tm2-seg-tags em.exc { color: #C4B5FD; }
-.tm2-det-tit { font-size: 14px; }
-.tm2-sel { width: auto; min-width: 190px; }
-.tm2-chave { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; cursor: pointer; white-space: nowrap; }
+/* ===== Usuários: palavras de exclusão ===== */
 .tm2-duas { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 14px; margin-top: 14px; }
 @media (max-width: 1100px) { .tm2-duas { grid-template-columns: 1fr; } }
 .tm2-bloco .painel-corpo { display: flex; flex-direction: column; gap: 10px; }
-.tm2-lista { max-height: 360px; overflow: auto; border-radius: 10px; border: 1px solid var(--line); }
-.tm2-tab { width: 100%; border-collapse: collapse; font-size: 12.5px; }
-.tm2-tab th { position: sticky; top: 0; background: var(--surface2); text-align: left; padding: 7px 9px; font-weight: 600; color: var(--muted); }
-.tm2-tab td { padding: 6px 9px; border-top: 1px solid var(--line); white-space: nowrap; }
-.tm2-tab td:nth-child(3) { white-space: normal; min-width: 140px; }
-.tm2-tab td.sus { color: #D97706; font-weight: 700; }
-.tm2-tab code { font-size: 11.5px; }
 .tm2-add { display: flex; gap: 8px; }
 .tm2-add .campo { flex: 1; }
 .tm2-termos { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px; padding: 12px; border-radius: 12px; background: var(--surface2); max-height: 240px; overflow: auto; }
