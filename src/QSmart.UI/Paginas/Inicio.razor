@@ -59,6 +59,10 @@
                     <h1><span class="grad">Grandes conquistas</span> começam com <span class="grad">pequenas atitudes diárias</span></h1>
                     <p>QSmart · Insi</p>
                 </div>
+                <div class="bv-slide bv-frase @(_slide == 7 ? "on" : "")">
+                    <h1><span class="grad">Digital.</span> Simple. <span class="grad">Human.</span></h1>
+                    <p>QSmart · Insi</p>
+                </div>
             </div>
             <div class="bv-busca">
                 <Icone Nome="busca" Tamanho="18" />
@@ -161,7 +165,7 @@
     string _busca = "";
 
     // ---- outdoor da faixa de boas-vindas ----
-    const int Slides = 7, Intervalo = 5000;
+    const int Slides = 8, Intervalo = 5000;
     int _slide, _cur = Random.Shared.Next(100), _dica = Random.Shared.Next(100);
     bool _pausa, _foco;
     bool Parado => _pausa || _foco || _busca != "";
