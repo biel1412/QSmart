@@ -40,7 +40,6 @@
                     <b>@(s.Considerados > 0 ? Tma.Hms(s.Tma) : "—")</b>
                     <small>@Fmt(s.Considerados) de @Fmt(s.Fluxos) fluxos</small>
                     <span class="tm2-seg-tags">
-                        @if (s.Suspeitos > 0) { <em class="sus" title="TMA suspeito: menos de @Tma.LimiteSuspeito segundos">⚠ @Fmt(s.Suspeitos) suspeito(s)</em> }
                         @if (s.Exclusoes > 0) { <em class="exc">@Fmt(s.Exclusoes) exclusão(ões)</em> }
                     </span>
                 </button>
@@ -56,33 +55,11 @@
                     <option value="">Todos os segmentos</option>
                     @foreach (var s in segs) { <option value="@s.Segmento">@s.Nome</option> }
                 </select>
-                <label class="tm2-chave"><input type="checkbox" @bind="_soSuspeitos" /><span>Só com TMA suspeito</span></label>
             </div>
             <Tabela Colunas="_colsTma" Linhas="LinhasTma()" Altura="calc(100vh - 380px)" Vazio="Nenhum usuário com fluxos nesse filtro." />
         </Painel>
 
-        <div class="tm2-duas">
-            <Painel Titulo="@($"TMA suspeito · {Fmt(t.SuspeitosLista.Count)} fluxo(s) com menos de {Tma.LimiteSuspeito} s")" Classe="tm2-bloco">
-                <p class="muted pequeno">Fluxos concluídos rápido demais para uma análise real: vale conferir se não foram aprovados ou encaminhados sem olhar.</p>
-                @{ var sus = SuspeitosFiltrados(); }
-                @if (sus.Count == 0) { <p class="muted">Nenhum fluxo suspeito@(E.BuscaUsuarios != "" || _seg != "" ? " nesse filtro" : "").</p> }
-                else
-                {
-                    <div class="tm2-lista">
-                        <table class="tm2-tab">
-                            <thead><tr><th>Usuário</th><th>Registro</th><th>Procedimento</th><th>Início</th><th>Duração</th></tr></thead>
-                            <tbody>
-                                @foreach (var x in sus.Take(_verTodosSus ? 1000 : 12))
-                                {
-                                    <tr><td>@x.Usuario</td><td><code>@x.Registro</code></td><td>@x.Procedimento</td><td>@x.Inicio.ToString("dd/MM HH:mm:ss")</td><td class="sus">@x.Segundos s</td></tr>
-                                }
-                            </tbody>
-                        </table>
-                    </div>
-                    @if (sus.Count > 12) { <button class="btn btn-sec btn-peq" @onclick="() => _verTodosSus = !_verTodosSus">@(_verTodosSus ? "Mostrar menos" : $"Ver todos os {sus.Count}")</button> }
-                }
-            </Painel>
-
+        <div class="tm2-duas so-um">
             <Painel Titulo="Palavras de exclusão de fluxo" Classe="tm2-bloco">
                 <p class="muted pequeno">Termos que identificam fluxos de exclusão nas justificativas (cada um escreve de um jeito). Conta como exclusão quando a justificativa tem a <b>palavra inteira</b>: “EXC” pega “EXC.” mas não “EXCEPTION” nem “EXCEDE”. Acentos e maiúsculas não importam. A lista vale para todo mundo.</p>
                 @if (E.TermosPodeEditar)
@@ -114,19 +91,18 @@
         new("#", 60, 'c'), new("Usuário", 0, 'e'), new("Devolutivas", 110, 'c'), new("Aprovações", 110, 'c'),
         new("Total de ações", 120, 'c'), new("% devolvidas", 110, 'c'),
         new("TMA médio", 110, 'c', "Média dos fluxos considerados do usuário (HH:MM:SS)"),
-        new("TMA suspeito", 110, 'c', $"Fluxos com menos de {Tma.LimiteSuspeito} segundos"),
         new("Exclusões identificadas", 160, 'c', "Fluxos com palavras de exclusão na justificativa"),
     };
     readonly List<ColunaTab> _colsTma = new()
     {
         new("Usuário", 0, 'e'), new("Segmento", 170, 'e'), new("Fluxos", 90, 'c'), new("Considerados", 110, 'c'),
-        new("TMA médio", 110, 'c'), new("TMA suspeito", 110, 'c'), new("Exclusões identificadas", 160, 'c'),
+        new("TMA médio", 110, 'c'), new("Exclusões identificadas", 160, 'c'),
     };
     List<LinhaTab>? _cache;
     (object?, string, string, object?)? _chaveCache;
     int _mostrando, _total;
     string _seg = "", _novoTermo = "";
-    bool _soSuspeitos, _verTodosSus, _salvandoTermos;
+    bool _salvandoTermos;
 
     protected override async Task OnInitializedAsync()
     {
@@ -161,10 +137,8 @@
             var tmaTxt = m == null || m.Considerados == 0 ? "—" : Tma.Hms(m.Tma);
             return new LinhaTab
             {
-                Valores = new object?[] { t.pos, t.x.Usuario, t.x.Devolutivas, t.x.Aprovacoes, t.x.Acoes, $"{F1(t.x.Taxa * 100)}%", tmaTxt,
-                    m?.Suspeitos > 0 ? $"⚠ {m.Suspeitos}" : "0", m?.Exclusoes ?? 0 },
-                Chaves = new object?[] { t.pos, t.x.Usuario, t.x.Devolutivas, t.x.Aprovacoes, t.x.Acoes, t.x.Taxa, m?.Considerados > 0 ? m.Tma : -1,
-                    m?.Suspeitos ?? 0, m?.Exclusoes ?? 0 },
+                Valores = new object?[] { t.pos, t.x.Usuario, t.x.Devolutivas, t.x.Aprovacoes, t.x.Acoes, $"{F1(t.x.Taxa * 100)}%", tmaTxt, m?.Exclusoes ?? 0 },
+                Chaves = new object?[] { t.pos, t.x.Usuario, t.x.Devolutivas, t.x.Aprovacoes, t.x.Acoes, t.x.Taxa, m?.Considerados > 0 ? m.Tma : -1, m?.Exclusoes ?? 0 },
             };
         }).ToList();
     }
@@ -180,22 +154,14 @@
             foreach (var s in u.PorSegmento)
             {
                 if (_seg != "" && s.Segmento != _seg) continue;
-                if (_soSuspeitos && s.Suspeitos == 0) continue;
                 linhas.Add(new LinhaTab
                 {
-                    Valores = new object?[] { u.Usuario, s.Nome, s.Fluxos, s.Considerados, s.Considerados > 0 ? Tma.Hms(s.Tma) : "—", s.Suspeitos > 0 ? $"⚠ {s.Suspeitos}" : "0", s.Exclusoes },
-                    Chaves = new object?[] { u.Usuario, s.Nome, s.Fluxos, s.Considerados, s.Considerados > 0 ? s.Tma : -1, s.Suspeitos, s.Exclusoes },
+                    Valores = new object?[] { u.Usuario, s.Nome, s.Fluxos, s.Considerados, s.Considerados > 0 ? Tma.Hms(s.Tma) : "—", s.Exclusoes },
+                    Chaves = new object?[] { u.Usuario, s.Nome, s.Fluxos, s.Considerados, s.Considerados > 0 ? s.Tma : -1, s.Exclusoes },
                 });
             }
         }
         return linhas;
-    }
-
-    List<FluxoSuspeito> SuspeitosFiltrados()
-    {
-        if (E.Tma == null) return new();
-        var termos = Termos();
-        return E.Tma.SuspeitosLista.Where(x => (_seg == "" || x.Segmento == _seg) && (termos.Length == 0 || termos.All(tt => Texto.NormalizarBusca(x.Usuario).Contains(tt)))).ToList();
     }
 
     void EscolherSeg(string s) => _seg = _seg == s ? "" : s;
