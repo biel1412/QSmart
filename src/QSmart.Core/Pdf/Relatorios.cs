@@ -1,7 +1,7 @@
 namespace QSmart.Core.Pdf;
 
 /// <summary>Relatórios em PDF (Resumo e Evolução), sempre em tema claro, bons para imprimir.</summary>
-public static class Relatorios
+public static partial class Relatorios
 {
     static readonly Cor INK = Cor.Hex("#0F172A"), MUT = Cor.Hex("#64748B"), GRN = Cor.Hex("#16A34A"), RD = Cor.Hex("#DC2626"),
         BL = Cor.Hex("#0284C7"), AMB = Cor.Hex("#D97706"), PUR = Cor.Hex("#7C3AED"), HEAD = Cor.Hex("#1E293B"),

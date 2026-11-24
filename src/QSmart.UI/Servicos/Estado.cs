@@ -493,6 +493,8 @@ public sealed class Estado
     // ---- Férias (painel geral): todas as coordenações veem todo mundo; cada uma edita os seus ----
     public List<QSmart.Core.Coordenacao.ColabFer>? FeColabs;
     public bool FeAdmin;
+    /// <summary>Situação geral do painel de uso (só administrador): pinta o botão no topo.</summary>
+    public QSmart.Core.Admin.NivelUso? UsoNivel;
     public string FeCoordenacao = "";
     readonly Dictionary<string, string> _feSinc2 = new();
 

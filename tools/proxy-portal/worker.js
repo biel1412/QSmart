@@ -12,7 +12,7 @@ const SESSAO_HORAS = 12;
 const MAX_FALHAS = 5, TRAVA_MIN = 10;
 
 export default {
-  async fetch(req, env) {
+  async fetch(req, env, ctx) {
     const origem = req.headers.get("Origin") || "";
     const permitida = ORIGENS.includes(origem);
     const cors = {
@@ -26,6 +26,13 @@ export default {
     if (!permitida) return new Response("Não permitido", { status: 403, headers: cors });
 
     const url = new URL(req.url);
+    // medição de uso (painel do administrador): conta pedidos, linhas lidas/gravadas, IA e arquivos
+    const bruto = env;
+    env = medirEnv(env);
+    const grupo = url.pathname.startsWith("/api/") ? (url.pathname.slice(5).split("/")[0] || "api")
+      : url.pathname.startsWith("/api-de-dados/") ? "portal" : url.pathname.startsWith("/groq/") ? "ia" : "outros";
+    contar("req"); contar("rota:" + grupo);
+    let status = 500;
     try {
       let r;
       if (url.pathname.startsWith("/api/")) {
@@ -41,6 +48,8 @@ export default {
           headers: { "Authorization": "Bearer " + chave, "Content-Type": "application/json" },
           body: await req.text(),
         });
+        notarIA(r);
+        if (r.ok && ctx) ctx.waitUntil(r.clone().json().then(j => contar("iatok", j?.usage?.total_tokens || 0)).catch(() => {}));
       } else {
         r = json({ erro: "Caminho inválido" }, 404);
       }
@@ -49,12 +58,185 @@ export default {
       // arquivos (Downloads): tamanho e nome vão junto, para a barra de progresso e o nome do arquivo
       for (const k of ["Content-Length", "Content-Disposition"]) if (r.headers.get(k)) h.set(k, r.headers.get(k));
       h.set("Access-Control-Expose-Headers", "Content-Length, Content-Disposition");
+      status = r.status;
       return new Response(r.body, { status: r.status, headers: h });
     } catch (e) {
       return new Response(JSON.stringify({ erro: "Falha no servidor: " + (e && e.message || e) }), { status: 500, headers: { ...cors, "Content-Type": "application/json" } });
+    } finally {
+      if (status >= 500) contar("err");
+      if (bruto.DB && ctx && (Date.now() - MED.ult > MED_INTERVALO || ++MED.n >= 150)) ctx.waitUntil(gravarUso(bruto.DB));
     }
   },
 };
+
+// =============================== medição de uso ===============================
+// Cada pedido soma, em memória, quantas linhas do banco leu e gravou, chamadas à IA e operações nos arquivos (R2).
+// De minuto em minuto (ou a cada 150 pedidos) o total vai para a tabela uso_dia, uma linha por dia e por chave.
+// O dia é o de Greenwich (UTC), o mesmo em que a Cloudflare zera os limites diários (21h em Brasília).
+// É uma estimativa: se o Worker for reciclado antes de gravar, o último minuto se perde. O número oficial fica no painel da Cloudflare.
+const MED_INTERVALO = 60000;
+const MED = { soma: new Map(), maior: new Map(), valor: new Map(), ult: Date.now(), n: 0 };
+const diaUTC = () => new Date().toISOString().slice(0, 10);
+function contar(k, n = 1) { n = Number(n) || 0; if (!n) return; const c = diaUTC() + "|" + k; MED.soma.set(c, (MED.soma.get(c) || 0) + n); }
+function marcarMaior(k, v) { const c = diaUTC() + "|" + k; MED.maior.set(c, Math.max(MED.maior.get(c) || 0, Number(v) || 0)); }
+function marcarValor(k, v) { if (v === null || v === undefined || v === "" || isNaN(Number(v))) return; MED.valor.set(diaUTC() + "|" + k, Number(v)); }
+
+async function gravarUso(db) {
+  const sqls = [
+    [MED.soma, "INSERT INTO uso_dia (dia, chave, n) VALUES (?, ?, ?) ON CONFLICT(dia, chave) DO UPDATE SET n = n + excluded.n"],
+    [MED.maior, "INSERT INTO uso_dia (dia, chave, n) VALUES (?, ?, ?) ON CONFLICT(dia, chave) DO UPDATE SET n = MAX(n, excluded.n)"],
+    [MED.valor, "INSERT INTO uso_dia (dia, chave, n) VALUES (?, ?, ?) ON CONFLICT(dia, chave) DO UPDATE SET n = excluded.n"],
+  ];
+  const lote = [];
+  for (const [mapa, sql] of sqls) {
+    for (const [c, v] of mapa) lote.push(db.prepare(sql).bind(c.slice(0, 10), c.slice(11), Math.round(v)));
+    mapa.clear();
+  }
+  MED.ult = Date.now(); MED.n = 0;
+  if (!lote.length) return;
+  try {
+    const rs = await db.batch(lote);
+    let w = 0; for (const x of rs || []) { w += x?.meta?.rows_written || 0; if (x?.meta?.size_after) marcarMaior("banco_bytes", x.meta.size_after); }
+    contar("wr", w);   // a própria medição também grava: entra na conta do próximo envio
+  } catch { /* tabela uso_dia ainda não criada: a medição só fica desligada */ }
+}
+
+// banco e arquivos "medidos": mesmo jeito de usar, mas cada consulta soma rows_read / rows_written
+function medirEnv(env) {
+  const extra = {};
+  if (env.DB) extra.DB = { value: medirDB(env.DB) };
+  if (env.ARQUIVOS) extra.ARQUIVOS = { value: medirR2(env.ARQUIVOS) };
+  return Object.create(env, extra);
+}
+function medirDB(db) {
+  const somar = meta => { if (!meta) return; contar("rd", meta.rows_read || 0); contar("wr", meta.rows_written || 0); contar("q"); };
+  const cmd = s => ({
+    _s: s,
+    bind: (...a) => cmd(s.bind(...a)),
+    async run() { const r = await s.run(); somar(r?.meta); return r; },
+    async all() { const r = await s.all(); somar(r?.meta); return r; },
+    async first(col) {
+      const r = await s.all(); somar(r?.meta);
+      const x = r?.results?.[0];
+      if (x === undefined) return null;
+      return col ? (x[col] ?? null) : x;
+    },
+    raw: o => s.raw(o),
+  });
+  return {
+    prepare: q => cmd(db.prepare(q)),
+    async batch(lista) { const rs = await db.batch(lista.map(x => x._s || x)); for (const r of rs || []) somar(r?.meta); return rs; },
+    exec: q => db.exec(q),
+  };
+}
+function medirR2(b) {
+  return {
+    async get(k, o) { const r = await b.get(k, o); contar("r2b"); if (r) contar("r2baixa", r.size || 0); return r; },
+    async head(k) { contar("r2b"); return b.head(k); },
+    async put(k, v, o) { const r = await b.put(k, v, o); contar("r2a"); if (r) contar("r2envio", r.size || 0); return r; },
+    async delete(k) { contar("r2a"); return b.delete(k); },
+    async list(o) { contar("r2a"); return b.list(o); },
+  };
+}
+// IA (Groq): pedidos, tokens e o que ainda resta no dia segundo a própria Groq (cabeçalhos x-ratelimit-*)
+function notarIA(r) {
+  contar("ia");
+  if (r.status === 429) contar("ia429");
+  const h = n => r.headers.get(n);
+  marcarValor("ia_lim_req", h("x-ratelimit-limit-requests"));
+  marcarValor("ia_rest_req", h("x-ratelimit-remaining-requests"));
+  marcarValor("ia_lim_tok_min", h("x-ratelimit-limit-tokens"));
+}
+
+// =============================== painel de uso (administrador) ===============================
+const LIMITES_USO = {
+  plano: "Cloudflare Workers Free + Groq (plano grátis)",
+  reqDia: 100000,               // Workers: pedidos por dia
+  lerDia: 5000000,              // D1: linhas lidas por dia
+  gravarDia: 100000,            // D1: linhas gravadas por dia
+  bancoBytes: 500 * 1024 * 1024,        // D1: tamanho máximo de um banco no plano grátis
+  contaBancoBytes: 5 * 1024 ** 3,       // D1: soma de todos os bancos da conta
+  r2Bytes: 10 * 1024 ** 3,      // R2: armazenamento grátis
+  r2AMes: 1000000,              // R2: operações classe A (enviar, apagar, listar) por mês
+  r2BMes: 10000000,             // R2: operações classe B (baixar) por mês
+  iaReqDia: 1000,               // Groq gpt-oss-120b, plano grátis (referência; a Groq informa o valor real nos cabeçalhos)
+  iaTokDia: 200000,
+  arquivoMaxBytes: 100 * 1024 * 1024,
+};
+const MODULO_TABELA = t =>
+  /^(usuarios|sessoes|dias|uso)$/.test(t) ? "Contas e acessos" : t.startsWith("oo_") ? "One a One" : t.startsWith("fe_") ? "Férias"
+  : t === "dayoff" ? "Day off" : t.startsWith("chat_") ? "Chat" : t === "notificacoes" ? "Notificações" : t.startsWith("feed_") ? "Feed"
+  : t.startsWith("sn_") ? "Smart Note" : t === "downloads" ? "Downloads" : t === "kv" ? "Bases e configurações" : t === "uso_dia" ? "Medição de uso" : "Outros";
+
+async function painelUso(env) {
+  await gravarUso(env.DB);   // manda o que está em memória antes de ler
+  const db = env.DB;
+  // tabelas, linhas e bytes de cada uma
+  const tabs = ((await db.prepare("SELECT name, type FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%' AND name <> 'd1_migrations'").all()).results || []);
+  const nomes = tabs.filter(x => x.type === "table").map(x => x.name), indices = tabs.filter(x => x.type === "index").length;
+  const colunas = await db.batch(nomes.map(t => db.prepare(`PRAGMA table_info("${t.replace(/"/g, "")}")`)));
+  const consultas = nomes.map((t, i) => {
+    const cols = (colunas[i]?.results || []).map(c => `COALESCE(LENGTH(CAST("${String(c.name).replace(/"/g, "")}" AS BLOB)), 0)`);
+    return db.prepare(`SELECT COUNT(*) AS n, COALESCE(SUM(${cols.length ? cols.join(" + ") : "0"}), 0) AS b FROM "${t.replace(/"/g, "")}"`);
+  });
+  const res = consultas.length ? await db.batch(consultas) : [];
+  let tamanho = 0;
+  for (const r of res) tamanho = Math.max(tamanho, r?.meta?.size_after || 0);
+  const tabelas = nomes.map((t, i) => ({ nome: t, modulo: MODULO_TABELA(t), linhas: res[i]?.results?.[0]?.n || 0, bytes: res[i]?.results?.[0]?.b || 0 }))
+    .sort((a, b) => b.bytes - a.bytes);
+  if (!tamanho) tamanho = tabelas.reduce((s, t) => s + t.bytes, 0);
+  marcarMaior("banco_bytes", tamanho);
+
+  // arquivos (R2)
+  const arq = { ligado: !!env.ARQUIVOS, bytes: 0, objetos: 0, pastas: [], maiores: [] };
+  if (env.ARQUIVOS) {
+    const titulos = {};
+    for (const d of ((await db.prepare("SELECT id, titulo, arquivo_nome FROM downloads").all()).results || [])) titulos["downloads/" + d.id] = `${d.titulo}${d.arquivo_nome ? " · " + d.arquivo_nome : ""}`;
+    const pastas = {}, todos = [];
+    let cursor;
+    for (let volta = 0; volta < 20; volta++) {
+      const l = await env.ARQUIVOS.list({ limit: 1000, cursor });
+      for (const o of l.objects || []) {
+        const p = o.key.includes("/") ? o.key.split("/")[0] : "(raiz)";
+        pastas[p] = pastas[p] || { pasta: p, objetos: 0, bytes: 0 };
+        pastas[p].objetos++; pastas[p].bytes += o.size || 0;
+        arq.objetos++; arq.bytes += o.size || 0;
+        todos.push({ nome: o.key, titulo: titulos[o.key] || "", bytes: o.size || 0, em: o.uploaded ? new Date(o.uploaded).toISOString() : "" });
+      }
+      if (!l.truncated) break;
+      cursor = l.cursor;
+    }
+    arq.pastas = Object.values(pastas).sort((a, b) => b.bytes - a.bytes);
+    arq.maiores = todos.sort((a, b) => b.bytes - a.bytes).slice(0, 15);
+    marcarMaior("r2_bytes", arq.bytes);
+  }
+
+  // pessoas
+  const papeis = (await db.prepare("SELECT papel, status, COUNT(*) AS n FROM usuarios GROUP BY papel, status").all()).results || [];
+  const hoje = hojeBR(), diasAtras = k => new Date(Date.now() - 3 * 3600e3 - k * 864e5).toISOString().slice(0, 10);
+  const at = await db.prepare("SELECT COUNT(DISTINCT CASE WHEN dia = ? THEN usuario_id END) AS h, COUNT(DISTINCT CASE WHEN dia >= ? THEN usuario_id END) AS s, COUNT(DISTINCT usuario_id) AS t FROM dias WHERE dia >= ?")
+    .bind(hoje, diasAtras(6), diasAtras(29)).first();
+  const sessoes = await db.prepare("SELECT COUNT(*) AS n FROM sessoes WHERE expira > ?").bind(agora()).first("n");
+  const ferramentas = (await db.prepare("SELECT chave, SUM(qtd) AS n, COUNT(*) AS pessoas, MAX(ultimo) AS ultimo FROM uso GROUP BY chave ORDER BY n DESC LIMIT 20").all()).results || [];
+
+  // histórico da medição (últimos 40 dias) — o envio desta consulta já entra nos números de hoje
+  await gravarUso(env.DB);
+  const desde = new Date(Date.now() - 40 * 864e5).toISOString().slice(0, 10);
+  const lin = (await db.prepare("SELECT dia, chave, n FROM uso_dia WHERE dia >= ? ORDER BY dia").bind(desde).all().catch(() => ({ results: [] }))).results || [];
+  const porDia = {};
+  for (const x of lin) (porDia[x.dia] = porDia[x.dia] || {})[x.chave] = x.n;
+  const primeiro = await db.prepare("SELECT MIN(dia) AS d FROM uso_dia").first("d").catch(() => null);
+
+  return {
+    agora: agora(), diaUtc: diaUTC(), limites: LIMITES_USO,
+    banco: { bytes: tamanho, indices, tabelas },
+    arquivos: arq,
+    pessoas: { papeis, ativosHoje: at?.h || 0, ativos7: at?.s || 0, ativos30: at?.t || 0, sessoes: sessoes || 0 },
+    ferramentas,
+    historico: Object.entries(porDia).map(([dia, v]) => ({ dia, v })),
+    medindoDesde: primeiro || diaUTC(),
+  };
+}
 
 // =============================== utilidades ===============================
 // ---------- texto e busca (Mr. Smart IA) ----------
@@ -474,6 +656,7 @@ async function api(req, env, url) {
       const r = await env.DB.prepare("SELECT id, usuario, nome, sobrenome, papel, lideranca, status, criado_em, ultimo_acesso FROM usuarios ORDER BY status = 'pendente' DESC, nome").all();
       return json({ usuarios: r.results || [] });
     }
+    if (rota === "admin/uso" && m === "GET") return json(await painelUso(env));
     if (rota === "admin/usuario" && m === "POST") {
       const b = await corpo(req);
       const alvo = await env.DB.prepare("SELECT * FROM usuarios WHERE id = ?").bind(b.id).first();
@@ -1495,11 +1678,13 @@ async function api(req, env, url) {
     };
     if (modelo.startsWith("openai/gpt-oss")) corpoIA.reasoning_effort = "low";
     const rg = await fetch(GROQ + "/openai/v1/chat/completions", { method: "POST", headers: { "Authorization": "Bearer " + chave, "Content-Type": "application/json" }, body: JSON.stringify(corpoIA) });
+    notarIA(rg);
     if (!rg.ok) {
       const st = rg.status;
       return erro(st === 429 ? "O Mr. Smart IA atingiu o limite de uso agora. Tente de novo em alguns minutos." : st === 401 ? "A chave da IA não é válida." : "A IA não respondeu agora.", st === 429 ? 429 : 502, { motivo: st === 401 ? "sem_ia" : "ia" });
     }
     const jr = await rg.json();
+    contar("iatok", jr?.usage?.total_tokens || 0);
     let txt = String(jr?.choices?.[0]?.message?.content || "").trim();
     let usadas = [];
     const mf = txt.match(/\n?\s*FONTES:\s*(.*)\s*$/i);

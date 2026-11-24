@@ -1,0 +1,363 @@
+@page "/uso-sistema"
+@implements IDisposable
+@inject Estado E
+@inject IJSRuntime JS
+@using QSmart.Core.Admin
+@using Microsoft.JSInterop
+
+<Pagina Titulo="Uso e armazenamento" Grupo="Administração"
+        Sub="Quanto o QSmart está usando do banco de dados, dos arquivos, do servidor e da IA, comparado aos limites do plano grátis. Com avisos de atenção, projeções e relatório em PDF e Excel.">
+    <Acoes>
+        @if (_u != null)
+        {
+            <button class="btn btn-sec" disabled="@_carregando" @onclick="Carregar" title="Buscar os números de novo"><Icone Nome="atualizar" Tamanho="16" /></button>
+            <button class="btn btn-hero" disabled="@_gerando" @onclick="Pdf"><Icone Nome="pdf" Tamanho="17" /> Relatório PDF</button>
+            <button class="btn btn-hero" disabled="@_gerando" @onclick="Excel"><Icone Nome="planilha" Tamanho="17" /> Planilha Excel</button>
+        }
+    </Acoes>
+    <Kpis>
+        @if (_u is { } u)
+        {
+            var ms = u.Medidores();
+            var geral = u.NivelGeral;
+            <Kpi Titulo="Situação geral" Cor="@CorK(geral)" Valor="@UsoSistema.NomeNivel(geral)" Tamanho="24"
+                 Detalhe="@(_avisos.Count(a => a.Nivel >= NivelUso.Atencao) is var n && n > 0 ? $"{n} ponto(s) para olhar" : "nenhum limite perto de estourar")" />
+            <Kpi Titulo="Banco de dados" Cor="blue" Valor="@UsoSistema.Tam(u.BancoBytes)" Proporcao="@(ms[0].Pct / 100)" Tamanho="24"
+                 Detalhe="@($"{Pct(ms[0].Pct)} de {UsoSistema.Tam(u.Lim.BancoBytes)} · {Fmt(u.LinhasBanco)} linhas")" />
+            <Kpi Titulo="Arquivos (R2)" Cor="@(u.R2 ? "purple" : "amber")" Valor="@(u.R2 ? UsoSistema.Tam(u.R2Bytes) : "Desligado")" Proporcao="@(u.R2 ? ms[1].Pct / 100 : null)" Tamanho="24"
+                 Detalhe="@(u.R2 ? $"{Fmt(u.R2Objetos)} arquivo(s) · {Pct(ms[1].Pct)} de 10 GB" : "ligue o bucket ARQUIVOS")" />
+            <Kpi Titulo="Pedidos hoje" Cor="@(ms[2].Nivel == NivelUso.Ok ? "green" : CorK(ms[2].Nivel))" Valor="@Fmt(u.Hoje["req"])" Proporcao="@(ms[2].Pct / 100)" Tamanho="24"
+                 Detalhe="@($"{Pct(ms[2].Pct)} de {Fmt(u.Lim.ReqDia)} por dia · zera às 21h")" />
+            <Kpi Titulo="IA hoje" Cor="purple" Valor="@Fmt(ms[5].Usado)" Proporcao="@(ms[5].Pct / 100)" Tamanho="24"
+                 Detalhe="@($"perguntas · {Fmt(u.Hoje["iatok"])} tokens · resta {ms[5].Resta}")" />
+        }
+    </Kpis>
+    <ChildContent>
+        @if (E.Conta.Perfil?.Papel != "admin")
+        {
+            <div class="oo-bloqueio"><Icone Nome="cadeado" Tamanho="26" /><div><b>Só o administrador vê esta página.</b><p class="muted">Ela mostra o consumo do sistema inteiro.</p></div></div>
+        }
+        else if (_erro != "") { <div class="oo-bloqueio"><Icone Nome="alerta" Tamanho="26" /><div><b>@_erro</b></div></div> }
+        else if (_u == null) { <p class="muted"><span class="ia-spin pequeno"></span> Medindo o uso do sistema…</p> }
+        else
+        {
+            var u = _u;
+            <p class="us-atual muted pequeno"><Icone Nome="relogio" Tamanho="13" /> Atualizado às @u.GeradoEm.AddHours(-3).ToString("HH:mm") · os limites diários zeram às 21h (Brasília) · medindo desde @u.MedindoDesde.ToString("dd/MM/yyyy")</p>
+
+            @* ---------------------------------------------------- avisos *@
+            <section class="us-avisos">
+                @foreach (var a in _avisos)
+                {
+                    <div class="us-aviso @Cls(a.Nivel)">
+                        <span class="us-av-ic"><Icone Nome="@(a.Nivel switch { NivelUso.Ok => "check", NivelUso.Info => "info", _ => "alerta" })" Tamanho="18" /></span>
+                        <div>
+                            <div class="us-av-topo"><b>@a.Titulo</b><em>@UsoSistema.NomeNivel(a.Nivel)</em></div>
+                            <p>@a.Texto</p>
+                            @if (a.Acao != "" && a.Nivel != NivelUso.Ok) { <p class="us-av-acao"><Icone Nome="seta" Tamanho="12" /> @a.Acao</p> }
+                        </div>
+                    </div>
+                }
+            </section>
+
+            @* ---------------------------------------------------- medidores *@
+            <h3 class="us-h"><Icone Nome="grafico-barra" Tamanho="18" /> Consumo comparado aos limites</h3>
+            <div class="us-medidores">
+                @foreach (var m in u.Medidores())
+                {
+                    <div class="us-med @Cls(m.Nivel)">
+                        <div class="us-med-topo"><span>@m.Nome</span><em>@m.Periodo</em></div>
+                        <div class="us-med-pct">@Pct(m.Pct)</div>
+                        <div class="us-barra">
+                            <i style="width:@Css(Math.Max(m.Pct, 0.6))%"></i>
+                            @if (m.Previsto is double pv && m.Limite > 0 && pv > m.Usado)
+                            {
+                                <b class="us-prev" style="left:@Css(Math.Min(100, pv * 100 / m.Limite))%" title="Previsão para o fim do dia: @(m.Bytes ? UsoSistema.Tam((long)pv) : Fmt((long)pv))"></b>
+                            }
+                        </div>
+                        <div class="us-med-pe"><span><b>@m.UsadoTxt</b> de @m.LimiteTxt</span><span>resta @m.Resta</span></div>
+                        @if (m.Previsto is double p2 && m.Usado > 0)
+                        {
+                            <small class="muted">No ritmo de hoje: ~@(m.Bytes ? UsoSistema.Tam((long)p2) : Fmt((long)p2)) até as 21h</small>
+                        }
+                    </div>
+                }
+            </div>
+
+            @* ---------------------------------------------------- histórico *@
+            <h3 class="us-h"><Icone Nome="calendario" Tamanho="18" /> Últimos 30 dias</h3>
+            <div class="painel us-hist">
+                <div class="us-abas">
+                    @foreach (var (k, nome) in Series)
+                    {
+                        var kk = k;
+                        <button class="@(_serie == k ? "on" : "")" @onclick="() => _serie = kk">@nome</button>
+                    }
+                </div>
+                @{
+                    var dias = Ultimos30(u);
+                    long max = Math.Max(1, dias.Max(d => d.v));
+                    long lim = LimiteSerie(u, _serie);
+                    bool bytes = _serie.EndsWith("_bytes");
+                }
+                <div class="us-cols">
+                    @foreach (var (dia, v) in dias)
+                    {
+                        <div class="us-col @(dia == u.DiaUtc ? "hoje" : "")" title="@Dica(dia, v, lim, bytes)">
+                            <i style="height:@Css(v == 0 ? 0 : Math.Max(2, v * 100.0 / max))%"></i>
+                            <span>@Rotulo(dia, dias[0].dia, u.DiaUtc)</span>
+                        </div>
+                    }
+                </div>
+                <div class="us-hist-pe muted pequeno">
+                    <span>Maior dia: <b>@(bytes ? UsoSistema.Tam(max) : Fmt(max))</b></span>
+                    @if (!bytes) { <span>Média (7 dias anteriores): <b>@Fmt((long)u.MediaDiaria(_serie))</b></span> }
+                    @if (lim > 0) { <span>Limite: <b>@(bytes ? UsoSistema.Tam(lim) : Fmt(lim))</b>@(bytes ? "" : " por dia")</span> }
+                    @if (bytes && u.CrescimentoDia(_serie) is double cd)
+                    {
+                        var dEnche = UsoSistema.DiasAteEncher(_serie == "banco_bytes" ? u.BancoBytes : u.R2Bytes, lim, cd);
+                        <span>Crescimento: <b>@(cd >= 0 ? "+" : "")@UsoSistema.Tam((long)Math.Abs(cd))</b>/dia@(dEnche is int de ? $" · enche em ~{Fmt(de)} dias" : "")</span>
+                    }
+                </div>
+            </div>
+
+            <div class="us-duas">
+                @* ---------------------------------------------------- banco *@
+                <div class="painel us-bloco">
+                    <h3 class="us-h"><Icone Nome="tabela" Tamanho="18" /> Banco de dados por módulo</h3>
+                    <p class="muted pequeno">Tamanho real: <b>@UsoSistema.Tam(u.BancoBytes)</b> de @UsoSistema.Tam(u.Lim.BancoBytes) (dados + @u.Indices índices + estrutura). Textos criptografados contam pelo tamanho cifrado.</p>
+                    @{ var todosMods = u.Modulos(); var mods = todosMods.Where(m => m.bytes > 0).ToList(); long somaM = Math.Max(1, mods.Sum(m => m.bytes)); var vazios = todosMods.Where(m => m.bytes == 0).Select(m => m.modulo).ToList(); }
+                    <div class="us-lista">
+                        @foreach (var (mod, by, li) in mods)
+                        {
+                            <div class="us-li">
+                                <span class="us-li-nome">@mod</span>
+                                <span class="us-li-bar"><i style="width:@Css(Math.Max(1, by * 100.0 / somaM))%; background:@CorMod(mod)"></i></span>
+                                <span class="us-li-val">@UsoSistema.Tam(by)</span>
+                                <span class="us-li-sub">@Fmt(li) linhas</span>
+                            </div>
+                        }
+                    </div>
+                    @if (vazios.Count > 0) { <p class="muted pequeno">Ainda sem dados: @string.Join(", ", vazios).</p> }
+                    <button class="btn btn-sec btn-peq" @onclick="() => _verTabelas = !_verTabelas"><Icone Nome="@(_verTabelas ? "cima" : "baixo")" Tamanho="14" /> @(_verTabelas ? "Esconder" : "Ver") as @u.Tabelas.Count tabelas</button>
+                    @if (_verTabelas)
+                    {
+                        <table class="us-tab">
+                            <thead><tr><th>Tabela</th><th>Módulo</th><th>Linhas</th><th>Tamanho</th></tr></thead>
+                            <tbody>
+                                @foreach (var t in u.Tabelas)
+                                {
+                                    <tr><td><code>@t.Nome</code></td><td>@t.Modulo</td><td>@Fmt(t.Linhas)</td><td>@UsoSistema.Tam(t.Bytes)</td></tr>
+                                }
+                            </tbody>
+                        </table>
+                    }
+                </div>
+
+                @* ---------------------------------------------------- arquivos *@
+                <div class="painel us-bloco">
+                    <h3 class="us-h"><Icone Nome="pasta" Tamanho="18" /> Arquivos (R2)</h3>
+                    @if (!u.R2)
+                    {
+                        <p class="muted">O armazenamento de arquivos não está ligado ao servidor. Na Cloudflare, ligue o bucket <b>qsmart-arquivos</b> ao Worker com o nome <b>ARQUIVOS</b>.</p>
+                    }
+                    else
+                    {
+                        <p class="muted pequeno"><b>@Fmt(u.R2Objetos)</b> arquivo(s), <b>@UsoSistema.Tam(u.R2Bytes)</b> de 10 GB grátis. Neste mês: @Fmt(u.Mes("r2a")) envios/listagens · @Fmt(u.Mes("r2b")) downloads.</p>
+                        @if (u.Maiores.Count == 0) { <p class="muted">Nenhum arquivo guardado ainda.</p> }
+                        <div class="us-lista">
+                            @foreach (var a in u.Maiores)
+                            {
+                                <div class="us-li">
+                                    <span class="us-li-nome" title="@a.Nome">@(a.Titulo != "" ? a.Titulo : a.Nome)</span>
+                                    <span class="us-li-bar"><i style="width:@Css(Math.Max(1, a.Bytes * 100.0 / Math.Max(1, u.Maiores[0].Bytes)))%; background:var(--purple)"></i></span>
+                                    <span class="us-li-val">@UsoSistema.Tam(a.Bytes)</span>
+                                    <span class="us-li-sub">@UsoSistema.Data(a.Em)</span>
+                                </div>
+                            }
+                        </div>
+                        @if (u.Pastas.Count > 1)
+                        {
+                            <p class="muted pequeno">Por pasta: @string.Join(" · ", u.Pastas.Select(p => $"{p.Pasta} {UsoSistema.Tam(p.Bytes)}"))</p>
+                        }
+                    }
+                </div>
+            </div>
+
+            <div class="us-duas">
+                @* ---------------------------------------------------- áreas *@
+                <div class="painel us-bloco">
+                    <h3 class="us-h"><Icone Nome="radial" Tamanho="18" /> Pedidos de hoje por área</h3>
+                    @{ var rotas = u.Rotas(); long somaR = Math.Max(1, rotas.Sum(r => r.n)); }
+                    @if (rotas.Count == 0) { <p class="muted">Nenhum pedido medido hoje ainda.</p> }
+                    <div class="us-lista">
+                        @foreach (var (rota, n) in rotas.Take(12))
+                        {
+                            <div class="us-li">
+                                <span class="us-li-nome">@rota</span>
+                                <span class="us-li-bar"><i style="width:@Css(Math.Max(1, n * 100.0 / Math.Max(1, rotas[0].n)))%; background:var(--green)"></i></span>
+                                <span class="us-li-val">@Fmt(n)</span>
+                                <span class="us-li-sub">@Pct(n * 100.0 / somaR)</span>
+                            </div>
+                        }
+                    </div>
+                    <p class="muted pequeno">O chat aberto e o sininho consultam o servidor de tempos em tempos; por isso costumam liderar.</p>
+                </div>
+
+                @* ---------------------------------------------------- pessoas *@
+                <div class="painel us-bloco">
+                    <h3 class="us-h"><Icone Nome="usuarios" Tamanho="18" /> Pessoas e ferramentas</h3>
+                    <div class="us-pessoas">
+                        <div><b>@Fmt(u.UsuariosTotal)</b><span>contas</span></div>
+                        <div><b>@Fmt(u.AtivosHoje)</b><span>ativas hoje</span></div>
+                        <div><b>@Fmt(u.Ativos7)</b><span>em 7 dias</span></div>
+                        <div><b>@Fmt(u.Ativos30)</b><span>em 30 dias</span></div>
+                        <div><b>@Fmt(u.Sessoes)</b><span>sessões abertas</span></div>
+                        <div class="@(u.Pendentes > 0 ? "us-pend" : "")"><b>@Fmt(u.Pendentes)</b><span>aguardando</span></div>
+                    </div>
+                    <p class="muted pequeno">
+                        @string.Join(" · ", u.Papeis.Where(p => p.Status != "pendente").GroupBy(p => p.Papel).OrderByDescending(g => g.Sum(x => x.N)).Select(g => $"{UsoSistema.NomePapel(g.Key)}: {g.Sum(x => x.N)}"))
+                    </p>
+                    @if (u.Ferramentas.Count > 0)
+                    {
+                        <table class="us-tab">
+                            <thead><tr><th>Mais usadas</th><th>Usos</th><th>Pessoas</th></tr></thead>
+                            <tbody>
+                                @foreach (var f in u.Ferramentas.Take(8))
+                                {
+                                    <tr><td>@UsoSistema.NomeFerramenta(f.Chave)</td><td>@Fmt(f.Usos)</td><td>@Fmt(f.Pessoas)</td></tr>
+                                }
+                            </tbody>
+                        </table>
+                    }
+                </div>
+            </div>
+
+            @* ---------------------------------------------------- navegador *@
+            <div class="painel us-bloco us-nav">
+                <h3 class="us-h"><Icone Nome="monitor" Tamanho="18" /> Memória deste navegador</h3>
+                @if (_nav is { } nv)
+                {
+                    <p class="muted pequeno">O que o QSmart guarda neste computador (planilhas carregadas, cofre, preferências). Não conta no limite da Cloudflare e é diferente em cada computador.</p>
+                    <div class="us-pessoas">
+                        <div><b>@UsoSistema.Tam(nv.usado)</b><span>usado pelo site</span></div>
+                        <div><b>@UsoSistema.Tam(nv.local)</b><span>preferências (localStorage)</span></div>
+                        <div><b>@(nv.cota > 0 ? UsoSistema.Tam(nv.cota) : "—")</b><span>espaço liberado pelo navegador</span></div>
+                        <div><b>@(nv.cota > 0 ? Pct(nv.usado * 100.0 / nv.cota) : "—")</b><span>em uso</span></div>
+                    </div>
+                }
+                else { <p class="muted">Este navegador não informa o espaço usado.</p> }
+            </div>
+
+            <p class="us-nota muted pequeno"><Icone Nome="info" Tamanho="13" />
+                Como medimos: a cada pedido, o servidor soma as linhas que o banco informa ter lido e gravado, as perguntas à IA (e o limite que a própria Groq devolve)
+                e as operações com arquivos, e grava o total por dia. É uma estimativa muito próxima; o número oficial de cobrança fica no painel da Cloudflare
+                (Workers e D1 › Métricas). O tamanho do banco e dos arquivos é medido na hora, exato.
+            </p>
+        }
+    </ChildContent>
+</Pagina>
+
+@code {
+    UsoSistema? _u;
+    List<AvisoUso> _avisos = new();
+    string _erro = "", _serie = "req";
+    bool _carregando, _gerando, _verTabelas;
+    (long local, long usado, long cota)? _nav;
+
+    static readonly (string k, string nome)[] Series =
+    {
+        ("req", "Pedidos"), ("rd", "Linhas lidas"), ("wr", "Linhas gravadas"), ("ia", "Perguntas à IA"), ("iatok", "Tokens IA"), ("err", "Erros"),
+        ("banco_bytes", "Tamanho do banco"), ("r2_bytes", "Tamanho dos arquivos"),
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        E.Mudou += Redesenhar;
+        if (E.Conta.Perfil?.Papel == "admin") await Carregar();
+    }
+    void Redesenhar() => InvokeAsync(StateHasChanged);
+    public void Dispose() => E.Mudou -= Redesenhar;
+
+    async Task Carregar()
+    {
+        _carregando = true;
+        try
+        {
+            var r = await E.Conta.Chamar("GET", "admin/uso");
+            if (!r.Ok || r.Json == null) { _erro = r.Erro; return; }
+            _erro = "";
+            _u = UsoLeitor.Ler(r.Json);
+            _avisos = _u.Avisos();
+            E.UsoNivel = _u.NivelGeral;
+            E.Notificar();
+        }
+        finally { _carregando = false; }
+        try
+        {
+            var j = await JS.InvokeAsync<System.Text.Json.JsonElement>("qsmart.armazenamento");
+            long G(string k) => j.TryGetProperty(k, out var x) && x.TryGetDouble(out var d) ? (long)d : 0;
+            _nav = G("usado") > 0 || G("local") > 0 ? (G("local"), G("usado"), G("cota")) : null;
+        }
+        catch { _nav = null; }
+    }
+
+    string NavTexto() => _nav is { } n ? $"{UsoSistema.Tam(n.usado)} usados pelo site ({UsoSistema.Tam(n.local)} de preferências)" + (n.cota > 0 ? $" de {UsoSistema.Tam(n.cota)} liberados" : "") : "";
+
+    async Task Pdf()
+    {
+        if (_u == null) return;
+        _gerando = true;
+        try
+        {
+            var b = QSmart.Core.Pdf.Relatorios.Uso(_u, _nav != null ? NavTexto() : null);
+            await E.Nav.Baixar($"Uso e armazenamento QSmart {_u.GeradoEm.AddHours(-3):yyyy-MM-dd HHmm}.pdf", b, Navegador.MimePdf);
+            _ = E.Conta.Registrar("uso.pdf", true);
+        }
+        catch (Exception ex) { await E.Janelas.Aviso("Relatório PDF", ex.Message); }
+        finally { _gerando = false; }
+    }
+
+    async Task Excel()
+    {
+        if (_u == null) return;
+        _gerando = true;
+        try
+        {
+            await E.Nav.Baixar($"Uso e armazenamento QSmart {_u.GeradoEm.AddHours(-3):yyyy-MM-dd HHmm}.xlsx", _u.Planilha(), Navegador.MimeXlsx);
+            _ = E.Conta.Registrar("uso.excel", true);
+        }
+        catch (Exception ex) { await E.Janelas.Aviso("Planilha", ex.Message); }
+        finally { _gerando = false; }
+    }
+
+    // ---------------------------------------------------- auxiliares
+    List<(DateOnly dia, long v)> Ultimos30(UsoSistema u)
+    {
+        var porDia = u.Historico.ToDictionary(d => d.Dia);
+        var l = new List<(DateOnly, long)>();
+        for (int i = 29; i >= 0; i--)
+        {
+            var d = u.DiaUtc.AddDays(-i);
+            l.Add((d, porDia.TryGetValue(d, out var x) ? x[_serie] : 0));
+        }
+        return l;
+    }
+
+    static long LimiteSerie(UsoSistema u, string k) => k switch
+    {
+        "req" => u.Lim.ReqDia, "rd" => u.Lim.LerDia, "wr" => u.Lim.GravarDia, "ia" => u.IaLimite, "iatok" => u.Lim.IaTokDia,
+        "banco_bytes" => u.Lim.BancoBytes, "r2_bytes" => u.Lim.R2Bytes, _ => 0,
+    };
+
+    static string Dica(DateOnly dia, long v, long lim, bool bytes) =>
+        $"{dia:dd/MM/yyyy}: {(bytes ? UsoSistema.Tam(v) : Fmt(v))}" + (lim > 0 ? $" ({Pct(v * 100.0 / lim)} do limite)" : "");
+    static string Rotulo(DateOnly dia, DateOnly primeiro, DateOnly hoje) =>
+        dia.Day == 1 || dia == primeiro || dia == hoje ? dia.ToString("dd/MM") : dia.Day % 5 == 0 ? dia.Day.ToString() : "";
+    static string Cls(NivelUso n) => n switch { NivelUso.Critico => "crit", NivelUso.Atencao => "aten", NivelUso.Info => "info", _ => "ok" };
+    static string CorK(NivelUso n) => n switch { NivelUso.Critico => "red", NivelUso.Atencao => "amber", NivelUso.Info => "blue", _ => "green" };
+    static string Fmt(long n) => QSmart.Core.Texto.Fmt(n);
+    static string Pct(double x) => (x > 0 && x < 0.01 ? "<0,01" : x < 10 ? QSmart.Core.Texto.Fv(x, 2) : QSmart.Core.Texto.Fv(x, 1)) + "%";
+    static string Css(double x) => x.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+    static readonly string[] PaletaMod = { "#0284C7", "#7C3AED", "#059669", "#DB2777", "#D97706", "#2563EB", "#0891B2", "#65A30D", "#E11D48", "#9333EA", "#64748B" };
+    static string CorMod(string n) { int h = 0; foreach (var ch in n) h = unchecked(h * 31 + ch); return PaletaMod[(int)((uint)h % PaletaMod.Length)]; }
+}

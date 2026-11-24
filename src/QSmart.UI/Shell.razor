@@ -89,6 +89,15 @@ else
         {
             var res = Nivel();
             <div class="topo-dir">
+                @if (pf.Papel == "admin" && !E.Conta.Visao)
+                {
+                    var nv = E.UsoNivel;
+                    <a class="td-bt td-uso @(NaRota("uso-sistema") ? "on" : "")" href="uso-sistema" @onclick="FecharMovel"
+                       title="@(nv is QSmart.Core.Admin.NivelUso.Critico ? "Uso e armazenamento · há pontos críticos" : nv is QSmart.Core.Admin.NivelUso.Atencao ? "Uso e armazenamento · há pontos de atenção" : "Uso e armazenamento")">
+                        <Icone Nome="grafico-barra" Tamanho="20" />
+                        @if (nv is QSmart.Core.Admin.NivelUso.Critico or QSmart.Core.Admin.NivelUso.Atencao) { <em class="td-alerta @(nv == QSmart.Core.Admin.NivelUso.Critico ? "crit" : "")">!</em> }
+                    </a>
+                }
                 <button class="td-bt @(_chat ? "on" : "")" title="Chat" @onclick="AbrirChat">
                     <Icone Nome="conversa" Tamanho="20" />
                     @if (E.Chat.Total > 0) { <em class="td-num ch-num">@(E.Chat.Total > 9 ? "9+" : E.Chat.Total.ToString())</em> }
@@ -256,9 +265,20 @@ else
         {
             _logadoAntes = true; _ = E.Sino.Carregar(); _timerSino ??= new System.Threading.Timer(_ => InvokeAsync(E.Sino.Carregar), null, 60000, 60000);
             _ = E.Chat.AtualizarResumo(); _timerChat ??= new System.Threading.Timer(_ => InvokeAsync(TiqueChat), null, 4000, 4000);
+            if (E.Conta.Perfil?.Papel == "admin" && !E.Conta.Visao) _ = ChecarUso();
         }
         else if (!E.Conta.Logado) { _logadoAntes = false; _sino = false; _chat = false; _aviso = null; _timerSino?.Dispose(); _timerSino = null; _timerChat?.Dispose(); _timerChat = null; }
         Atualizar();
+    }
+    // administrador: confere uma vez por sessão se há algum limite perto de estourar (ponto no botão de uso)
+    async Task ChecarUso()
+    {
+        try
+        {
+            var r = await E.Conta.Chamar("GET", "admin/uso");
+            if (r.Ok && r.Json != null) { E.UsoNivel = QSmart.UI.Servicos.UsoLeitor.Ler(r.Json).NivelGeral; Atualizar(); }
+        }
+        catch { }
     }
     async Task AbrirSino()
     {
