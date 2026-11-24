@@ -157,7 +157,7 @@ public static class FeriasClt
     public static List<AvisoFer> Validar(ColabFer c, DateOnly hoje)
     {
         var av = new List<AvisoFer>();
-        if (c.Admissao is not { } adm) { av.Add(new(false, "Sem data de admissão: não dá para saber o prazo. Atualize a planilha base no Perfil.")); return av; }
+        if (c.Admissao is not { } adm) { av.Add(new(false, "Sem data de admissão: não dá para saber o prazo. A liderança informa em Perfil › Minha equipe.")); return av; }
         var ps = c.F.Periodos.OrderBy(p => p.Inicio).ToList();
         for (int i = 1; i < ps.Count; i++)
             if (ps[i].Inicio <= ps[i - 1].Fim) av.Add(new(true, $"Os períodos de {ps[i - 1].Inicio:dd/MM} e {ps[i].Inicio:dd/MM} se sobrepõem."));
