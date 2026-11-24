@@ -104,10 +104,16 @@ async function gravarUso(db) {
 
 // banco e arquivos "medidos": mesmo jeito de usar, mas cada consulta soma rows_read / rows_written
 function medirEnv(env) {
-  const extra = {};
-  if (env.DB) extra.DB = { value: medirDB(env.DB) };
-  if (env.ARQUIVOS) extra.ARQUIVOS = { value: medirR2(env.ARQUIVOS) };
-  return Object.create(env, extra);
+  const db = env.DB ? medirDB(env.DB) : null;
+  const arq = env.ARQUIVOS ? medirR2(env.ARQUIVOS) : null;
+  // devolve o mesmo env, trocando só o banco e os arquivos pelas versões que contam o uso
+  return new Proxy(env, {
+    get(alvo, k) {
+      if (k === "DB" && db) return db;
+      if (k === "ARQUIVOS" && arq) return arq;
+      return Reflect.get(alvo, k);
+    },
+  });
 }
 function medirDB(db) {
   const somar = meta => { if (!meta) return; contar("rd", meta.rows_read || 0); contar("wr", meta.rows_written || 0); contar("q"); };
