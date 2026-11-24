@@ -105,16 +105,6 @@
                     @if (_base == null) { <p class="muted pequeno"><span class="ia-spin pequeno"></span> Carregando…</p> }
                     else
                     {
-                        @if (_base["ultima"] is System.Text.Json.Nodes.JsonObject ul)
-                        {
-                            <div class="pf-base-ult">
-                                <small>ÚLTIMA CARGA PELA COORDENAÇÃO (ANTES DA MUDANÇA)</small>
-                                <b>@Quando(Txt(ul, "em")) · @(Txt(ul, "por"))</b>
-                                <span>@(Num(ul, "linhas")) pessoas · @(Num(ul, "novos")) novas · @(Num(ul, "atualizados")) atualizadas · @(Num(ul, "arquivados")) arquivadas</span>
-                                @if (Num(ul, "semAdmissao") > 0) { <span class="pf-base-alerta"><Icone Nome="alerta" Tamanho="13" /> @(Num(ul, "semAdmissao")) sem data de admissão</span> }
-                            </div>
-                        }
-                        else { <p class="muted pequeno">Nenhuma planilha carregada ainda.</p> }
                         <button class="btn btn-sec pf-base-ver" @onclick="AbrirColabs"><Icone Nome="usuarios" Tamanho="15" /> @(_colabsAberto ? "Fechar a lista" : "Ver, adicionar e excluir colaboradores")</button>
                         <div class="pf-base-coords">
                             @foreach (var c in (_base["coordenacoes"] as System.Text.Json.Nodes.JsonArray ?? new()).Where(c => Txt(c, "nome") != ""))
@@ -408,7 +398,6 @@
     bool _enviando;
     List<UsuarioAdmin>? _usuarios;
     System.Text.Json.Nodes.JsonNode? _base;
-    bool _baseEnviando;
     int _baseCoord;
     bool _colabsAberto;
     string _colabBusca = "", _novoNome = "", _novaLid = "";
@@ -484,7 +473,6 @@
         E.FeColabs = null;
         await LerBase();
     }
-    int _chaveBase;
 
     async Task LerBase()
     {
@@ -498,38 +486,7 @@
     static bool Sim(System.Text.Json.Nodes.JsonNode? n, string k) => n?[k] is System.Text.Json.Nodes.JsonValue v && v.TryGetValue<bool>(out var x) && x;
     static string Quando(string? iso) => DateTime.TryParse(iso, null, System.Globalization.DateTimeStyles.RoundtripKind, out var d) ? d.ToLocalTime().ToString("dd/MM/yyyy 'às' HH:mm") : "";
 
-    async Task BaixarModelo() => await E.Nav.Baixar("Modelo base de colaboradores.xlsx", QSmart.Core.Coordenacao.FeriasClt.Modelo(), Navegador.MimeXlsx);
 
-    async Task CarregarBase(InputFileChangeEventArgs ev)
-    {
-        var f = ev.File;
-        byte[] bytes;
-        try { using var ms = new MemoryStream(); await f.OpenReadStream(30_000_000).CopyToAsync(ms); bytes = ms.ToArray(); }
-        catch (Exception ex) { _chaveBase++; await J.Erro("Base de colaboradores", "Não consegui ler o arquivo: " + ex.Message); return; }
-        _chaveBase++;
-        List<QSmart.Core.Coordenacao.LinhaBase> linhas;
-        try { linhas = await QSmart.Core.Coordenacao.FeriasClt.LerBase(new QSmart.Core.Planilhas.Arquivo(f.Name, bytes)); }
-        catch (Exception ex) { await J.Erro("Base de colaboradores", ex.Message); return; }
-        var eu = E.Conta.Perfil!;
-        if (eu.Admin && _baseCoord == 0) { await J.Aviso("Base de colaboradores", "Escolha primeiro de qual coordenador é esta planilha."); return; }
-        var dono = eu.Admin ? (_usuarios?.FirstOrDefault(x => x.Id == _baseCoord) is { } co ? $"{co.Nome} {co.Sobrenome}" : "?") : eu.NomeCompleto;
-        int semAdm = linhas.Count(l => l.Admissao == null), semNasc = linhas.Count(l => l.Nascimento == null);
-        var lids = linhas.Select(l => l.Lideranca).Where(l => l != "").Distinct().Count();
-        var msg = $"{linhas.Count} pessoas em {lids} liderança(s) entram na coordenação de {dono}." +
-                  (semAdm > 0 ? $"\n\n{semAdm} sem data de admissão (as Férias delas ficam sem prazo até corrigir)." : "") +
-                  $"\n\nQuem já existe é atualizado e quem é da coordenação de {dono} mas não está na planilha é arquivado. Enviar?";
-        if (!await J.Pergunta("Carregar base de colaboradores", msg)) return;
-        _baseEnviando = true; StateHasChanged();
-        var r = await E.BaseEnviar(linhas, f.Name, eu.Admin ? _baseCoord : null);
-        _baseEnviando = false;
-        if (!r.Ok) { await J.Erro("Base de colaboradores", r.Erro); return; }
-        await LerBase();
-        _ = E.Conta.Registrar("base.carregar", true);
-        var outras = Num(r.Json, "deOutrasN");
-        await J.Info("Base de colaboradores", $"Pronto! {Num(r.Json, "novos")} novas, {Num(r.Json, "atualizados")} atualizadas e {Num(r.Json, "arquivados")} arquivadas. Já estão no One a One e nas Férias." +
-            (Num(r.Json, "daLiderancaN") is int dl and > 0 ? $"\n\n{dl} pessoa(s) já foram cadastradas pela própria liderança e ficaram com os dados dela (não houve conflito)." : "") +
-            (outras > 0 ? $"\n\n{outras} pessoa(s) da planilha já são de outra coordenação e ficaram onde estão (o administrador pode transferir): {string.Join(", ", (r.Json?["deOutras"] as System.Text.Json.Nodes.JsonArray ?? new()).Select(x => x?.ToString()))}" : ""));
-    }
     static readonly string[] Ferramentas = Abas.Todas.Concat(Abas.Internas).Where(a => !a.Externo).Select(a => a.Chave).ToArray();
 
     protected override async Task OnInitializedAsync()

@@ -723,29 +723,6 @@
         Salvar();
     }
 
-    async Task Anexar(List<Arquivo> arqs)
-    {
-        var arq = arqs[0];
-        BaseOO lida;
-        try { lida = OneAOne.Ler(arq.Dados, arq.Nome); }
-        catch (Exception ex) { await J.Erro("One a One", $"Não consegui ler “{arq.Nome}”.\n\n{ex.Message}"); return; }
-        var b = E.OneBase;
-        if (b == null || !b.Pessoas.Any())
-        {
-            b ??= new BaseOO();
-            OneAOne.Aplicar(b, OneAOne.Comparar(b, lida), new List<string>(), true, _hoje);
-            E.OneBase = b;
-            Salvar();
-            await J.Info("One a One", $"{Ferias.Plural(b.Pessoas.Count, "colaborador", "colaboradores")} em {Ferias.Plural(b.TodasLiderancas().Count, "liderança", "lideranças")}. Tudo fica salvo neste navegador, criptografado.");
-            return;
-        }
-        var m = OneAOne.Comparar(b, lida);
-        if (m.Vazia) { await J.Info("One a One", "A planilha não trouxe nenhuma mudança: as mesmas pessoas, nas mesmas lideranças, sem 1:1 novos."); return; }
-        _mud = m;
-        _confirmados = m.Parecidos.Select(x => x.atual.Id).ToHashSet();
-        _arquivarSaidas = true;
-    }
-
     void AplicarMudancas()
     {
         if (_mud == null || E.OneBase == null) return;

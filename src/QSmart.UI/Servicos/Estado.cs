@@ -474,21 +474,6 @@ public sealed class Estado
     // ---- Base de colaboradores (planilha da coordenação: nome, admissão, liderança, coordenação) ----
     public async Task<RespostaApi> BaseResumo() => await Conta.Chamar("GET", "oo/base");
 
-    public async Task<RespostaApi> BaseEnviar(List<QSmart.Core.Coordenacao.LinhaBase> linhas, string arquivo, int? coordenador = null)
-    {
-        var a = new System.Text.Json.Nodes.JsonArray();
-        foreach (var l in linhas)
-            a.Add(new System.Text.Json.Nodes.JsonObject
-            {
-                ["nome"] = l.Nome, ["admissao"] = l.Admissao?.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture) ?? "",
-                ["lideranca"] = l.Lideranca, ["coordenacao"] = l.Coordenacao,
-            });
-        var corpo = new System.Text.Json.Nodes.JsonObject { ["linhas"] = a, ["arquivo"] = arquivo };
-        if (coordenador is int c) corpo["coordenador_id"] = c;
-        var r = await Conta.Chamar("POST", "oo/base", corpo);
-        if (r.Ok) { OneBase = null; FeColabs = null; }
-        return r;
-    }
 
     // ---- Férias (painel geral): todas as coordenações veem todo mundo; cada uma edita os seus ----
     public List<QSmart.Core.Coordenacao.ColabFer>? FeColabs;
