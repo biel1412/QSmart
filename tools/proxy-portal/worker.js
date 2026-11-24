@@ -149,6 +149,62 @@ function notarIA(r) {
   marcarValor("ia_lim_tok_min", h("x-ratelimit-limit-tokens"));
 }
 
+// =============================== aniversários ===============================
+// Data de nascimento que a liderança informa: aceita AAAA-MM-DD válido, entre 1930 e hoje.
+function dataNasc(v) {
+  const t = String(v || "");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(t)) return null;
+  const d = new Date(t + "T12:00:00Z");
+  if (isNaN(d) || d.toISOString().slice(0, 10) !== t || t < "1930-01-01" || t > hojeBR()) return null;
+  return t;
+}
+// Uma vez por dia (horário de Brasília), quem faz aniversário vira notificação para todas as contas ativas,
+// com o link do gerador de post. O nome vai criptografado na notificação. A lista de quem já foi avisado no dia
+// fica em kv "aniv:<dia>", assim quem for cadastrado no próprio dia do aniversário também é avisado (sem repetir).
+let ANIV_FEITO = "";
+function fazAnivHoje(n) {
+  if (!n) return false;
+  const [ano, mes, dia] = hojeBR().split("-").map(Number);
+  const bissexto = (ano % 4 === 0 && ano % 100 !== 0) || ano % 400 === 0;
+  const [, m, d] = String(n).split("-").map(Number);
+  if (m === mes && d === dia) return true;
+  return !bissexto && m === 2 && d === 29 && mes === 2 && dia === 28;   // nascidos em 29/02 comemoram em 28/02
+}
+async function avisarAniversarios(env, soEstas) {
+  const hoje = hojeBR();
+  if (!soEstas && ANIV_FEITO === hoje) return;
+  const chave = "aniv:" + hoje;
+  if (!soEstas) {
+    // marca o dia antes de gerar: se dois pedidos chegarem juntos, só um faz a varredura
+    const r = await env.DB.prepare("INSERT INTO kv (chave, valor) VALUES (?, '[]') ON CONFLICT(chave) DO NOTHING").bind(chave).run();
+    ANIV_FEITO = hoje;
+    if (!r?.meta?.changes) return;
+  }
+  let pessoas = soEstas;
+  if (!pessoas) {
+    pessoas = [];
+    const todos = (await env.DB.prepare("SELECT dados FROM oo_pessoas WHERE id != ?").bind(META_OO).all()).results || [];
+    for (const t of todos) { try { const p = (JSON.parse(await decifrar(env, t.dados)).Pessoas || [])[0]; if (p) pessoas.push(p); } catch { } }
+  }
+  const kv = await env.DB.prepare("SELECT valor FROM kv WHERE chave = ?").bind(chave).first();
+  let ja = []; try { ja = JSON.parse(kv?.valor || "[]"); } catch { ja = []; }
+  const vistos = new Set(ja), hojeAniv = [];
+  for (const p of pessoas) {
+    const k = normN(p.Nome);
+    if (p && !p.Arquivado && fazAnivHoje(p.Nascimento) && !vistos.has(k)) { vistos.add(k); hojeAniv.push(p); }
+  }
+  if (!hojeAniv.length) return;
+  await env.DB.prepare("INSERT INTO kv (chave, valor) VALUES (?, ?) ON CONFLICT(chave) DO UPDATE SET valor = excluded.valor").bind(chave, JSON.stringify([...vistos])).run();
+  // vai para todos os papéis, menos "usuário"
+  const contas = ((await env.DB.prepare("SELECT id FROM usuarios WHERE status = 'ativo' AND papel IN ('admin', 'coordenador', 'lideranca')").all()).results || []).map(x => x.id);
+  const q = [], em = agora();
+  for (const p of hojeAniv) {
+    const ref = hoje + "|" + await cifrar(env, JSON.stringify({ nome: p.Nome, lid: p.Lideranca || "" }));
+    for (const id of contas) q.push(env.DB.prepare("INSERT INTO notificacoes (usuario_id, tipo, de_id, post_id, ref, criado_em) VALUES (?, 'aniversario', NULL, NULL, ?, ?)").bind(id, ref, em));
+  }
+  for (let i = 0; i < q.length; i += 80) await env.DB.batch(q.slice(i, i + 80));
+}
+
 // =============================== tema sazonal ===============================
 const TEMAS = ["", "natal", "natalsuave", "pascoa", "anonovo"];
 async function temaAtual(env) {
@@ -812,88 +868,8 @@ async function api(req, env, url) {
       return json({ ultima: kv ? JSON.parse(kv.valor) : null, coordenacoes: coords, minhaCoord: ac.coord });
     }
     if (m === "POST") {
-      const b = await corpo(req);
-      // a planilha é da coordenação de quem carrega; o administrador escolhe de qual coordenador ela é
-      let coordFixa = ac.admin ? "" : ac.coord;
-      if (ac.admin && b.coordenador_id) {
-        const c = coordenadores.find(k => k.id === Number(b.coordenador_id));
-        if (!c) return erro("Escolha um coordenador ativo.");
-        coordFixa = coordDoUsuario(c);
-      }
-      const linhas = (Array.isArray(b.linhas) ? b.linhas : []).slice(0, 5000).map(x => ({
-        nome: String(x.nome || "").replace(/\s+/g, " ").trim().slice(0, 120), admissao: /^\d{4}-\d{2}-\d{2}$/.test(x.admissao || "") ? x.admissao : null,
-        lideranca: String(x.lideranca || "").trim().slice(0, 80), coordenacao: coordFixa || String(x.coordenacao || "").trim().slice(0, 80),
-      })).filter(x => x.nome);
-      if (linhas.length === 0) return erro("A planilha veio sem pessoas.");
-      if (linhas.some(l => !l.coordenacao)) return erro("Escolha de qual coordenador é esta planilha.");
-      const oficial = await lideresOficiais(env);
-      for (const l of linhas) l.lideranca = oficial(l.lideranca);
-      // quem é de outra coordenação não muda de dono por esta planilha
-      const outras = [], daLideranca = [];
-      const todos = (await env.DB.prepare("SELECT id, dados FROM oo_pessoas WHERE id != ?").bind(META_OO).all()).results || [];
-      const porNome = new Map();
-      for (const t of todos) { try { const o = JSON.parse(await decifrar(env, t.dados)); const p = (o.Pessoas || [])[0]; if (p) { p.Id = t.id; porNome.set(normN(p.Nome), p); } } catch { } }
-      const hoje = hojeISO();
-      const recente = d => d && (Date.parse(hoje) - Date.parse(d)) / 864e5 < 90;
-      const gravar = [], vistos = new Set();
-      let novos = 0, atualizados = 0, arquivados = 0;
-      for (const l of linhas) {
-        const k = normN(l.nome); if (vistos.has(k)) continue; vistos.add(k);
-        let p = porNome.get(k);
-        // quem a própria liderança cadastrou vale o que a liderança informou: a planilha da coordenação não mexe
-        if (p && p.Fonte === "lideranca") { daLideranca.push(l.nome); continue; }
-        if (p && p.Coordenacao && !mesmaCoord(p.Coordenacao, l.coordenacao) && !p.Arquivado && !ac.admin) { outras.push(l.nome); continue; }
-        if (p) {
-          let mudou = false;
-          if (l.lideranca && p.Lideranca !== l.lideranca && normN(p.Lideranca) === normN(l.lideranca)) {
-            // mesma liderança, só escrita diferente: arruma o nome sem contar como troca de time
-            for (const v of p.Vinculos || []) if (normN(v.Lideranca) === normN(l.lideranca)) v.Lideranca = l.lideranca;
-            p.Lideranca = l.lideranca; mudou = true;
-          }
-          if (l.lideranca && p.Lideranca !== l.lideranca) {
-            for (const v of p.Vinculos || []) if (!v.Ate) v.Ate = hoje;
-            (p.Vinculos ||= []).push({ Lideranca: l.lideranca, Desde: hoje, Ate: null });
-            p.Lideranca = l.lideranca; p.MudouEm = hoje; mudou = true;
-          }
-          if (l.admissao && p.Admissao !== l.admissao) { p.Admissao = l.admissao; mudou = true; }
-          if (l.coordenacao !== (p.Coordenacao || "")) { p.Coordenacao = l.coordenacao; mudou = true; }
-          if (p.Arquivado) { p.Arquivado = false; p.ArquivadoEm = null; mudou = true; }
-          if (!mudou) continue;
-          atualizados++;
-        } else {
-          p = { Id: novoIdOO(), Nome: l.nome, Lideranca: l.lideranca, Tipo: recente(l.admissao) ? "Novo" : "Antigo", Arquivado: false, ArquivadoEm: null,
-                Entrada: recente(l.admissao) ? l.admissao : null, MudouEm: null, Admissao: l.admissao, Coordenacao: l.coordenacao,
-                Vinculos: l.lideranca ? [{ Lideranca: l.lideranca, Desde: l.admissao || hoje, Ate: null }] : [], Registros: [] };
-          porNome.set(k, p);
-          novos++;
-        }
-        gravar.push(p);
-      }
-      // quem saiu da planilha (nas coordenações que vieram nela) é arquivado, com o histórico guardado
-      const coordsPlanilha = [...new Set(linhas.map(l => l.coordenacao).filter(Boolean))];
-      for (const [k, p] of porNome) {
-        if (vistos.has(k) || p.Arquivado || p.Fonte === "lideranca") continue;
-        if (!coordsPlanilha.some(c => mesmaCoord(c, p.Coordenacao || ""))) continue;
-        p.Arquivado = true; p.ArquivadoEm = hoje; arquivados++; gravar.push(p);
-      }
-      const q = [];
-      for (const p of gravar) {
-        const dados = JSON.stringify({ Pessoas: [p], Liderancas: [], Fotos: {}, Arquivo: "", AtualizadoEm: "" });
-        q.push(env.DB.prepare("INSERT INTO oo_pessoas (id, lideranca, coordenacao, dados, atualizado_em, atualizado_por) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET lideranca = excluded.lideranca, coordenacao = excluded.coordenacao, dados = excluded.dados, atualizado_em = excluded.atualizado_em, atualizado_por = excluded.atualizado_por")
-          .bind(p.Id, p.Lideranca || "", p.Coordenacao || "", await cifrar(env, dados), agora(), u.id));
-      }
-      const resumo = {
-        em: agora(), por: `${u.nome} ${u.sobrenome}`.trim(), arquivo: String(b.arquivo || "").slice(0, 120), linhas: linhas.length, novos, atualizados, arquivados,
-        coordenacoes: coordsPlanilha.map(c => ({ nome: c, pessoas: linhas.filter(l => l.coordenacao === c).length, coordenador: donoDe(c) })),
-        semAdmissao: linhas.filter(l => !l.admissao).length, deOutras: outras.slice(0, 20), deOutrasN: outras.length,
-        daLideranca: daLideranca.slice(0, 20), daLiderancaN: daLideranca.length,
-      };
-      q.push(env.DB.prepare("INSERT INTO kv (chave, valor) VALUES ('base_import', ?) ON CONFLICT(chave) DO UPDATE SET valor = excluded.valor").bind(JSON.stringify(resumo)));
-      for (const c of new Set(linhas.map(l => normN(l.coordenacao))))
-        q.push(env.DB.prepare("INSERT INTO kv (chave, valor) VALUES (?, ?) ON CONFLICT(chave) DO UPDATE SET valor = excluded.valor").bind("base_import:" + c, JSON.stringify(resumo)));
-      for (const l of linhas) if (l.lideranca) q.push(env.DB.prepare("INSERT INTO oo_equipes (chave, lideranca, coordenacao) VALUES (?, ?, ?) ON CONFLICT(chave) DO NOTHING").bind(normN(l.lideranca), l.lideranca, l.coordenacao));
-      for (let i = 0; i < q.length; i += 80) await env.DB.batch(q.slice(i, i + 80));
-      return json({ ok: true, ...resumo });
+      // a planilha de pessoas agora é só das lideranças (Perfil › Minha equipe), para não haver duas fontes brigando
+      return erro("A planilha de colaboradores agora é carregada só pelas lideranças, em Perfil › Minha equipe. A coordenação continua podendo ajustar pessoa por pessoa.", 403);
     }
   }
 
@@ -913,7 +889,7 @@ async function api(req, env, url) {
     const hoje = hojeISO();
     const recente = d => d && (Date.parse(hoje) - Date.parse(d)) / 864e5 < 90;
     const lista = () => pessoas.filter(p => minha(p) && !p.Arquivado).sort((a, b) => a.Nome.localeCompare(b.Nome, "pt-BR"))
-      .map(p => ({ id: p.Id, nome: p.Nome, admissao: p.Admissao || null, tipo: p.Tipo || "", fonte: p.Fonte || "" }));
+      .map(p => ({ id: p.Id, nome: p.Nome, admissao: p.Admissao || null, nascimento: p.Nascimento || null, tipo: p.Tipo || "", fonte: p.Fonte || "" }));
     const gravar = async lst => {
       const q = [];
       for (const p of lst) {
@@ -923,14 +899,16 @@ async function api(req, env, url) {
       }
       for (let i = 0; i < q.length; i += 80) await env.DB.batch(q.slice(i, i + 80));
       if (coord) await registrarEquipe(env, lid, coord);
+      // cadastrou alguém que faz aniversário hoje? avisa já (a varredura do dia pode ter passado)
+      if (lst.some(p => !p.Arquivado && fazAnivHoje(p.Nascimento))) { await avisarAniversarios(env); await avisarAniversarios(env, lst); }
     };
     // aplica uma pessoa informada pela liderança: devolve a pessoa, ou um motivo para não mexer
-    const aplicar = (nome, admissao) => {
+    const aplicar = (nome, admissao, nascimento) => {
       const k = normN(nome);
       let p = pessoas.find(x => normN(x.Nome) === k && !x.Arquivado) || pessoas.find(x => normN(x.Nome) === k);
       if (!p) {
         p = { Id: novoIdOO(), Nome: nome, Lideranca: lid, Tipo: recente(admissao) ? "Novo" : "Antigo", Arquivado: false, ArquivadoEm: null,
-              Entrada: recente(admissao) ? admissao : null, MudouEm: null, Admissao: admissao, Coordenacao: coord, Fonte: "lideranca",
+              Entrada: recente(admissao) ? admissao : null, MudouEm: null, Admissao: admissao, Nascimento: nascimento || null, Coordenacao: coord, Fonte: "lideranca",
               Vinculos: [{ Lideranca: lid, Desde: admissao || hoje, Ate: null }], Registros: [] };
         pessoas.push(p); return { p, novo: true };
       }
@@ -945,6 +923,7 @@ async function api(req, env, url) {
         p.Lideranca = lid;
       }
       if (admissao) p.Admissao = admissao;
+      if (nascimento) p.Nascimento = nascimento;
       if (!p.Coordenacao && coord) p.Coordenacao = coord;
       if (p.Arquivado) { p.Arquivado = false; p.ArquivadoEm = null; }
       p.Fonte = "lideranca";
@@ -958,13 +937,14 @@ async function api(req, env, url) {
     if (m === "POST") {
       const b = await corpo(req);
       const linhas = (Array.isArray(b.linhas) ? b.linhas : []).slice(0, 2000).map(x => ({
-        nome: String(x.nome || "").replace(/\s+/g, " ").trim().slice(0, 120), admissao: /^\d{4}-\d{2}-\d{2}$/.test(x.admissao || "") ? x.admissao : null })).filter(x => x.nome);
+        nome: String(x.nome || "").replace(/\s+/g, " ").trim().slice(0, 120), admissao: /^\d{4}-\d{2}-\d{2}$/.test(x.admissao || "") ? x.admissao : null,
+        nascimento: dataNasc(x.nascimento) })).filter(x => x.nome);
       if (linhas.length === 0) return erro("A planilha veio sem pessoas.");
       const mexidas = [], recusadas = [], vistos = new Set();
       let novos = 0, atualizados = 0, arquivados = 0;
       for (const l of linhas) {
         const k = normN(l.nome); if (vistos.has(k)) continue; vistos.add(k);
-        const r = aplicar(l.nome, l.admissao);
+        const r = aplicar(l.nome, l.admissao, l.nascimento);
         if (r.motivo) { recusadas.push(`${l.nome} (${r.motivo})`); continue; }
         if (r.novo) novos++; else atualizados++;
         mexidas.push(r.p);
@@ -973,7 +953,7 @@ async function api(req, env, url) {
       for (const p of pessoas) if (minha(p) && !p.Arquivado && !vistos.has(normN(p.Nome))) { p.Arquivado = true; p.ArquivadoEm = hoje; p.Fonte = "lideranca"; arquivados++; mexidas.push(p); }
       await gravar(mexidas);
       const resumo = { em: agora(), arquivo: String(b.arquivo || "").slice(0, 120), linhas: linhas.length, novos, atualizados, arquivados,
-        semAdmissao: linhas.filter(l => !l.admissao).length, recusadas: recusadas.slice(0, 20), recusadasN: recusadas.length };
+        semAdmissao: linhas.filter(l => !l.admissao).length, semNascimento: linhas.filter(l => !l.nascimento).length, recusadas: recusadas.slice(0, 20), recusadasN: recusadas.length };
       await env.DB.prepare("INSERT INTO kv (chave, valor) VALUES (?, ?) ON CONFLICT(chave) DO UPDATE SET valor = excluded.valor").bind(kvChave, JSON.stringify(resumo)).run();
       return json({ ok: true, ...resumo, pessoas: lista() });
     }
@@ -981,18 +961,22 @@ async function api(req, env, url) {
       const b = await corpo(req);
       const nome = String(b.nome || "").replace(/\s+/g, " ").trim().slice(0, 120);
       const admissao = /^\d{4}-\d{2}-\d{2}$/.test(b.admissao || "") ? b.admissao : null;
+      const nascimento = dataNasc(b.nascimento);
+      if (b.nascimento && !nascimento) return erro("Data de nascimento inválida.");
       if (!nome || !admissao) return erro("Informe o nome e a data de admissão.");
       if (b.id) {
         const p = pessoas.find(x => x.Id === String(b.id));
         if (!p || !minha(p)) return erro("Essa pessoa não é da sua equipe.", 403);
         if (normN(nome) !== normN(p.Nome) && pessoas.some(x => x !== p && normN(x.Nome) === normN(nome) && !x.Arquivado)) return erro(`Já existe “${nome}” na base.`);
         p.Nome = nome; p.Admissao = admissao; p.Fonte = "lideranca";
+        if (nascimento) p.Nascimento = nascimento;
         await gravar([p]);
         return json({ ok: true, pessoas: lista() });
       }
+      if (!nascimento) return erro("Informe também a data de nascimento.");
       const ja = pessoas.find(x => normN(x.Nome) === normN(nome) && !x.Arquivado && minha(x));
       if (ja) return erro(`“${ja.Nome}” já está na sua equipe.`);
-      const r = aplicar(nome, admissao);
+      const r = aplicar(nome, admissao, nascimento);
       if (r.motivo) return erro(`“${nome}” ${r.motivo}. Fale com a coordenação para transferir.`);
       await gravar([r.p]);
       return json({ ok: true, novo: r.novo, pessoas: lista() });
@@ -1616,6 +1600,7 @@ async function api(req, env, url) {
   }
 
   if (rota === "notif" && m === "GET") {
+    await avisarAniversarios(env);
     await env.DB.prepare("DELETE FROM notificacoes WHERE usuario_id = ? AND criado_em < ?").bind(u.id, new Date(Date.now() - 60 * 864e5).toISOString()).run();
     const r = await env.DB.prepare(
       "SELECT n.id, n.tipo, n.post_id, n.ref, n.criado_em, n.lida, n.de_id, d.nome, d.sobrenome, d.foto, p.texto AS ptexto, c.nome AS cnome FROM notificacoes n LEFT JOIN usuarios d ON d.id = n.de_id LEFT JOIN feed_posts p ON p.id = n.post_id LEFT JOIN sn_cadernos c ON c.id = n.ref AND n.tipo = 'caderno' WHERE n.usuario_id = ? ORDER BY n.id DESC LIMIT 30"
@@ -1624,6 +1609,11 @@ async function api(req, env, url) {
     for (const x of r.results || []) {
       if (x.de_id && !(x.de_id in fotos)) fotos[x.de_id] = x.foto ? await decifrar(env, x.foto) : "";
       if (x.tipo === "caderno" && !x.cnome) continue;
+      if (x.tipo === "aniversario") {
+        let a = {}; try { a = JSON.parse(await decifrar(env, (x.ref || "").split("|").slice(1).join("|"))); } catch { }
+        itens.push({ id: x.id, tipo: x.tipo, postId: 0, ref: (x.ref || "").split("|")[0] + "|" + (a.lid || ""), criadoEm: x.criado_em, lida: !!x.lida, de: 0, nome: a.nome || "Alguém da equipe", trecho: "" });
+        continue;
+      }
       const t = (x.tipo === "ferias" || x.tipo.startsWith("dayoff")) ? (x.ref || "").split("|").slice(1).join("|") : x.ptexto ? (await decifrar(env, x.ptexto)).replace(/\s+/g, " ").trim() : x.cnome ? await decifrar(env, x.cnome) : "";
       itens.push({ id: x.id, tipo: x.tipo, postId: x.post_id || 0, ref: x.ref || "", criadoEm: x.criado_em, lida: !!x.lida, de: x.de_id, nome: x.nome ? `${x.nome} ${x.sobrenome}`.trim() : "Alguém", trecho: t.length > 70 ? t.slice(0, 70) + "…" : t });
     }

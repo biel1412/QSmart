@@ -14,7 +14,7 @@ namespace QSmart.Core.Coordenacao;
 // =====================================================================================
 
 /// <summary>Uma linha da base de colaboradores (planilha carregada no Perfil da coordenação). A coordenação é a de quem carrega.</summary>
-public sealed record LinhaBase(string Nome, DateOnly? Admissao, string Lideranca, string Coordenacao);
+public sealed record LinhaBase(string Nome, DateOnly? Admissao, string Lideranca, string Coordenacao, DateOnly? Nascimento = null);
 
 /// <summary>Pessoa no painel de férias.</summary>
 public sealed class ColabFer
@@ -320,6 +320,7 @@ public static class FeriasClt
                 int ca = Col("admissao", "data de admissao", "data admissao", "dt admissao", "admitido em");
                 int cl = Col("lideranca", "lider", "lideranca imediata", "supervisor", "supervisao", "equipe", "time");
                 int cc = Col("coordenacao", "coordenador", "coordenadora", "coord");
+                int cb = Col("nascimento", "data de nascimento", "data nascimento", "dt nascimento", "nasc", "aniversario", "data de aniversario");
                 if (cn < 0 || (cl < 0 && exigeLideranca)) continue;
                 var lista = new List<LinhaBase>();
                 for (int i = h + 1; i < f.N; i++)
@@ -327,7 +328,8 @@ public static class FeriasClt
                     var nome = (f.Valor(i, cn).Texto ?? "").Trim();
                     if (nome == "") continue;
                     lista.Add(new LinhaBase(System.Text.RegularExpressions.Regex.Replace(nome, @"\s+", " "), ca >= 0 ? Data(f.Valor(i, ca)) : null,
-                        cl >= 0 ? (f.Valor(i, cl).Texto ?? "").Trim() : "", cc >= 0 ? (f.Valor(i, cc).Texto ?? "").Trim() : ""));
+                        cl >= 0 ? (f.Valor(i, cl).Texto ?? "").Trim() : "", cc >= 0 ? (f.Valor(i, cc).Texto ?? "").Trim() : "",
+                        cb >= 0 ? Data(f.Valor(i, cb)) : null));
                 }
                 if (lista.Count > 0) return lista;
             }
@@ -347,17 +349,18 @@ public static class FeriasClt
         return null;
     }
 
-    /// <summary>Modelo da planilha da liderança: só Nome e Data de admissão (a liderança é quem carrega).</summary>
+    /// <summary>Modelo da planilha da liderança: Nome, Data de admissão e Data de nascimento (a liderança é quem carrega).</summary>
     public static byte[] ModeloLideranca()
     {
         var wb = new XlsxWriter();
         var s = wb.Planilha("Minha equipe");
-        s.Cabecalho("Nome", "Data de admissão");
+        s.Cabecalho("Nome", "Data de admissão", "Data de nascimento");
         s.NegritoLinha(0);
-        s.Linha("Maria da Silva", new DateOnly(2024, 3, 11));
-        s.Linha("João Souza", new DateOnly(2025, 8, 4));
+        s.Linha("Maria da Silva", new DateOnly(2024, 3, 11), new DateOnly(1994, 7, 22));
+        s.Linha("João Souza", new DateOnly(2025, 8, 4), new DateOnly(2001, 12, 5));
         s.FormatoData(1, 1, 2);
-        foreach (var (c, w) in new[] { (0, 34.0), (1, 16.0) }) s.Largura(c, w);
+        s.FormatoData(2, 1, 2);
+        foreach (var (c, w) in new[] { (0, 34.0), (1, 18.0), (2, 20.0) }) s.Largura(c, w);
         return wb.Salvar();
     }
 

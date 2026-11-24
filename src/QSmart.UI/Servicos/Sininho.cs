@@ -20,9 +20,13 @@ public sealed class Notificacao
         "ferias" => $"ferias?mes={Uri.EscapeDataString(Ref.Split('|')[0])}",
         "dayoff_pedido" or "dayoff_cancelado" => $"day-off?d={Uri.EscapeDataString(Ref.Split('|')[0])}",
         "dayoff_ok" or "dayoff_nao" => $"day-off-pedidos?d={Uri.EscapeDataString(Ref.Split('|')[0])}",
+        "aniversario" => LinkAniversario,
         _ => $"feed?post={PostId}",
     };
-    public string IconeTipo => Tipo switch { "curtida" => "coracao-cheio", "post" => "feed", "caderno" => "caderno", "ferias" => "calendario", "dayoff_ok" => "check", "dayoff_nao" => "alerta", "dayoff_pedido" or "dayoff_cancelado" => "estrela", _ => "conversa" };
+    public const string LinkAniversario = "https://insi.com/br/gerador-post-aniversario";
+    /// <summary>Notificações que abrem fora do QSmart (nova aba).</summary>
+    public bool Externo => Tipo == "aniversario";
+    public string IconeTipo => Tipo switch { "aniversario" => "estrela", "curtida" => "coracao-cheio", "post" => "feed", "caderno" => "caderno", "ferias" => "calendario", "dayoff_ok" => "check", "dayoff_nao" => "alerta", "dayoff_pedido" or "dayoff_cancelado" => "estrela", _ => "conversa" };
 
     public string Texto => Tipo switch
     {
@@ -35,6 +39,7 @@ public sealed class Notificacao
         "dayoff_cancelado" => $"{Nome} cancelou um day off",
         "dayoff_ok" => $"{Nome} aprovou o seu pedido de day off",
         "dayoff_nao" => $"{Nome} reprovou o seu pedido de day off",
+        "aniversario" => $"🎂 Hoje é aniversário de {Nome}!",
         "ferias" => $"Férias acima do limite em {QSmart.Core.Coordenacao.FeriasClt.MesNome(Ref.Split('|')[0])}",
         _ => Nome,
     };

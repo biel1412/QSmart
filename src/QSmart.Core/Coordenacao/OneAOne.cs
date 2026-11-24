@@ -46,6 +46,8 @@ public sealed class PessoaOO
     public DateOnly? MudouEm { get; set; }
     /// <summary>Data de admissão na empresa (da planilha base da coordenação).</summary>
     public DateOnly? Admissao { get; set; }
+    /// <summary>Data de nascimento (informada pela liderança). Usada para o aviso de aniversário.</summary>
+    public DateOnly? Nascimento { get; set; }
     /// <summary>Coordenação a que a pessoa pertence (da planilha base).</summary>
     public string Coordenacao { get; set; } = "";
     /// <summary>"lideranca" quando a própria liderança cadastrou a pessoa: a planilha da coordenação não sobrescreve.</summary>
