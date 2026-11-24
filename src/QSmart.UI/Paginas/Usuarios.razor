@@ -3,19 +3,6 @@
 @{ var linhas = Linhas(); var t = E.Tma; }
 
 <Pagina Titulo="Usuários" Grupo="@A.Grupo" Sub="@Sub()">
-    <Kpis>
-        @if (t != null)
-        {
-            <Kpi Titulo="TMA médio geral" Cor="blue" Valor="@Tma.Hms(t.Tma)" Tamanho="26"
-                 Detalhe="tempo de execução · fluxos iniciados e concluídos no mesmo dia" />
-            <Kpi Titulo="Fluxos considerados" Cor="green" Valor="@Fmt(t.Considerados)" Tamanho="26"
-                 Detalhe="@($"de {Fmt(t.Fluxos)} da planilha · os outros atravessam o dia (seria SLA, não TMA)")" Proporcao="@(t.Fluxos == 0 ? 0 : t.Considerados / (double)t.Fluxos)" />
-            <Kpi Titulo="TMA suspeito" Cor="@(t.Suspeitos > 0 ? "amber" : "green")" Valor="@Fmt(t.Suspeitos)" Tamanho="26"
-                 Detalhe="@($"fluxos com menos de {Tma.LimiteSuspeito} segundos")" />
-            <Kpi Titulo="Exclusões identificadas" Cor="purple" Valor="@Fmt(t.Exclusoes)" Tamanho="26"
-                 Detalhe="justificativas com as palavras de exclusão" />
-        }
-    </Kpis>
     <ChildContent>
     <Painel Sangrar="true">
         <div class="barra-ferr dentro">
@@ -28,7 +15,7 @@
             <button class="btn btn-sec @(E.Ordem == "mais" ? "ativo" : "")" @onclick="@(() => E.Ordem = "mais")">Mais devolutivas</button>
             <button class="btn btn-sec @(E.Ordem == "menos" ? "ativo" : "")" @onclick="@(() => E.Ordem = "menos")">Menos devolutivas</button>
         </div>
-        <Tabela Colunas="_cols" Linhas="linhas" Altura="calc(100vh - 430px)"
+        <Tabela Colunas="_cols" Linhas="linhas" Altura="calc(100vh - 330px)"
                 Vazio="@(E.Resultado == null ? "Carregue a planilha na aba Resumo." : "Nenhum usuário encontrado para essa busca.")" />
     </Painel>
 
