@@ -82,15 +82,16 @@ function marcarMaior(k, v) { const c = diaUTC() + "|" + k; MED.maior.set(c, Math
 function marcarValor(k, v) { if (v === null || v === undefined || v === "" || isNaN(Number(v))) return; MED.valor.set(diaUTC() + "|" + k, Number(v)); }
 
 async function gravarUso(db) {
-  const sqls = [
-    [MED.soma, "INSERT INTO uso_dia (dia, chave, n) VALUES (?, ?, ?) ON CONFLICT(dia, chave) DO UPDATE SET n = n + excluded.n"],
-    [MED.maior, "INSERT INTO uso_dia (dia, chave, n) VALUES (?, ?, ?) ON CONFLICT(dia, chave) DO UPDATE SET n = MAX(n, excluded.n)"],
-    [MED.valor, "INSERT INTO uso_dia (dia, chave, n) VALUES (?, ?, ?) ON CONFLICT(dia, chave) DO UPDATE SET n = excluded.n"],
+  const ins = "INSERT INTO uso_dia (dia, chave, n) VALUES (?, ?, ?) ON CONFLICT(dia, chave) DO UPDATE SET n = ";
+  const grupos = [
+    { mapa: MED.soma, sql: ins + "n + excluded.n" },
+    { mapa: MED.maior, sql: ins + "MAX(n, excluded.n)" },
+    { mapa: MED.valor, sql: ins + "excluded.n" },
   ];
   const lote = [];
-  for (const [mapa, sql] of sqls) {
-    for (const [c, v] of mapa) lote.push(db.prepare(sql).bind(c.slice(0, 10), c.slice(11), Math.round(v)));
-    mapa.clear();
+  for (const g of grupos) {
+    for (const [c, v] of g.mapa) lote.push(db.prepare(g.sql).bind(c.slice(0, 10), c.slice(11), Math.round(v)));
+    g.mapa.clear();
   }
   MED.ult = Date.now(); MED.n = 0;
   if (!lote.length) return;
