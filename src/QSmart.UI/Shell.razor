@@ -181,7 +181,6 @@ else
                 <span class="fonte" title="@(arq ?? "nenhuma planilha carregada")"><i class="@(arq != null ? "on" : "")">●</i> <b>@nome</b> @(arq == null ? "—" : arq.Length <= 22 ? arq : arq[..21] + "…")</span>
             }
             <span class="mola"></span>
-            <span class="fonte"><Icone Nome="escudo" Tamanho="14" /> Arquivos processados só neste computador</span>
             <span class="fonte">@E.UltimoBackupTexto</span>
         </footer>
     </div>
