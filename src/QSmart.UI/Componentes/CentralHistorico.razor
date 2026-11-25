@@ -1,0 +1,174 @@
+@using System.Globalization
+@using QSmart.Core
+
+@{
+    var a = Analise();
+}
+@if (a.Meses.Count > 0)
+{
+    var foco = a.Meses.LastOrDefault(m => Selecionados.Contains(m.Chave)) ?? a.Meses[^1];
+    var ant = a.Anterior(foco);
+    var ins = a.Inspetores.Contains(_sel ?? "") ? _sel! : a.Inspetores.FirstOrDefault();
+    int nM = a.Meses.Count;
+    double cw = nM > 0 ? 290.0 / nM : 0;
+    long maxD = Math.Max(1, a.Meses.Max(m => m.Desv));
+    double maxT = Math.Max(EvolucaoAnalise.Ok + 1, a.Meses.Max(m => m.Taxa) * 1.15);
+    double hx = nM > 0 ? 230.0 / nM : 0;
+    double hAlt = 26 + a.Inspetores.Count * 29;
+    var ultimo = a.Meses[^1];
+    <section class="ev-central hc" aria-label="Central do histórico">
+        <div class="ev-topo">
+            <span class="ev-rot">HISTÓRICO · LINHA DO TEMPO · clique para selecionar meses</span>
+            <span class="hc-meta">meta até @EvolucaoAnalise.Ok.ToString(CultureInfo.InvariantCulture)%</span>
+        </div>
+        <div class="hc-linha">
+            <div class="hc-trilho"></div>
+            @foreach (var m in a.Meses)
+            {
+                var mm = m;
+                bool on = Selecionados.Contains(m.Chave), f = m == foco;
+                <button class="hc-mes @(on ? "on" : "") @(f ? "foco" : "")" title="@Texto.NomeMes(m.Chave) · @Texto.F(m.Taxa, 1)% de desvio" @onclick="() => AoAlternar.InvokeAsync(mm.Chave)">
+                    <i></i><span>@Texto.NomeMes(m.Chave, true)</span><small class="ev-taxa @EvolucaoAnalise.Nivel(m.Taxa)">@Texto.F(m.Taxa, 1)%</small>
+                </button>
+            }
+        </div>
+
+        <div class="ev-kpis">
+            <div class="ev-k" style="--c:#38BDF8"><small>AVALIAÇÕES · @Texto.NomeMes(foco.Chave, true).ToUpperInvariant()</small><b>@Texto.Fmt(foco.Aval)</b>@((MarkupString)Delta(foco.Aval, ant?.Aval, true, ant))</div>
+            <div class="ev-k" style="--c:#F43F5E"><small>DESVIOS · @Texto.NomeMes(foco.Chave, true).ToUpperInvariant()</small><b>@Texto.Fmt(foco.Desv)</b>@((MarkupString)Delta(foco.Desv, ant?.Desv, false, ant))</div>
+            <div class="ev-k" style="--c:#8B5CF6"><small>TAXA DE DESVIO</small><b>@Texto.F(foco.Taxa, 1)%</b>@((MarkupString)DeltaTaxa(foco, ant))</div>
+            @{ var oPrin = a.Origens.OrderByDescending(o => foco.PorOrigem.GetValueOrDefault(o)).FirstOrDefault() ?? "—"; }
+            <div class="ev-k" style="--c:#10B981"><small>@oPrin.ToUpperInvariant() · MAIOR ORIGEM</small><b>@Texto.Fmt(foco.PorOrigem.GetValueOrDefault(oPrin))</b>@((MarkupString)Delta(foco.PorOrigem.GetValueOrDefault(oPrin), ant?.PorOrigem.GetValueOrDefault(oPrin), false, ant))</div>
+        </div>
+
+        <div class="ev-grade hc-grade">
+            <div class="ev-p">
+                <div class="ev-pt"><b>Taxa de desvio e origens por mês</b><small>barras: desvios por origem · linha: taxa de desvio</small></div>
+                <svg class="ev-mapa" viewBox="0 0 340 216" role="img" aria-label="Desvios por origem e taxa de desvio mês a mês">
+                    @foreach (var g in new[] { 0, .25, .5, .75, 1 })
+                    {
+                        <line x1="36" x2="332" y1="@N(190 - g * 160)" y2="@N(190 - g * 160)" class="ev-guia" />
+                    }
+                    <line x1="36" x2="332" y1="@N(190 - EvolucaoAnalise.Ok / maxT * 160)" y2="@N(190 - EvolucaoAnalise.Ok / maxT * 160)" class="hc-metal" />
+                    @for (int i = 0; i < nM; i++)
+                    {
+                        var m = a.Meses[i]; double cx = 40 + cw * (i + .5), y = 190, bw = Math.Min(26, cw * .55);
+                        bool f = m == foco;
+                        <g class="@(f ? "" : "hc-apag")">
+                            @foreach (var o in a.Origens)
+                            {
+                                var v = m.PorOrigem.GetValueOrDefault(o); if (v <= 0) continue;
+                                double h = v / (double)maxD * 150;
+                                <rect x="@N(cx - bw / 2)" y="@N(y - h)" width="@N(bw)" height="@N(h)" rx="2" fill="@CorOrigem(o)"><title>@Texto.NomeMes(m.Chave, true) · @o: @v</title></rect>
+                                y -= h;
+                            }
+                        </g>
+                        <g><text x="@N(cx)" y="208" text-anchor="middle" class="ev-cab @(f ? "hc-foco" : "")">@Texto.NomeMes(m.Chave, true)</text></g>
+                    }
+                    <polyline points="@string.Join(" ", a.Meses.Select((m, i) => $"{N(40 + cw * (i + .5))},{N(190 - m.Taxa / maxT * 160)}"))" class="hc-taxa" />
+                    @for (int i = 0; i < nM; i++)
+                    {
+                        var m = a.Meses[i]; bool f = m == foco; double cx = 40 + cw * (i + .5), cy = 190 - m.Taxa / maxT * 160;
+                        <circle cx="@N(cx)" cy="@N(cy)" r="@(f ? 5.5 : 3)" fill="@(f ? "#fff" : "#F43F5E")"><title>@Texto.NomeMes(m.Chave, true): @Texto.F(m.Taxa, 1)%</title></circle>
+                        if (f) { <g><text x="@N(cx)" y="@N(cy - 10)" text-anchor="middle" class="hc-rot">@Texto.F(m.Taxa, 1)%</text></g> }
+                    }
+                </svg>
+                <div class="hc-leg">
+                    @foreach (var o in a.Origens) { <span><i style="background:@CorOrigem(o)"></i>@o</span> }
+                    <span><i class="linha"></i>taxa</span><span><i class="meta"></i>meta</span>
+                </div>
+            </div>
+
+            <div class="ev-p ev-lado">
+                <div class="ev-pt"><b>Inspetor × mês</b><small>taxa de desvio nas avaliações · clique numa linha</small></div>
+                @if (a.Inspetores.Count == 0)
+                {
+                    <p class="ev-vazio">Sem inspetores com avaliações no período.</p>
+                }
+                else
+                {
+                    <svg class="ev-mapa" viewBox="0 0 400 @N(hAlt)" role="img" aria-label="Taxa de desvio de cada inspetor mês a mês">
+                        @for (int i = 0; i < nM; i++)
+                        {
+                            var m = a.Meses[i];
+                            <g><text x="@N(140 + hx * (i + .5))" y="14" text-anchor="middle" class="ev-cab @(m == foco ? "hc-foco" : "")">@Texto.NomeMes(m.Chave, true)[..3]</text></g>
+                        }
+                        @for (int r = 0; r < a.Inspetores.Count; r++)
+                        {
+                            var nome = a.Inspetores[r]; double y = 22 + r * 29; bool on = nome == ins;
+                            var tend = a.Tendencia(nome);
+                            <g class="ev-linha @(on ? "on" : "")" @onclick="() => _sel = nome">
+                                <rect x="0" y="@N(y - 1)" width="400" height="27" rx="8" class="ev-fundo" />
+                                <text x="8" y="@N(y + 17)" class="ev-nome">@Curto(nome, 19)</text>
+                                @for (int i = 0; i < nM; i++)
+                                {
+                                    var m = a.Meses[i]; var t = HistoricoAnalise.TaxaInsp(m, nome); double x = 140 + hx * i;
+                                    if (t is double tv)
+                                    {
+                                        <rect x="@N(x + 2)" y="@N(y + 2)" width="@N(hx - 4)" height="21" rx="6" class="hc-cel @EvolucaoAnalise.Nivel(tv) @(m == foco ? "foco" : "")"><title>@nome · @Texto.NomeMes(m.Chave, true): @Texto.F(tv, 1)%</title></rect>
+                                        if (hx >= 26) { <g><text x="@N(x + hx / 2)" y="@N(y + 16)" text-anchor="middle" class="hc-celt">@(tv >= 10 ? Math.Round(tv).ToString(CultureInfo.InvariantCulture) : Texto.F(tv, 1))</text></g> }
+                                    }
+                                    else
+                                    {
+                                        <rect x="@N(x + 2)" y="@N(y + 2)" width="@N(hx - 4)" height="21" rx="6" class="hc-cel vazio"><title>@nome · @Texto.NomeMes(m.Chave, true): sem avaliações</title></rect>
+                                    }
+                                }
+                                @if (tend is { } td && Math.Abs(td.t1 - td.t0) >= .3)
+                                {
+                                    <g><text x="394" y="@N(y + 18)" text-anchor="end" class="hc-seta @(td.t1 > td.t0 ? "sobe" : "desce")">@(td.t1 > td.t0 ? "↗" : "↘")</text></g>
+                                }
+                            </g>
+                        }
+                    </svg>
+                    @if (ins != null)
+                    {
+                        var tdv = a.Tendencia(ins); bool sobe = tdv is { } x && x.t1 - x.t0 >= .3;
+                        <div class="ev-diag @(sobe ? "" : "hc-bom")"><b>@(tdv == null ? "Diagnóstico." : "Tendência.")</b> @a.Diagnostico(ins, foco)</div>
+                    }
+                }
+            </div>
+        </div>
+    </section>
+}
+
+@code {
+    [Parameter] public List<RegistroHist> Regs { get; set; } = new();
+    [Parameter] public FiltrosHist Filtros { get; set; } = new();
+    [Parameter] public HashSet<string> Selecionados { get; set; } = new();
+    [Parameter] public EventCallback<string> AoAlternar { get; set; }
+
+    string? _sel;
+    HistoricoAnalise? _cache; string? _ass;
+
+    HistoricoAnalise Analise()
+    {
+        var f = Filtros;
+        var ass = string.Join(",", Regs.Select(r => r.Mes + r.GravadoEm)) + "|" +
+                  string.Join(";", new[] { f.Origem, f.Aut, f.Insp, f.Erro }.Select(s => string.Join(",", s.OrderBy(x => x))));
+        if (_cache != null && ass == _ass) return _cache;
+        _ass = ass;
+        return _cache = HistoricoAnalise.Montar(Regs, f);
+    }
+
+    static string N(double v) => v.ToString("0.##", CultureInfo.InvariantCulture);
+    static string Curto(string s, int max) => s.Length <= max ? s : s[..(max - 1)].TrimEnd() + "…";
+    static string CorOrigem(string o) => o switch { "Interno" => "#0EA5E9", "Externo" => "#F59E0B", "Chamados" => "#8B5CF6", _ => "#64748B" };
+
+    static string Delta(long atual, long? antes, bool maisEhBom, HistoricoAnalise.Mes? ant)
+    {
+        if (ant == null || antes == null) return "<span class=\"hc-d neutro\">primeiro mês do período</span>";
+        var d = atual - antes.Value;
+        var cls = d == 0 ? "neutro" : (d > 0) == maisEhBom ? "bom" : "ruim";
+        var seta = d > 0 ? "▲" : d < 0 ? "▼" : "=";
+        return $"<span class=\"hc-d {cls}\">{seta} {Texto.Fmt(Math.Abs(d))} vs {Texto.NomeMes(ant.Chave, true)}</span>";
+    }
+
+    static string DeltaTaxa(HistoricoAnalise.Mes foco, HistoricoAnalise.Mes? ant)
+    {
+        if (ant == null) return "<span class=\"hc-d neutro\">primeiro mês do período</span>";
+        var d = foco.Taxa - ant.Taxa;
+        var cls = Math.Abs(d) < 0.05 ? "neutro" : d < 0 ? "bom" : "ruim";
+        var seta = Math.Abs(d) < 0.05 ? "=" : d > 0 ? "▲" : "▼";
+        return $"<span class=\"hc-d {cls}\">{seta} {Texto.F(Math.Abs(d), 1)} p.p. vs {Texto.NomeMes(ant.Chave, true)}</span>";
+    }
+}

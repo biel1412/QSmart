@@ -3489,3 +3489,33 @@ span.ev-taxa.ok { color: #34D399; } span.ev-taxa.atencao { color: #FBBF24; } spa
 .ev-vazio { color: #8FA3C4; font-size: 13px; }
 @media (max-width: 1100px) { .ev-grade { grid-template-columns: 1fr; } .ev-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (prefers-reduced-motion: reduce) { .ev-mapa circle.pulsa { animation: none; } }
+
+/* Histórico: central com linha do tempo (reaproveita o visual ev-* da Evolução) */
+.hc-meta { font-size: 11px; color: #8FA3C4; }
+.hc-linha { position: relative; display: flex; gap: 4px; overflow-x: auto; padding: 2px 2px 8px; margin-bottom: 12px; }
+.hc-trilho { position: absolute; left: 24px; right: 24px; top: 15px; height: 2px; background: linear-gradient(90deg, #334155, #7C3AED, #F43F5E); pointer-events: none; }
+.hc-mes { all: unset; cursor: pointer; position: relative; flex: 1; min-width: 62px; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 6px 4px; border-radius: 12px; font-size: 11.5px; color: #8FA3C4; transition: background .15s; }
+.hc-mes:hover { background: rgba(255,255,255,.05); color: #fff; }
+.hc-mes i { width: 14px; height: 14px; border-radius: 50%; background: #1C2840; border: 2px solid #334155; transition: .2s; }
+.hc-mes small { font-size: 10.5px; font-weight: 700; }
+.hc-mes.on { color: #fff; } .hc-mes.on i { background: #7C3AED; border-color: #C4B5FD; box-shadow: 0 0 12px #7C3AED; }
+.hc-mes.foco { color: #fff; font-weight: 700; } .hc-mes.foco i { background: #F43F5E; border-color: #fff; box-shadow: 0 0 16px #F43F5E; }
+.hc-mes .ev-taxa.ok { color: #34D399; } .hc-mes .ev-taxa.atencao { color: #FBBF24; } .hc-mes .ev-taxa.critico { color: #FB7185; }
+.hc-d { font-size: 11.5px; font-weight: 600; } .hc-d.bom { color: #34D399; } .hc-d.ruim { color: #FB7185; } .hc-d.neutro { color: #8FA3C4; font-weight: 500; }
+.hc-grade { grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); }
+.hc-apag { opacity: .45; }
+.hc-metal { stroke: #10B981; stroke-dasharray: 4 4; }
+.hc-taxa { fill: none; stroke: #F43F5E; stroke-width: 2.5; stroke-linejoin: round; filter: drop-shadow(0 0 6px #F43F5E); }
+.hc-rot { fill: #fff; font-size: 11px; font-weight: 700; }
+svg .hc-foco { fill: #fff; font-weight: 700; }
+.hc-cel { stroke: none; } .hc-cel.foco { stroke: #fff; stroke-width: 1.2; }
+.hc-cel.ok { fill: rgba(16,185,129,.55); } .hc-cel.atencao { fill: rgba(245,158,11,.7); } .hc-cel.critico { fill: rgba(244,63,94,.85); }
+.hc-cel.vazio { fill: rgba(255,255,255,.04); stroke: rgba(255,255,255,.06); stroke-dasharray: 3 3; }
+.hc-celt { fill: #fff; font-size: 9.5px; font-weight: 700; pointer-events: none; }
+.hc-seta { font-size: 13px; font-weight: 700; } .hc-seta.sobe { fill: #FB7185; } .hc-seta.desce { fill: #34D399; }
+.ev-diag.hc-bom { background: rgba(16,185,129,.08); border-color: rgba(16,185,129,.28); } .ev-diag.hc-bom b { color: #6EE7B7; }
+@media (max-width: 1100px) { .hc-grade { grid-template-columns: 1fr; } }
+.hc-leg { display: flex; flex-wrap: wrap; gap: 6px 12px; justify-content: center; font-size: 11px; color: #8FA3C4; margin-top: 4px; }
+.hc-leg i { display: inline-block; width: 9px; height: 9px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
+.hc-leg i.linha { width: 14px; height: 3px; background: #F43F5E; border-radius: 2px; vertical-align: 2px; }
+.hc-leg i.meta { width: 14px; height: 0; border-top: 2px dashed #10B981; border-radius: 0; vertical-align: 2px; }
