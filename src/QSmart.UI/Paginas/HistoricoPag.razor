@@ -6,6 +6,7 @@
     <Acoes>
         <button class="btn btn-pri" @onclick="Encaminhar"><Icone Nome="enviar" Tamanho="17" /> Encaminhar para o Teams</button>
     </Acoes>
+    <Kpis><KpisOrigem Dados="_h" RotuloAval="@($"em {_regs.Count} mês(es)")" /></Kpis>
     <ChildContent>
         <Painel>
             <div class="barra-ferr">
@@ -13,12 +14,19 @@
                 <select class="campo" style="min-width:110px" value="@E.HistAno" @onchange="MudarAno">
                     @foreach (var a in Anos()) { <option value="@a">@a</option> }
                 </select>
-                <span class="muted" style="margin-left:10px">Selecione os meses na linha do tempo abaixo</span>
+                <span class="muted" style="margin-left:10px">Meses (clique para selecionar um ou mais)</span>
                 <span class="mola"></span>
                 <button class="btn btn-sec" @onclick="() => { E.HistSel = new(); }">Limpar seleção</button>
                 <button class="btn btn-sec" @onclick="Excluir"><Icone Nome="lixo" Tamanho="16" /> Excluir meses</button>
             </div>
-            @if (Visiveis().Count == 0) { <p class="muted" style="margin:8px 0 0">Nenhum mês gravado ainda. Na aba Evolução, carregue a planilha de inspeção e clique em “Gravar no histórico”.</p> }
+            <div class="chips">
+                @if (Visiveis().Count == 0) { <span class="muted">Nenhum mês gravado ainda</span> }
+                @foreach (var r in Visiveis())
+                {
+                    var mes = r.Mes;
+                    <button class="chip @(E.HistSel.Contains(mes) ? "ativo" : "")" title="@Texto.NomeMes(mes)" @onclick="() => Alternar(mes)">@Texto.NomeMes(mes, true)</button>
+                }
+            </div>
         </Painel>
         <div class="barra-ferr">
             <span class="rotulo">Filtrar por</span>
@@ -30,7 +38,7 @@
             <button class="btn btn-sec" disabled="@(!E.HistFiltros.Algum)" @onclick="() => E.HistFiltros = new()">Limpar filtros</button>
         </div>
         @if (_nota != null) { <p class="aviso">@_nota</p> }
-        <CentralHistorico Regs="Visiveis()" Filtros="E.HistFiltros" Selecionados="E.HistSel" AoAlternar="Alternar" />
+        <CentralHistorico Regs="_regs" Filtros="E.HistFiltros" />
         <div class="grade-32">
             <Painel Titulo="Por tipo de autorização" Estilo="min-height:380px">
                 <BarrasEmpilhadas Linhas="Evolucao.LinhasAut(_h)" Legenda="Evolucao.Legenda(_h)" Vazio="@(_h == null ? "Nenhum mês gravado" : "Sem dados para os filtros")" />
