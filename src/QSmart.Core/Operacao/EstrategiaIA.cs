@@ -20,6 +20,17 @@ public static class EstrategiaIA
         Responda só com JSON: {"estrategia": "..."}
         """;
 
+    public const string OrientacoesPadrao =
+        "Escreva em tom formal, em até dois parágrafos.\n" +
+        "Não escreva números, percentuais, quantidades nem tempos na estratégia: use os dados só para entender o cenário.\n" +
+        "Observe no dia anterior quais tipos de serviço tiveram mais entrada e construa a estratégia com base nisso e nos resultados do compilado.\n" +
+        "Tenha um olhar de fila. Exemplos de estratégia: concentrar nos mais antigos, dividir os times nos mais antigos, focar na Autorizar, focar nos processos em atraso.";
+
+    /// <summary>Instruções do sistema: as regras padrão e, se houver, as orientações gravadas pelo coordenador (que prevalecem).</summary>
+    public static string Sistema(string? orientacoes) => string.IsNullOrWhiteSpace(orientacoes) ? Instrucoes
+        : Instrucoes + "\nORIENTAÇÕES DO COORDENADOR (seguem obrigatoriamente e prevalecem sobre as regras acima quando houver conflito, inclusive de tom, tamanho e uso de números):\n"
+          + orientacoes.Trim() + "\nSe forem dois parágrafos, separe-os com uma linha em branco (\\n\\n) dentro do texto do JSON.";
+
     public static string Fatos(MensagemEstrategia m, ResultadoEstrategia? r, DateTime agora)
     {
         string V(string s) => string.IsNullOrWhiteSpace(s) ? "(vazio)" : s.Trim();
@@ -40,14 +51,14 @@ public static class EstrategiaIA
         return sb.ToString();
     }
 
-    public static string Pedido(string fatos, string modelo) => new JsonObject
+    public static string Pedido(string fatos, string modelo, string? orientacoes = null) => new JsonObject
     {
         ["model"] = modelo,
         ["temperature"] = 0.5,
         ["max_completion_tokens"] = 1500,
         ["response_format"] = new JsonObject { ["type"] = "json_object" },
         ["messages"] = new JsonArray(
-            new JsonObject { ["role"] = "system", ["content"] = Instrucoes },
+            new JsonObject { ["role"] = "system", ["content"] = Sistema(orientacoes) },
             new JsonObject { ["role"] = "user", ["content"] = fatos }),
     }.ToJsonString();
 

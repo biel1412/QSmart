@@ -64,6 +64,8 @@ public sealed class MensagemEstrategia
     public string VolumeComData { get; set; } = "";
     public string Entraram { get; set; } = "";
     public string Sla { get; set; } = "";
+    /// <summary>Orientações gravadas que o Mr. Smart segue ao escrever a estratégia (prioridade sobre o padrão).</summary>
+    public string Orientacoes { get; set; } = EstrategiaIA.OrientacoesPadrao;
 }
 
 [JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
