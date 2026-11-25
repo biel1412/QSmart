@@ -3400,3 +3400,41 @@ html:has(.app.recolhido) .fx-bola.lat { display: none; }
 .est-orient summary .muted { font-weight: 500; }
 .est-orient textarea { width: 100%; margin-top: 10px; resize: vertical; min-height: 120px; height: auto; line-height: 1.5; }
 .est-orient-acoes { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 8px; flex-wrap: wrap; }
+
+/* Chat: grupos temporários */
+.ch-novo { all: unset; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; padding: 6px 11px; border-radius: 99px; font-size: 12px; font-weight: 700; color: #fff; background: linear-gradient(135deg, #7C3AED, #0891B2); flex: none; transition: .15s; }
+.ch-novo:hover { filter: brightness(1.08); transform: translateY(-1px); }
+.ch-av.grupo, .ch-cab-ic.grupo { border-radius: 14px; background: linear-gradient(135deg, #7C3AED, #0891B2); color: #fff; }
+.ch-cab-btn { all: unset; cursor: pointer; flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.ch-cab-btn:hover b { text-decoration: underline; }
+.ch-x.on { background: var(--surface2); color: var(--ink); }
+.ch-exp { color: #7C3AED !important; font-weight: 700; }
+.ch-aviso-g { display: flex; align-items: center; gap: 6px; margin: 8px 12px 0; padding: 6px 6px 6px 12px; border-radius: 10px; background: var(--amber-soft); color: #92400E; font-size: 12.5px; }
+.ch-aviso-g span { flex: 1; }
+.ch-gform { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px 4px; }
+.ch-gl { font-size: 12px; font-weight: 700; color: var(--ink2); margin-top: 4px; }
+.ch-gl small { font-weight: 500; color: var(--muted); margin-left: 4px; }
+.ch-dur { display: flex; gap: 6px; flex-wrap: wrap; }
+.ch-dur button { all: unset; cursor: pointer; padding: 6px 12px; border-radius: 99px; border: 1px solid var(--line); font-size: 12.5px; font-weight: 600; color: var(--ink2); }
+.ch-dur button.on { background: linear-gradient(135deg, #7C3AED, #0891B2); color: #fff; border-color: transparent; }
+.ch-esc.marc { background: color-mix(in srgb, #7C3AED 9%, transparent); }
+.ch-check { width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--line2); display: grid; place-items: center; flex: none; color: #fff; }
+.ch-esc.marc .ch-check { background: #7C3AED; border-color: #7C3AED; }
+.ch-gacoes { padding: 10px 12px; border-top: 1px solid var(--line); display: flex; justify-content: flex-end; }
+.ch-gacoes .btn { width: 100%; justify-content: center; }
+.ch-ginfo { padding: 10px 14px 12px; border-bottom: 1px solid var(--line); background: var(--surface2); max-height: 55%; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
+.ch-ginfo .ch-sec { padding: 6px 0 2px; }
+.ch-glink { all: unset; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; font-weight: 700; color: #7C3AED; }
+.ch-gren { display: flex; gap: 6px; } .ch-gren input { flex: 1; min-width: 0; }
+.ch-gexp { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+.ch-gmembros { display: flex; flex-direction: column; gap: 2px; }
+.ch-gm { display: flex; align-items: center; gap: 9px; padding: 3px 0; }
+.ch-gm .ch-av.md { width: 30px; height: 30px; font-size: 11px; }
+.ch-gm-n { flex: 1; font-size: 13.5px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ch-gm-n em { font-style: normal; font-size: 10.5px; font-weight: 700; color: #7C3AED; background: color-mix(in srgb, #7C3AED 12%, transparent); padding: 1px 7px; border-radius: 99px; margin-left: 6px; }
+.ch-gbot { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
+.ch-gconf { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--red); flex-wrap: wrap; }
+.ch-perigo { background: var(--red); color: #fff; border-color: var(--red); }
+.ch-perigo-txt { color: var(--red); }
+.ch-evento { align-self: center; max-width: 88%; text-align: center; font-size: 11.5px; color: var(--muted); background: var(--surface2); padding: 4px 11px; border-radius: 99px; margin: 6px 0 2px; }
+.ch-autor { font-size: 11.5px; font-weight: 700; margin: 0 0 2px 4px; }

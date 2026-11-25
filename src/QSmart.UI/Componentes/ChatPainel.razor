@@ -5,7 +5,124 @@
 
 <div class="ch-fundo" @onclick="Fechar"></div>
 <div class="ch-painel" role="dialog" aria-label="Chat">
-    @if (E.Chat.Com is int com && E.Chat.Contato(com) is { } ct)
+    @if (_novo || _adicionando)
+    {
+        var gAdd = E.Chat.GrupoAberto;
+        <div class="ch-cab conv">
+            <button class="ch-x" title="Voltar" @onclick="CancelarSelecao"><Icone Nome="esquerda" Tamanho="18" /></button>
+            <span class="ch-cab-ic grupo"><Icone Nome="usuarios" Tamanho="18" /></span>
+            <div class="ch-cab-txt"><b>@(_novo ? "Novo grupo temporário" : "Adicionar pessoas")</b><small>@(_sel.Count == 0 ? "ninguém escolhido" : _sel.Count == 1 ? "1 pessoa escolhida" : $"{_sel.Count} pessoas escolhidas")</small></div>
+            <button class="ch-x" title="Fechar" @onclick="Fechar"><Icone Nome="x" Tamanho="18" /></button>
+        </div>
+        @if (_novo)
+        {
+            <div class="ch-gform">
+                <label class="ch-gl">Nome do grupo</label>
+                <input class="campo" maxlength="60" placeholder="Ex.: Mutirão FONTE_RENDA" @bind="_gNome" @bind:event="oninput" />
+                <label class="ch-gl">Duração <small>o grupo e as mensagens somem sozinhos no fim</small></label>
+                <div class="ch-dur">
+                    @for (int d = 1; d <= E.Chat.GrupoMaxDias; d++)
+                    {
+                        var dd = d;
+                        <button class="@(_gDias == dd ? "on" : "")" @onclick="() => _gDias = dd">@(dd == 1 ? "1 dia" : $"{dd} dias")</button>
+                    }
+                </div>
+                <small class="muted pequeno">Expira em @DateTime.Now.AddDays(_gDias).ToString("dd/MM 'às' HH:mm")</small>
+            </div>
+        }
+        <div class="ch-busca"><Icone Nome="busca" Tamanho="15" /><input placeholder="Buscar pessoa…" @bind="_busca" @bind:event="oninput" /></div>
+        <div class="ch-lista">
+            @foreach (var c in Filtrados().Where(c => gAdd == null || !gAdd.Membros.Contains(c.Id)).OrderByDescending(c => _sel.Contains(c.Id)).ThenBy(c => c.Nome))
+            {
+                bool marc = _sel.Contains(c.Id);
+                <button class="ch-pessoa ch-esc @(marc ? "marc" : "")" @onclick="() => Alternar(c.Id)" @key="c.Id">
+                    <span class="ch-av" style="background:@Cor(c.Nome)">@if (c.Foto != "") { <img src="@c.Foto" alt="" /> } else { @Ini(c.Nome) }</span>
+                    <div class="ch-p-txt"><div class="ch-p-top"><b>@c.Nome</b></div><div class="ch-p-sub"><span>@Papel(c.Papel)</span></div></div>
+                    <span class="ch-check">@if (marc) { <Icone Nome="check" Tamanho="14" /> }</span>
+                </button>
+            }
+        </div>
+        @if (_erro != "") { <div class="ch-erro">@_erro</div> }
+        <div class="ch-gacoes">
+            <button class="btn btn-pri" disabled="@(_sel.Count == 0 || (_novo && string.IsNullOrWhiteSpace(_gNome)) || _enviando)" @onclick="ConfirmarSelecao">
+                @(_novo ? "Criar grupo" : "Adicionar ao grupo")
+            </button>
+        </div>
+    }
+    else if (E.Chat.GrupoAberto is { } g)
+    {
+        bool criador = g.Criador == E.Chat.MeuId;
+        <div class="ch-cab conv">
+            <button class="ch-x" title="Voltar para a lista" @onclick="Voltar"><Icone Nome="esquerda" Tamanho="18" /></button>
+            <span class="ch-cab-ic grupo"><Icone Nome="usuarios" Tamanho="18" /></span>
+            <button class="ch-cab-txt ch-cab-btn" title="Pessoas e opções do grupo" @onclick="() => { _gInfo = !_gInfo; _confirmar = false; _renomear = false; }">
+                <b>@g.Nome</b><small>@g.Membros.Count pessoas · some @Some(g.Expira - DateTime.Now)</small>
+            </button>
+            <button class="ch-x @(_gInfo ? "on" : "")" title="Pessoas e opções" @onclick="() => { _gInfo = !_gInfo; _confirmar = false; _renomear = false; }"><Icone Nome="info" Tamanho="18" /></button>
+            <button class="ch-x" title="Fechar" @onclick="Fechar"><Icone Nome="x" Tamanho="18" /></button>
+        </div>
+        @if (_gInfo)
+        {
+            <div class="ch-ginfo">
+                @if (criador)
+                {
+                    @if (_renomear)
+                    {
+                        <div class="ch-gren"><input class="campo" maxlength="60" @bind="_gNome" @bind:event="oninput" /><button class="btn btn-pri btn-peq" @onclick="Renomear">Salvar</button><button class="btn btn-sec btn-peq" @onclick="() => _renomear = false">Cancelar</button></div>
+                    }
+                    else { <button class="ch-glink" @onclick="() => { _renomear = true; _gNome = g.Nome; }"><Icone Nome="editar" Tamanho="13" /> Mudar o nome</button> }
+                }
+                <div class="ch-gexp"><Icone Nome="relogio" Tamanho="13" /> Expira em @g.Expira.ToString("dd/MM 'às' HH:mm") · criado por @E.Chat.NomePessoa(g.Criador)</div>
+                <div class="ch-sec">Pessoas (@g.Membros.Count)</div>
+                <div class="ch-gmembros">
+                    @foreach (var id in g.Membros)
+                    {
+                        var nm = E.Chat.NomePessoa(id); var cc = E.Chat.Contato(id);
+                        <div class="ch-gm">
+                            <span class="ch-av md" style="background:@Cor(nm)">@if (cc?.Foto is { Length: > 0 } f) { <img src="@f" alt="" /> } else { @Ini(nm) }</span>
+                            <span class="ch-gm-n">@nm@if (id == g.Criador) { <em>criou</em> }</span>
+                            @if (criador && id != E.Chat.MeuId) { <button class="ch-x" title="Remover do grupo" @onclick="() => Remover(id)"><Icone Nome="x" Tamanho="15" /></button> }
+                        </div>
+                    }
+                </div>
+                <div class="ch-gbot">
+                    <button class="btn btn-sec btn-peq" @onclick="AbrirAdicionar"><Icone Nome="mais" Tamanho="13" /> Adicionar pessoas</button>
+                    @if (_confirmar)
+                    {
+                        <span class="ch-gconf">@(criador ? "Encerrar apaga o grupo para todos." : "Sair do grupo?")
+                            <button class="btn btn-peq ch-perigo" @onclick="Sair">@(criador ? "Encerrar" : "Sair")</button>
+                            <button class="btn btn-sec btn-peq" @onclick="() => _confirmar = false">Cancelar</button></span>
+                    }
+                    else { <button class="btn btn-sec btn-peq ch-perigo-txt" @onclick="() => _confirmar = true">@(criador ? "Encerrar grupo" : "Sair do grupo")</button> }
+                </div>
+                @if (_erro != "") { <div class="ch-erro">@_erro</div> }
+            </div>
+        }
+        <div class="ch-msgs" @ref="_lista">
+            @{ DateTime? diaG = null; int? antG = null; }
+            @foreach (var m in E.Chat.Msgs)
+            {
+                if (diaG != m.Em.Date) { diaG = m.Em.Date; antG = null; <div class="ch-dia"><span>@Dia(m.Em)</span></div> }
+                if (m.De == 0) { antG = null; <div class="ch-evento" @key="m.Id">@m.Texto</div> continue; }
+                bool minha = m.De == E.Chat.MeuId; bool junta = antG == m.De; antG = m.De;
+                var quem = E.Chat.NomePessoa(m.De);
+                <div class="ch-msg @(minha ? "eu" : "ele") @(junta ? "junta" : "")" @key="m.Id">
+                    @if (!minha && !junta) { <small class="ch-autor" style="color:@Cor(quem)">@quem</small> }
+                    <div class="ch-bolha" title="@($"Enviada em {m.Em:dd/MM/yyyy HH:mm}")">
+                        <span class="ch-texto">@m.Texto</span>
+                        <span class="ch-hora">@m.Em.ToString("HH:mm")</span>
+                    </div>
+                </div>
+            }
+        </div>
+        <div class="ch-escrever">
+            <textarea @ref="_caixa" class="campo" rows="1" placeholder="Mensagem para o grupo…" maxlength="2000" value="@_texto"
+                      @oninput="e => _texto = e.Value?.ToString() ?? string.Empty" @onkeydown="Tecla" @onkeydown:preventDefault="_segurarEnter"></textarea>
+            <button class="ch-enviar" title="Enviar (Enter)" disabled="@(string.IsNullOrWhiteSpace(_texto) || _enviando)" @onclick="Enviar"><Icone Nome="enviar" Tamanho="18" /></button>
+        </div>
+        @if (_erro != "" && !_gInfo) { <div class="ch-erro">@_erro</div> }
+    }
+    else if (E.Chat.Com is int com && com > 0 && E.Chat.Contato(com) is { } ct)
     {
         <div class="ch-cab conv">
             <button class="ch-x" title="Voltar para a lista" @onclick="Voltar"><Icone Nome="esquerda" Tamanho="18" /></button>
@@ -47,14 +164,31 @@
         <div class="ch-cab">
             <span class="ch-cab-ic"><Icone Nome="conversa" Tamanho="18" /></span>
             <div class="ch-cab-txt"><b>Chat</b><small>@E.Chat.Online.Count(id => E.Chat.Contato(id) != null) online · @E.Chat.Contatos.Count pessoas</small></div>
+            <button class="ch-novo" title="Criar um grupo temporário" @onclick="AbrirNovo"><Icone Nome="usuarios" Tamanho="15" /> Novo grupo</button>
             <button class="ch-x" title="Fechar" @onclick="Fechar"><Icone Nome="x" Tamanho="18" /></button>
         </div>
+        @if (E.Chat.Aviso != "") { <div class="ch-aviso-g"><span>@E.Chat.Aviso</span><button class="ch-x" title="Fechar" @onclick="() => E.Chat.Aviso = string.Empty"><Icone Nome="x" Tamanho="14" /></button></div> }
         <div class="ch-busca"><Icone Nome="busca" Tamanho="15" /><input placeholder="Buscar pessoa…" @bind="_busca" @bind:event="oninput" /></div>
         <div class="ch-lista">
             @if (E.Chat.Erro != "") { <div class="ch-erro">@E.Chat.Erro</div> }
             else if (E.Chat.Contatos.Count == 0) { <p class="muted pequeno" style="padding:16px"><span class="ia-spin pequeno"></span> Carregando…</p> }
             @{ var lista = Filtrados(); var recentes = lista.Where(c => E.Chat.Conversas.ContainsKey(c.Id)).OrderByDescending(c => E.Chat.Conversas[c.Id].Em).ToList();
                var outros = lista.Except(recentes).OrderByDescending(c => E.Chat.Online.Contains(c.Id)).ThenBy(c => c.Nome).ToList(); }
+            @{ var grupos = E.Chat.Grupos.Values.Where(gr => _busca == "" || QSmart.Core.Coordenacao.Ferias.Norm(gr.Nome).Contains(QSmart.Core.Coordenacao.Ferias.Norm(_busca))).OrderByDescending(gr => gr.Em).ToList(); }
+            @if (grupos.Count > 0)
+            {
+                <div class="ch-sec">Grupos temporários</div>
+                @foreach (var gr in grupos)
+                {
+                    <button class="ch-pessoa @(gr.NaoLidas > 0 ? "nova" : "")" @onclick="() => Abrir(-gr.Id)" @key="-gr.Id">
+                        <span class="ch-av grupo"><Icone Nome="usuarios" Tamanho="18" /></span>
+                        <div class="ch-p-txt">
+                            <div class="ch-p-top"><b>@gr.Nome</b><small class="ch-exp" title="@($"Expira em {gr.Expira:dd/MM HH:mm}")">@Restante(gr.Expira)</small></div>
+                            <div class="ch-p-sub"><span>@E.Chat.UltimaDoGrupo(gr)</span>@if (gr.NaoLidas > 0) { <em>@gr.NaoLidas</em> }</div>
+                        </div>
+                    </button>
+                }
+            }
             @if (recentes.Count > 0)
             {
                 <div class="ch-sec">Conversas</div>
@@ -67,14 +201,17 @@
             }
             @if (E.Chat.Contatos.Count > 0 && lista.Count == 0) { <p class="muted pequeno" style="padding:16px">Ninguém com esse nome.</p> }
         </div>
-        <div class="ch-rodape"><Icone Nome="cadeado" Tamanho="12" /> Conversas criptografadas · apagadas depois de @E.Chat.Dias dias</div>
+        <div class="ch-rodape"><Icone Nome="cadeado" Tamanho="12" /> Conversas criptografadas · apagadas depois de @E.Chat.Dias dias · grupos duram até @E.Chat.GrupoMaxDias dias</div>
     }
 </div>
 
 @code {
     [Parameter] public EventCallback AoFechar { get; set; }
     ElementReference _lista, _caixa;
-    string _busca = "", _texto = "", _erro = "";
+    string _busca = "", _texto = "", _erro = "", _gNome = "";
+    bool _novo, _adicionando, _gInfo, _confirmar, _renomear;
+    int _gDias = 1;
+    readonly HashSet<int> _sel = new();
     bool _enviando, _segurarEnter, _rolar = true;
     int _qtdAntes;
 
@@ -136,8 +273,64 @@
         }
     }
 
-    async Task Abrir(int id) { _rolar = true; _erro = ""; _texto = ""; await E.Chat.AbrirConversa(id); }
-    void Voltar() { E.Chat.Com = null; _texto = ""; _ = E.Chat.AtualizarResumo(); }
+    async Task Abrir(int id) { _rolar = true; _erro = ""; _texto = ""; _gInfo = false; _confirmar = false; E.Chat.Aviso = ""; await E.Chat.AbrirConversa(id); }
+    void Voltar() { E.Chat.Com = null; _texto = ""; _gInfo = false; _confirmar = false; _erro = ""; _ = E.Chat.AtualizarResumo(); }
+
+    static string Restante(DateTime exp)
+    {
+        var t = exp - DateTime.Now;
+        return t.TotalHours < 1 ? $"{Math.Max(1, (int)t.TotalMinutes)} min" : t.TotalHours < 24 ? $"{(int)t.TotalHours} h" : $"{(int)Math.Ceiling(t.TotalDays)} d";
+    }
+
+    void AbrirNovo() { _novo = true; _adicionando = false; _sel.Clear(); _gNome = ""; _gDias = 1; _busca = ""; _erro = ""; E.Chat.Aviso = ""; }
+    void AbrirAdicionar() { _adicionando = true; _novo = false; _sel.Clear(); _busca = ""; _erro = ""; }
+    void CancelarSelecao() { _novo = false; _adicionando = false; _sel.Clear(); _busca = ""; _erro = ""; }
+    void Alternar(int id) { if (!_sel.Remove(id)) _sel.Add(id); }
+
+    async Task ConfirmarSelecao()
+    {
+        if (_enviando) return;
+        _enviando = true; _erro = "";
+        try
+        {
+            if (_novo)
+            {
+                var (erro, id) = await E.Chat.CriarGrupo(_gNome, _gDias, _sel);
+                if (erro != null) { _erro = erro; return; }
+                _novo = false; _sel.Clear(); _busca = "";
+                _ = E.Conta.Registrar("chat.grupo", true);
+                await Abrir(-id);
+            }
+            else if (E.Chat.GrupoAberto is { } g)
+            {
+                var erro = await E.Chat.AdicionarAoGrupo(g.Id, _sel);
+                if (erro != null) { _erro = erro; return; }
+                _adicionando = false; _sel.Clear(); _busca = ""; _gInfo = true; _rolar = true;
+            }
+        }
+        finally { _enviando = false; StateHasChanged(); }
+    }
+
+    async Task Remover(int uid)
+    {
+        if (E.Chat.GrupoAberto is not { } g) return;
+        _erro = await E.Chat.RemoverDoGrupo(g.Id, uid) ?? "";
+    }
+
+    async Task Renomear()
+    {
+        if (E.Chat.GrupoAberto is not { } g) return;
+        var erro = await E.Chat.RenomearGrupo(g.Id, _gNome);
+        _erro = erro ?? ""; if (erro == null) _renomear = false;
+    }
+
+    async Task Sair()
+    {
+        if (E.Chat.GrupoAberto is not { } g) return;
+        var erro = await E.Chat.SairDoGrupo(g.Id);
+        if (erro != null) { _erro = erro; return; }
+        _gInfo = false; _confirmar = false; _erro = "";
+    }
     async Task Fechar() => await AoFechar.InvokeAsync();
 
     void Tecla(KeyboardEventArgs e)

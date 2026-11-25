@@ -1510,7 +1510,7 @@ async function api(req, env, url) {
   }
 
   // ---------- Notificações (sininho) ----------
-  // ---------- chat: conversas 1 a 1 entre todos os usuários; cada mensagem se apaga 10 dias depois de enviada ----------
+  // ---------- chat: conversas 1 a 1 e grupos temporários entre todos os usuários; cada mensagem se apaga 10 dias depois de enviada ----------
   if (rota.startsWith("chat")) {
     const CHAT_DIAS = 10, ONLINE_MS = 2.5 * 60 * 1000;
     const limite = new Date(Date.now() - CHAT_DIAS * 864e5).toISOString();
@@ -1519,6 +1519,133 @@ async function api(req, env, url) {
     const presenca = async () => { if (!u._visao) await env.DB.prepare("INSERT INTO chat_presenca (usuario_id, em) VALUES (?, ?) ON CONFLICT(usuario_id) DO UPDATE SET em = excluded.em").bind(u.id, agora()).run(); };
     const abrirMsg = async x => ({ id: x.id, de: x.de_id, para: x.para_id, texto: await decifrar(env, x.texto), em: x.criado_em, lida: !!x.lida,
       expira: new Date(Date.parse(x.criado_em) + CHAT_DIAS * 864e5).toISOString() });
+    // ---------- grupos temporários: qualquer pessoa cria, dá nome, convida e (quem criou) remove; somem sozinhos em até 5 dias ----------
+    const GRUPO_MAX_DIAS = 5;
+    const agoraIso = agora();
+    {
+      const vencidos = (await env.DB.prepare("SELECT id FROM chat_grupos WHERE expira_em < ?").bind(agoraIso).all()).results || [];
+      for (const g of vencidos) await apagarGrupo(g.id);
+    }
+    async function apagarGrupo(id) {
+      await env.DB.batch([
+        env.DB.prepare("DELETE FROM chat_grupo_msgs WHERE grupo_id = ?").bind(id),
+        env.DB.prepare("DELETE FROM chat_grupo_membros WHERE grupo_id = ?").bind(id),
+        env.DB.prepare("DELETE FROM chat_grupos WHERE id = ?").bind(id)]);
+    }
+    const nomeDe = async id => { const x = await env.DB.prepare("SELECT nome, sobrenome FROM usuarios WHERE id = ?").bind(id).first(); return x ? `${x.nome} ${x.sobrenome}`.trim() : "Alguém"; };
+    // avisos do grupo (criou, adicionou, removeu, saiu): contam como novidade para os outros, não para quem fez
+    const evento = async (gid, texto) => {
+      const r = await env.DB.prepare("INSERT INTO chat_grupo_msgs (grupo_id, de_id, texto, criado_em) VALUES (?, 0, ?, ?)").bind(gid, await cifrar(env, texto), agora()).run();
+      await env.DB.prepare("UPDATE chat_grupo_membros SET lido_ate = ? WHERE grupo_id = ? AND usuario_id = ?").bind(r.meta?.last_row_id || 0, gid, u.id).run();
+    };
+    const grupoDoUsuario = async gid => {
+      const g = await env.DB.prepare("SELECT g.* FROM chat_grupos g JOIN chat_grupo_membros m ON m.grupo_id = g.id WHERE g.id = ? AND m.usuario_id = ?").bind(gid, u.id).first();
+      return g || null;
+    };
+    const membrosDe = async gid => ((await env.DB.prepare("SELECT usuario_id FROM chat_grupo_membros WHERE grupo_id = ? ORDER BY entrou_em").bind(gid).all()).results || []).map(x => x.usuario_id);
+    const idsAtivos = async ids => {
+      const lim = [...new Set((Array.isArray(ids) ? ids : []).map(Number).filter(n => n > 0 && n !== u.id))].slice(0, 60);
+      if (!lim.length) return [];
+      const r = (await env.DB.prepare(`SELECT id FROM usuarios WHERE status = 'ativo' AND id IN (${lim.map(() => "?").join(",")})`).bind(...lim).all()).results || [];
+      return r.map(x => x.id);
+    };
+    const resumoGrupos = async () => {
+      const gs = (await env.DB.prepare("SELECT g.*, m.lido_ate FROM chat_grupos g JOIN chat_grupo_membros m ON m.grupo_id = g.id WHERE m.usuario_id = ?").bind(u.id).all()).results || [];
+      const out = [];
+      for (const g of gs) {
+        const ult = await env.DB.prepare("SELECT * FROM chat_grupo_msgs WHERE grupo_id = ? ORDER BY id DESC LIMIT 1").bind(g.id).first();
+        const nl = await env.DB.prepare("SELECT COUNT(*) n FROM chat_grupo_msgs WHERE grupo_id = ? AND id > ? AND de_id != ?").bind(g.id, g.lido_ate || 0, u.id).first();
+        let t = ""; if (ult) { try { t = (await decifrar(env, ult.texto)).replace(/\s+/g, " ").trim(); } catch { } }
+        out.push({ id: g.id, nome: await decifrar(env, g.nome), criador: g.criador_id, expira: g.expira_em, criadoEm: g.criado_em, membros: await membrosDe(g.id),
+          ultima: t.length > 70 ? t.slice(0, 70) + "…" : t, em: ult ? ult.criado_em : g.criado_em, de: ult ? ult.de_id : 0, naoLidas: nl ? nl.n : 0 });
+      }
+      return out;
+    };
+    if (rota === "chat/grupo" && m === "GET") {
+      const gid = Number(url.searchParams.get("id")) || 0;
+      const g = await grupoDoUsuario(gid);
+      if (!g) return erro("Esse grupo não existe mais ou você não faz parte dele.", 404, { motivo: "grupo" });
+      await presenca();
+      const r = (await env.DB.prepare("SELECT * FROM (SELECT * FROM chat_grupo_msgs WHERE grupo_id = ? ORDER BY id DESC LIMIT 400) ORDER BY id").bind(gid).all()).results || [];
+      const msgs = []; for (const x of r) msgs.push({ id: x.id, de: x.de_id, texto: await decifrar(env, x.texto), em: x.criado_em });
+      if (!u._visao && r.length) await env.DB.prepare("UPDATE chat_grupo_membros SET lido_ate = ? WHERE grupo_id = ? AND usuario_id = ?").bind(r[r.length - 1].id, gid, u.id).run();
+      return json({ grupo: { id: g.id, nome: await decifrar(env, g.nome), criador: g.criador_id, expira: g.expira_em, criadoEm: g.criado_em, membros: await membrosDe(gid) }, msgs });
+    }
+    if (rota === "chat/grupo" && m === "POST") {
+      const b = await corpo(req);
+      const nome = String(b.nome || "").replace(/\s+/g, " ").trim();
+      const dias = Math.round(Number(b.dias) || 0);
+      if (!nome) return erro("Dê um nome ao grupo.");
+      if (nome.length > 60) return erro("Nome longo demais (até 60 caracteres).");
+      if (dias < 1 || dias > GRUPO_MAX_DIAS) return erro(`O grupo dura de 1 a ${GRUPO_MAX_DIAS} dias.`);
+      const ids = await idsAtivos(b.membros);
+      if (!ids.length) return erro("Convide pelo menos uma pessoa.");
+      const em = agora(), expira = new Date(Date.now() + dias * 864e5).toISOString();
+      const r = await env.DB.prepare("INSERT INTO chat_grupos (nome, criador_id, criado_em, expira_em) VALUES (?, ?, ?, ?)").bind(await cifrar(env, nome), u.id, em, expira).run();
+      const gid = r.meta?.last_row_id;
+      await env.DB.batch([u.id, ...ids].map(id => env.DB.prepare("INSERT OR IGNORE INTO chat_grupo_membros (grupo_id, usuario_id, lido_ate, entrou_em) VALUES (?, ?, 0, ?)").bind(gid, id, em)));
+      await evento(gid, `${await nomeDe(u.id)} criou o grupo "${nome}"`);
+      return json({ ok: true, id: gid });
+    }
+    if (rota === "chat/grupo/msg" && m === "POST") {
+      const b = await corpo(req);
+      const gid = Number(b.id) || 0, texto = String(b.texto || "").replace(/\r/g, "").trim();
+      if (!texto) return erro("Escreva a mensagem.");
+      if (texto.length > 2000) return erro("Mensagem longa demais (até 2.000 caracteres).");
+      if (!await grupoDoUsuario(gid)) return erro("Esse grupo não existe mais ou você não faz parte dele.", 404, { motivo: "grupo" });
+      const em = agora();
+      const r = await env.DB.prepare("INSERT INTO chat_grupo_msgs (grupo_id, de_id, texto, criado_em) VALUES (?, ?, ?, ?)").bind(gid, u.id, await cifrar(env, texto), em).run();
+      const id = r.meta?.last_row_id || 0;
+      await env.DB.prepare("UPDATE chat_grupo_membros SET lido_ate = ? WHERE grupo_id = ? AND usuario_id = ?").bind(id, gid, u.id).run();
+      await presenca();
+      return json({ ok: true, msg: { id, de: u.id, texto, em } });
+    }
+    if (rota === "chat/grupo/membros" && m === "POST") {
+      const b = await corpo(req);
+      const gid = Number(b.id) || 0;
+      const g = await grupoDoUsuario(gid);
+      if (!g) return erro("Esse grupo não existe mais ou você não faz parte dele.", 404, { motivo: "grupo" });
+      const eu = await nomeDe(u.id);
+      if (b.remover != null) {
+        const alvo = Number(b.remover) || 0;
+        if (g.criador_id !== u.id) return erro("Só quem criou o grupo remove pessoas.", 403);
+        if (alvo === u.id) return erro("Para sair, encerre o grupo.");
+        const r = await env.DB.prepare("DELETE FROM chat_grupo_membros WHERE grupo_id = ? AND usuario_id = ?").bind(gid, alvo).run();
+        if (r.meta?.changes) await evento(gid, `${eu} removeu ${await nomeDe(alvo)}`);
+        return json({ ok: true, membros: await membrosDe(gid) });
+      }
+      const atuais = new Set(await membrosDe(gid));
+      const novos = (await idsAtivos(b.adicionar)).filter(id => !atuais.has(id));
+      if (atuais.size + novos.length > 60) return erro("O grupo pode ter até 60 pessoas.");
+      if (novos.length) {
+        const em = agora();
+        await env.DB.batch(novos.map(id => env.DB.prepare("INSERT OR IGNORE INTO chat_grupo_membros (grupo_id, usuario_id, lido_ate, entrou_em) VALUES (?, ?, 0, ?)").bind(gid, id, em)));
+        const nomes = []; for (const id of novos) nomes.push(await nomeDe(id));
+        await evento(gid, `${eu} adicionou ${nomes.join(", ")}`);
+      }
+      return json({ ok: true, membros: await membrosDe(gid) });
+    }
+    if (rota === "chat/grupo/nome" && m === "POST") {
+      const b = await corpo(req);
+      const gid = Number(b.id) || 0, nome = String(b.nome || "").replace(/\s+/g, " ").trim();
+      const g = await grupoDoUsuario(gid);
+      if (!g) return erro("Esse grupo não existe mais ou você não faz parte dele.", 404, { motivo: "grupo" });
+      if (g.criador_id !== u.id) return erro("Só quem criou o grupo muda o nome.", 403);
+      if (!nome || nome.length > 60) return erro("Use um nome de 1 a 60 caracteres.");
+      await env.DB.prepare("UPDATE chat_grupos SET nome = ? WHERE id = ?").bind(await cifrar(env, nome), gid).run();
+      await evento(gid, `${await nomeDe(u.id)} mudou o nome para "${nome}"`);
+      return json({ ok: true });
+    }
+    if (rota === "chat/grupo/sair" && m === "POST") {
+      const b = await corpo(req);
+      const gid = Number(b.id) || 0;
+      const g = await grupoDoUsuario(gid);
+      if (!g) return json({ ok: true });
+      if (g.criador_id === u.id) { await apagarGrupo(gid); return json({ ok: true, encerrado: true }); }
+      await env.DB.prepare("DELETE FROM chat_grupo_membros WHERE grupo_id = ? AND usuario_id = ?").bind(gid, u.id).run();
+      await evento(gid, `${await nomeDe(u.id)} saiu do grupo`);
+      return json({ ok: true });
+    }
     if (rota === "chat/contatos" && m === "GET") {
       const r = (await env.DB.prepare("SELECT id, nome, sobrenome, papel, foto FROM usuarios WHERE status = 'ativo' AND id != ? ORDER BY nome, sobrenome").bind(u.id).all()).results || [];
       const contatos = [];
@@ -1539,7 +1666,9 @@ async function api(req, env, url) {
         if (x.para_id === u.id && !x.lida) c.naoLidas++;
       }
       const conversas = [...conv.values()];
-      return json({ online, vistos, conversas, total: conversas.reduce((a, c) => a + c.naoLidas, 0), dias: CHAT_DIAS });
+      const grupos = await resumoGrupos();
+      return json({ online, vistos, conversas, grupos, grupoMaxDias: GRUPO_MAX_DIAS,
+        total: conversas.reduce((a, c) => a + c.naoLidas, 0) + grupos.reduce((a, g) => a + g.naoLidas, 0), dias: CHAT_DIAS });
     }
     if (rota === "chat/conversa" && m === "GET") {
       const com = Number(url.searchParams.get("com")) || 0;
