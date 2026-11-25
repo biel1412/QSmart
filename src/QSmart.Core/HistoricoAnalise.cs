@@ -11,7 +11,7 @@ public sealed class HistoricoAnalise
 
     public List<Mes> Meses { get; private init; } = new();
     public List<string> Origens { get; private init; } = new();
-    /// <summary>Inspetores do mapa (os com mais desvios no período), em ordem.</summary>
+    /// <summary>Inspetores do ranking (todos que avaliaram no período, até 40), em ordem de desvios.</summary>
     public List<string> Inspetores { get; private init; } = new();
     /// <summary>Tipos de autorização com mais desvios no período (até 6), para os minigráficos.</summary>
     public List<string> Tipos { get; private init; } = new();
@@ -25,7 +25,7 @@ public sealed class HistoricoAnalise
         return i < 0 ? null : i + 1;
     }
 
-    public static HistoricoAnalise Montar(List<RegistroHist> regs, FiltrosHist filtros, int maxMeses = 12, int maxInsp = 10)
+    public static HistoricoAnalise Montar(List<RegistroHist> regs, FiltrosHist filtros, int maxMeses = 12, int maxInsp = 40)
     {
         var usados = regs.OrderBy(r => r.Mes, StringComparer.Ordinal).TakeLast(maxMeses).ToList();
         var meses = new List<Mes>();
