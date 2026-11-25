@@ -1510,11 +1510,11 @@ async function api(req, env, url) {
   }
 
   // ---------- Notificações (sininho) ----------
-  // ---------- chat: conversas 1 a 1 entre todos os usuários; cada mensagem se apaga 3 dias depois de enviada ----------
+  // ---------- chat: conversas 1 a 1 entre todos os usuários; cada mensagem se apaga 10 dias depois de enviada ----------
   if (rota.startsWith("chat")) {
-    const CHAT_DIAS = 3, ONLINE_MS = 2.5 * 60 * 1000;
+    const CHAT_DIAS = 10, ONLINE_MS = 2.5 * 60 * 1000;
     const limite = new Date(Date.now() - CHAT_DIAS * 864e5).toISOString();
-    // limpeza contínua: o que passou de 3 dias sai do banco
+    // limpeza contínua: o que passou de 10 dias sai do banco
     await env.DB.prepare("DELETE FROM chat_msgs WHERE criado_em < ?").bind(limite).run();
     const presenca = async () => { if (!u._visao) await env.DB.prepare("INSERT INTO chat_presenca (usuario_id, em) VALUES (?, ?) ON CONFLICT(usuario_id) DO UPDATE SET em = excluded.em").bind(u.id, agora()).run(); };
     const abrirMsg = async x => ({ id: x.id, de: x.de_id, para: x.para_id, texto: await decifrar(env, x.texto), em: x.criado_em, lida: !!x.lida,

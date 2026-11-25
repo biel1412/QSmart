@@ -6,7 +6,7 @@ public sealed record ContatoChat(int Id, string Nome, string Papel, string Foto)
 public sealed record ResumoChat(int Com, string Ultima, string Em, bool Minha, bool Lida, int NaoLidas);
 public sealed record MsgChat(int Id, int De, int Para, string Texto, DateTime Em, bool Lida, DateTime Expira);
 
-/// <summary>Chat entre os usuários do QSmart: conversas 1 a 1; cada mensagem se apaga 3 dias depois de enviada.</summary>
+/// <summary>Chat entre os usuários do QSmart: conversas 1 a 1; cada mensagem se apaga 10 dias depois de enviada.</summary>
 public sealed class Chat
 {
     readonly Estado _e;
@@ -17,7 +17,7 @@ public sealed class Chat
     public HashSet<int> Online { get; private set; } = new();
     public Dictionary<int, DateTime> Vistos { get; private set; } = new();
     public int Total { get; private set; }
-    public int Dias { get; private set; } = 3;
+    public int Dias { get; private set; } = 10;
     public bool Aberto { get; set; }
     public int? Com { get; set; }
     public List<MsgChat> Msgs { get; private set; } = new();
@@ -61,7 +61,7 @@ public sealed class Chat
         Conversas = (r.Json["conversas"] as JsonArray ?? new()).Where(x => x != null)
             .Select(x => new ResumoChat(I(x, "com"), S(x, "ultima"), S(x, "em"), B(x, "minha"), B(x, "lida"), I(x, "naoLidas"))).ToDictionary(c => c.Com);
         Total = I(r.Json, "total");
-        Dias = I(r.Json, "dias") is > 0 and var d ? d : 3;
+        Dias = I(r.Json, "dias") is > 0 and var d ? d : 10;
         // aviso de mensagem nova (fora da conversa aberta)
         foreach (var c in Conversas.Values)
         {
