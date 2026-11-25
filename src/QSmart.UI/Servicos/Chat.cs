@@ -6,7 +6,7 @@ public sealed record ContatoChat(int Id, string Nome, string Papel, string Foto)
 public sealed record ResumoChat(int Com, string Ultima, string Em, bool Minha, bool Lida, int NaoLidas);
 public sealed record MsgChat(int Id, int De, int Para, string Texto, DateTime Em, bool Lida, DateTime Expira);
 /// <summary>Grupo temporário: some sozinho (com as mensagens) na data de expiração.</summary>
-public sealed record GrupoChat(int Id, string Nome, int Criador, DateTime Expira, DateTime CriadoEm, List<int> Membros, string Ultima, string Em, int De, int NaoLidas);
+public sealed record GrupoChat(int Id, string Nome, string Foto, int Criador, DateTime Expira, DateTime CriadoEm, List<int> Membros, string Ultima, string Em, int De, int NaoLidas);
 
 /// <summary>Chat entre os usuários do QSmart: conversas 1 a 1 (cada mensagem se apaga 10 dias depois de enviada)
 /// e grupos temporários (duram até 5 dias). <see cref="Com"/> negativo indica um grupo (-id).</summary>
@@ -88,7 +88,7 @@ public sealed class Chat
         {
             int eram = gAntes.TryGetValue(g.Id, out var a) ? a.NaoLidas : 0;
             if (!_primeiro && g.NaoLidas > eram && !(Aberto && Com == -g.Id))
-                Chegou?.Invoke(new ContatoChat(-g.Id, g.Nome, "grupo", ""), UltimaDoGrupo(g));
+                Chegou?.Invoke(new ContatoChat(-g.Id, g.Nome, "grupo", g.Foto), UltimaDoGrupo(g));
         }
         _primeiro = false;
         Mudou?.Invoke();
@@ -102,7 +102,7 @@ public sealed class Chat
         await AtualizarConversa();
     }
 
-    static GrupoChat LerGrupo(JsonNode? x) => new(I(x, "id"), S(x, "nome"), I(x, "criador"), D(S(x, "expira")), D(S(x, "criadoEm")),
+    static GrupoChat LerGrupo(JsonNode? x) => new(I(x, "id"), S(x, "nome"), S(x, "foto"), I(x, "criador"), D(S(x, "expira")), D(S(x, "criadoEm")),
         (x?["membros"] as JsonArray ?? new()).Select(m => m?.GetValue<int>() ?? 0).Where(m => m > 0).ToList(),
         S(x, "ultima"), S(x, "em"), I(x, "de"), I(x, "naoLidas"));
 
@@ -155,9 +155,9 @@ public sealed class Chat
         Mudou?.Invoke();
     }
 
-    public async Task<(string? erro, int id)> CriarGrupo(string nome, int dias, IEnumerable<int> membros)
+    public async Task<(string? erro, int id)> CriarGrupo(string nome, int dias, IEnumerable<int> membros, string foto = "")
     {
-        var r = await _e.Conta.Chamar("POST", "chat/grupo", new JsonObject { ["nome"] = nome.Trim(), ["dias"] = dias, ["membros"] = new JsonArray(membros.Select(m => (JsonNode)m).ToArray()) });
+        var r = await _e.Conta.Chamar("POST", "chat/grupo", new JsonObject { ["nome"] = nome.Trim(), ["dias"] = dias, ["foto"] = foto, ["membros"] = new JsonArray(membros.Select(m => (JsonNode)m).ToArray()) });
         if (!r.Ok) return (r.Erro, 0);
         var id = I(r.Json, "id");
         await AtualizarResumo();
@@ -174,6 +174,13 @@ public sealed class Chat
     public async Task<string?> RemoverDoGrupo(int gid, int uid)
     {
         var r = await _e.Conta.Chamar("POST", "chat/grupo/membros", new JsonObject { ["id"] = gid, ["remover"] = uid });
+        if (!r.Ok) return r.Erro;
+        await AtualizarGrupo(gid); return null;
+    }
+
+    public async Task<string?> FotoDoGrupo(int gid, string foto)
+    {
+        var r = await _e.Conta.Chamar("POST", "chat/grupo/foto", new JsonObject { ["id"] = gid, ["foto"] = foto });
         if (!r.Ok) return r.Erro;
         await AtualizarGrupo(gid); return null;
     }

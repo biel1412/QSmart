@@ -1556,7 +1556,7 @@ async function api(req, env, url) {
         const ult = await env.DB.prepare("SELECT * FROM chat_grupo_msgs WHERE grupo_id = ? ORDER BY id DESC LIMIT 1").bind(g.id).first();
         const nl = await env.DB.prepare("SELECT COUNT(*) n FROM chat_grupo_msgs WHERE grupo_id = ? AND id > ? AND de_id != ?").bind(g.id, g.lido_ate || 0, u.id).first();
         let t = ""; if (ult) { try { t = (await decifrar(env, ult.texto)).replace(/\s+/g, " ").trim(); } catch { } }
-        out.push({ id: g.id, nome: await decifrar(env, g.nome), criador: g.criador_id, expira: g.expira_em, criadoEm: g.criado_em, membros: await membrosDe(g.id),
+        out.push({ id: g.id, nome: await decifrar(env, g.nome), foto: g.foto || "", criador: g.criador_id, expira: g.expira_em, criadoEm: g.criado_em, membros: await membrosDe(g.id),
           ultima: t.length > 70 ? t.slice(0, 70) + "…" : t, em: ult ? ult.criado_em : g.criado_em, de: ult ? ult.de_id : 0, naoLidas: nl ? nl.n : 0 });
       }
       return out;
@@ -1569,7 +1569,7 @@ async function api(req, env, url) {
       const r = (await env.DB.prepare("SELECT * FROM (SELECT * FROM chat_grupo_msgs WHERE grupo_id = ? ORDER BY id DESC LIMIT 400) ORDER BY id").bind(gid).all()).results || [];
       const msgs = []; for (const x of r) msgs.push({ id: x.id, de: x.de_id, texto: await decifrar(env, x.texto), em: x.criado_em });
       if (!u._visao && r.length) await env.DB.prepare("UPDATE chat_grupo_membros SET lido_ate = ? WHERE grupo_id = ? AND usuario_id = ?").bind(r[r.length - 1].id, gid, u.id).run();
-      return json({ grupo: { id: g.id, nome: await decifrar(env, g.nome), criador: g.criador_id, expira: g.expira_em, criadoEm: g.criado_em, membros: await membrosDe(gid) }, msgs });
+      return json({ grupo: { id: g.id, nome: await decifrar(env, g.nome), foto: g.foto || "", criador: g.criador_id, expira: g.expira_em, criadoEm: g.criado_em, membros: await membrosDe(gid) }, msgs });
     }
     if (rota === "chat/grupo" && m === "POST") {
       const b = await corpo(req);
@@ -1581,7 +1581,9 @@ async function api(req, env, url) {
       const ids = await idsAtivos(b.membros);
       if (!ids.length) return erro("Convide pelo menos uma pessoa.");
       const em = agora(), expira = new Date(Date.now() + dias * 864e5).toISOString();
-      const r = await env.DB.prepare("INSERT INTO chat_grupos (nome, criador_id, criado_em, expira_em) VALUES (?, ?, ?, ?)").bind(await cifrar(env, nome), u.id, em, expira).run();
+      const foto = String(b.foto || "");
+      if (foto && (!/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(foto) || foto.length > 120000)) return erro("Foto inválida ou grande demais.");
+      const r = await env.DB.prepare("INSERT INTO chat_grupos (nome, criador_id, criado_em, expira_em, foto) VALUES (?, ?, ?, ?, ?)").bind(await cifrar(env, nome), u.id, em, expira, foto).run();
       const gid = r.meta?.last_row_id;
       await env.DB.batch([u.id, ...ids].map(id => env.DB.prepare("INSERT OR IGNORE INTO chat_grupo_membros (grupo_id, usuario_id, lido_ate, entrou_em) VALUES (?, ?, 0, ?)").bind(gid, id, em)));
       await evento(gid, `${await nomeDe(u.id)} criou o grupo "${nome}"`);
@@ -1634,6 +1636,17 @@ async function api(req, env, url) {
       if (!nome || nome.length > 60) return erro("Use um nome de 1 a 60 caracteres.");
       await env.DB.prepare("UPDATE chat_grupos SET nome = ? WHERE id = ?").bind(await cifrar(env, nome), gid).run();
       await evento(gid, `${await nomeDe(u.id)} mudou o nome para "${nome}"`);
+      return json({ ok: true });
+    }
+    if (rota === "chat/grupo/foto" && m === "POST") {
+      const b = await corpo(req);
+      const gid = Number(b.id) || 0, foto = String(b.foto || "");
+      const g = await grupoDoUsuario(gid);
+      if (!g) return erro("Esse grupo não existe mais ou você não faz parte dele.", 404, { motivo: "grupo" });
+      if (g.criador_id !== u.id) return erro("Só quem criou o grupo muda a foto.", 403);
+      if (foto && (!/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(foto) || foto.length > 120000)) return erro("Foto inválida ou grande demais.");
+      await env.DB.prepare("UPDATE chat_grupos SET foto = ? WHERE id = ?").bind(foto, gid).run();
+      await evento(gid, `${await nomeDe(u.id)} ${foto ? "mudou" : "removeu"} a foto do grupo`);
       return json({ ok: true });
     }
     if (rota === "chat/grupo/sair" && m === "POST") {

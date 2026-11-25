@@ -124,7 +124,7 @@ else
             @if (_aviso is { } av && !_chat)
             {
                 <button class="ch-toast" @onclick="() => AbrirChatCom(av.c.Id)">
-                    @if (av.c.Id < 0) { <span class="ch-av grupo"><Icone Nome="usuarios" Tamanho="18" /></span> }
+                    @if (av.c.Id < 0) { <span class="ch-av ch-grupo">@if (av.c.Foto != "") { <img src="@av.c.Foto" alt="" /> } else { <Icone Nome="usuarios" Tamanho="18" /> }</span> }
                     else { <span class="ch-av" style="background:@CorNome(av.c.Nome)">@if (av.c.Foto != "") { <img src="@av.c.Foto" alt="" /> } else { @IniciaisDe(av.c.Nome) }</span> }
                     <div><b>@av.c.Nome</b><span>@av.t</span></div>
                     <i @onclick="() => _aviso = null" @onclick:stopPropagation="true" title="Fechar">✕</i>

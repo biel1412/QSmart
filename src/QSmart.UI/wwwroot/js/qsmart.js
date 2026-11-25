@@ -301,6 +301,14 @@
     catch (e) { return { status: 0, texto: String(e) }; }
     finally { clearTimeout(t); }
   };
+  // insere um texto (ex.: emoji) na posição do cursor de um campo e devolve o valor novo
+  const inserirNoCursor = (el, txt) => {
+    if (!el) return txt;
+    const i = el.selectionStart ?? el.value.length, f = el.selectionEnd ?? i;
+    el.value = el.value.slice(0, i) + txt + el.value.slice(f);
+    const p = i + txt.length; el.focus(); el.setSelectionRange(p, p);
+    return el.value;
+  };
   // reduz uma imagem (foto de perfil) para um quadrado de "max" px em JPEG
   const reduzirImagem = async (bytes, max) => {
     const bmp = await createImageBitmap(new Blob([bytes]));
@@ -1277,5 +1285,6 @@
     try { if (navigator.storage && navigator.storage.estimate) { const e = await navigator.storage.estimate(); usado = e.usage || 0; cota = e.quota || 0; } } catch { }
     return { local, usado, cota };
   };
-  window.qsmart = { festa, armazenamento, downloads, chatFim, kv, cofre, rolar, ia, get, getH, req, reduzirImagem, imagem, nota, doc, grade, tela, lsGet, lsSet, lsDel, colarImagens, clicar, trocarUrl, pasta, baixar, abrir, copiar, abrirUrl, pdfPaginas, pdfJuntar, pdfLinhas, tema, aoOcultar, focar, rolarLinha, pronto };
+  window.qsmart = { festa, inserirNoCursor, limparCampo: el => { if (el) el.value = ""; },
+    travarEnter: el => { if (el && !el._travaEnter) { el._travaEnter = true; el.addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) e.preventDefault(); }); } }, armazenamento, downloads, chatFim, kv, cofre, rolar, ia, get, getH, req, reduzirImagem, imagem, nota, doc, grade, tela, lsGet, lsSet, lsDel, colarImagens, clicar, trocarUrl, pasta, baixar, abrir, copiar, abrirUrl, pdfPaginas, pdfJuntar, pdfLinhas, tema, aoOcultar, focar, rolarLinha, pronto };
 })();
