@@ -10,10 +10,10 @@
     int nM = a.Meses.Count;
     <section class="ev-central hc" aria-label="Evolução do histórico">
         <div class="ev-topo">
-            <span class="ev-rot">@(_ranking ? "RANKING DA TAXA DE DESVIO · 1º = MAIOR TAXA" : "DESVIOS POR ORIGEM") · @Texto.NomeMes(a.Meses[0].Chave, true).ToUpperInvariant() A @Texto.NomeMes(a.Meses[^1].Chave, true).ToUpperInvariant()</span>
+            <span class="ev-rot">@(_ranking ? "TAXA DE DESVIO NAS AVALIAÇÕES · QUEM MAIS PIOROU PRIMEIRO" : "DESVIOS POR ORIGEM") · @Texto.NomeMes(a.Meses[0].Chave, true).ToUpperInvariant() A @Texto.NomeMes(a.Meses[^1].Chave, true).ToUpperInvariant()</span>
             <div class="hc-troca" role="tablist">
                 <button role="tab" aria-selected="@(!_ranking)" class="@(!_ranking ? "on" : "")" @onclick="() => _ranking = false"><Icone Nome="evolucao" Tamanho="14" /> Desvios por origem</button>
-                <button role="tab" aria-selected="@_ranking" class="@(_ranking ? "on" : "")" @onclick="() => _ranking = true"><Icone Nome="estrela" Tamanho="14" /> Ranking de taxa de desvio</button>
+                <button role="tab" aria-selected="@_ranking" class="@(_ranking ? "on" : "")" @onclick="() => _ranking = true"><Icone Nome="usuarios" Tamanho="14" /> Taxa por inspetor</button>
             </div>
         </div>
 
@@ -76,55 +76,51 @@
         }
         else
         {
-            var ins = a.Inspetores;
-            var sel = ins.Contains(_sel ?? "") ? _sel! : ins.FirstOrDefault();
-            int linhas = Math.Max(1, a.Meses.Max(m => ins.Count(n => HistoricoAnalise.TaxaInsp(m, n) != null)));
-            double alt = 34 + linhas * 36;
-            if (ins.Count == 0)
+            var cards = a.Inspetores.Select(n =>
+            {
+                var v = a.Meses.Select(m => HistoricoAnalise.TaxaInsp(m, n)).ToList();
+                var ok = v.Where(x => x != null).Select(x => x!.Value).ToList();
+                double u = ok.Count > 0 ? ok[^1] : 0, d = ok.Count > 1 ? ok[^1] - ok[^2] : 0;
+                return (n, v, u, d, tem: ok.Count > 0);
+            }).Where(c => c.tem).OrderByDescending(c => c.d).ThenByDescending(c => c.u).ToList();
+            if (cards.Count == 0)
             {
                 <p class="ev-vazio">Sem inspetores com avaliações no período.</p>
             }
             else
             {
-                <svg class="ev-mapa" viewBox="0 0 900 @N(alt)" role="img" aria-label="Posição de cada inspetor pela taxa de desvio, mês a mês">
-                    @for (int i = 0; i < nM; i++)
+                <div class="hi-grade">
+                    @foreach (var c in cards)
                     {
-                        <g><text x="@N(XR(i, nM))" y="14" text-anchor="middle" class="ev-cab">@Texto.NomeMes(a.Meses[i].Chave, true)</text></g>
+                        var cls = c.d > .3 ? "sobe" : c.d < -.3 ? "desce" : "igual";
+                        var nome = c.n;
+                        <button class="hi-card @cls @(nome == _sel ? "on" : "")" @onclick="() => _sel = _sel == nome ? null : nome" title="Clique para ver a tendência">
+                            <div class="hi-topo"><span>@c.n</span>@if (c.v.Count(x => x != null) > 1) { <em>@(cls == "sobe" ? "▲" : cls == "desce" ? "▼" : "=") @Texto.Fv(Math.Abs(c.d), 1) p.p.</em> } else { <em class="hi-um">só 1 mês</em> }</div>
+                            <div class="hi-meio">
+                                <b class="ev-taxa @EvolucaoAnalise.Nivel(c.u)">@Texto.Fv(c.u, 1)%</b>
+                                @if (c.v.Count(x => x != null) > 1)
+                                {
+                                    <svg viewBox="-6 0 152 40" aria-hidden="true">
+                                        <polyline points="@Linha(c.v)" class="hi-l" />
+                                        @foreach (var (x, y) in Pontos(c.v)) { <circle cx="@N(x)" cy="@N(y)" r="3.2" fill="#fff" /> }
+                                    </svg>
+                                }
+                            </div>
+                            <div class="hi-meses">
+                                @for (int i = 0; i < nM; i++)
+                                {
+                                    if (nM > 4 && i != 0 && i != nM - 1) continue;
+                                    <span>@Texto.NomeMes(a.Meses[i].Chave, true)[..3] @(c.v[i] is double t ? Texto.Fv(t, 1) : "—")</span>
+                                }
+                            </div>
+                        </button>
                     }
-                    @for (int r = 0; r < linhas; r++)
-                    {
-                        <g><text x="14" y="@N(YR(r) + 4)" class="hc-pos">@(r + 1)º</text></g>
-                    }
-                    @foreach (var nome in ins.OrderBy(n => n == sel))
-                    {
-                        var on = nome == sel; var cor = CorInsp(ins.IndexOf(nome));
-                        var pts = a.Meses.Select((m, i) => (i, p: a.Posicao(m, nome))).Where(x => x.p != null).Select(x => (x: XR(x.i, nM), y: YR(x.p!.Value - 1), i: x.i)).ToList();
-                        <g class="hc-bump @(on ? "on" : "")" style="--c:@cor" @onclick="() => _sel = nome">
-                            @if (pts.Count > 1)
-                            {
-                                <path d="@Curva(pts.Select(p => (p.x, p.y)).ToList())" class="hc-bump-l" />
-                            }
-                            @foreach (var pt in pts)
-                            {
-                                var tx = HistoricoAnalise.TaxaInsp(a.Meses[pt.i], nome) ?? 0;
-                                <circle cx="@N(pt.x)" cy="@N(pt.y)" r="@(on ? 12 : 5)" class="hc-bump-p"><title>@nome · @Texto.NomeMes(a.Meses[pt.i].Chave, true): @Texto.F(tx, 1)% (@a.Posicao(a.Meses[pt.i], nome)º)</title></circle>
-                                if (on) { <g><text x="@N(pt.x)" y="@N(pt.y + 3.5)" text-anchor="middle" class="hc-bump-n">@(tx >= 10 ? Math.Round(tx).ToString(CultureInfo.InvariantCulture) : Texto.F(tx, 1))</text></g> }
-                            }
-                            @if (pts.Count > 0)
-                            {
-                                var ult = pts[^1];
-                                <g><text x="@N(ult.x + 20)" y="@N(ult.y + 4)" class="hc-bump-nome">@Curto(nome, 22)</text></g>
-                            }
-                        </g>
-                    }
-                </svg>
-                @if (sel != null)
+                </div>
+                @if (_sel != null && cards.Any(c => c.n == _sel))
                 {
-                    var com = a.Meses.Select(m => (m, p: a.Posicao(m, sel))).Where(x => x.p != null).ToList();
-                    var td = a.Tendencia(sel); bool sobe = td is { } x && x.t1 - x.t0 >= .3;
-                    <div class="ev-diag @(sobe ? "" : "hc-bom")">
-                        <b>@sel.</b> @(com.Count > 1 ? $"{com[0].p}º em {Texto.NomeMes(com[0].m.Chave, true)} → {com[^1].p}º em {Texto.NomeMes(com[^1].m.Chave, true)} no ranking de taxa de desvio. " : "")@a.Diagnostico(sel, com.Count > 0 ? com[^1].m : a.Meses[^1])
-                    </div>
+                    var td = a.Tendencia(_sel); bool sobe = td is { } x && x.t1 - x.t0 >= .3;
+                    var ultimoCom = a.Meses.LastOrDefault(m => HistoricoAnalise.TaxaInsp(m, _sel) != null) ?? a.Meses[^1];
+                    <div class="ev-diag @(sobe ? "" : "hc-bom")"><b>@_sel.</b> @a.Diagnostico(_sel, ultimoCom)</div>
                 }
             }
         }
@@ -160,6 +156,15 @@
     static double YR(int r) => 36 + r * 36;
 
     static string Var(long a, long b) => a == 0 ? (b == 0 ? "0%" : "novo") : $"{Math.Abs(Math.Round((b - a) * 100.0 / a)).ToString(CultureInfo.InvariantCulture)}%";
+
+    static List<(double x, double y)> Pontos(List<double?> v)
+    {
+        var ok = v.Select((t, i) => (i, t)).Where(p => p.t != null).ToList();
+        double mx = ok.Max(p => p.t!.Value), mn = ok.Min(p => p.t!.Value);
+        double passo = v.Count > 1 ? 140.0 / (v.Count - 1) : 0;
+        return ok.Select(p => (p.i * passo, 36 - (mx == mn ? 16 : (p.t!.Value - mn) / (mx - mn) * 30) - 3)).ToList();
+    }
+    static string Linha(List<double?> v) => string.Join(" ", Pontos(v).Select(p => $"{N(p.x)},{N(p.y)}"));
 
     static string Mini(List<long> v)
     {

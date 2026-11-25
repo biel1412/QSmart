@@ -3550,3 +3550,23 @@ svg .hc-foco { fill: #fff; font-weight: 700; }
 .hc-bump.on .hc-bump-nome { fill: #fff; font-weight: 700; }
 .hc-bump-n { fill: #0B1020; font-size: 9px; font-weight: 800; pointer-events: none; }
 @media (max-width: 1000px) { .hc-mini { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* Histórico: cartões de taxa por inspetor */
+.hi-grade { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
+.hi-card { all: unset; box-sizing: border-box; cursor: pointer; position: relative; overflow: hidden; border-radius: 14px; padding: 12px 14px; display: flex; flex-direction: column; gap: 4px;
+  background: linear-gradient(160deg, rgba(255,255,255,.07), rgba(255,255,255,.02)); border: 1px solid rgba(255,255,255,.08); --c: #94A3B8; transition: transform .15s, border-color .15s; }
+.hi-card.sobe { --c: #F43F5E; } .hi-card.desce { --c: #10B981; }
+.hi-card::before { content: ""; position: absolute; right: -30px; bottom: -40px; width: 110px; height: 110px; border-radius: 50%; background: var(--c); filter: blur(40px); opacity: .35; pointer-events: none; }
+.hi-card:hover { transform: translateY(-2px); border-color: rgba(255,255,255,.18); }
+.hi-card.on { border-color: var(--c); box-shadow: 0 0 18px color-mix(in srgb, var(--c) 45%, transparent); }
+.hi-topo { display: flex; justify-content: space-between; gap: 8px; font-size: 12.5px; }
+.hi-topo span { color: #C5D1E6; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hi-topo em { font-style: normal; font-weight: 700; color: var(--c); white-space: nowrap; }
+.hi-meio { display: flex; align-items: flex-end; gap: 10px; }
+.hi-meio b { font-size: 24px; font-weight: 800; text-shadow: 0 0 14px currentColor; white-space: nowrap; }
+.hi-meio b.ok { color: #34D399; } .hi-meio b.atencao { color: #FBBF24; } .hi-meio b.critico { color: #FB7185; }
+.hi-meio svg { flex: 1; min-width: 0; height: 40px; }
+.hi-l { fill: none; stroke: var(--c); stroke-width: 2.5; stroke-linejoin: round; filter: drop-shadow(0 0 4px var(--c)); }
+.hi-meses { display: flex; justify-content: space-between; gap: 6px; font-size: 10.5px; color: #64748B; }
+.hc .ev-diag { margin-top: 12px; }
+.hi-topo em.hi-um { color: #64748B; font-weight: 500; }
