@@ -1277,5 +1277,104 @@
     try { if (navigator.storage && navigator.storage.estimate) { const e = await navigator.storage.estimate(); usado = e.usage || 0; cota = e.quota || 0; } } catch { }
     return { local, usado, cota };
   };
-  window.qsmart = { festa, armazenamento, downloads, chatFim, kv, cofre, rolar, ia, get, getH, req, reduzirImagem, imagem, nota, doc, grade, tela, lsGet, lsSet, lsDel, colarImagens, clicar, trocarUrl, pasta, baixar, abrir, copiar, abrirUrl, pdfPaginas, pdfJuntar, pdfLinhas, tema, aoOcultar, focar, rolarLinha, pronto };
+
+  // Ecossistema QSmart (tela de entrada): plataforma no centro e os ambientes em órbita.
+  function ecossistema() {
+    if (document.querySelector(".eco")) return;
+    const NS = "http://www.w3.org/2000/svg";
+    const el = (t, a, p) => { const e = document.createElementNS(NS, t); for (const k in a) e.setAttribute(k, a[k]); if (p) p.appendChild(e); return e; };
+    const W = 1000, H = 640, CX = 500, CY = 330;
+    const raiz = document.createElement("div");
+    raiz.className = "eco"; raiz.setAttribute("role", "dialog"); raiz.setAttribute("aria-label", "Ecossistema QSmart");
+    raiz.innerHTML = `
+      <div class="eco-topo"><span class="eco-rot">ECOSSISTEMA QSMART</span>
+        <span class="eco-leg"><i class="on"></i>Em operação<i></i>Compatível</span>
+        <button class="eco-x" aria-label="Fechar">✕</button></div>
+      <svg class="eco-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">
+        <defs>
+          <linearGradient id="eco-lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#14B8A6"/><stop offset=".55" stop-color="#3B82F6"/><stop offset="1" stop-color="#7C3AED"/></linearGradient>
+          <radialGradient id="eco-halo"><stop offset="0" stop-color="#3B82F6" stop-opacity=".32"/><stop offset="1" stop-color="#3B82F6" stop-opacity="0"/></radialGradient>
+          <radialGradient id="eco-pS" cx=".32" cy=".28" r=".75"><stop offset="0" stop-color="#C9F2E2"/><stop offset=".35" stop-color="#2BB58A"/><stop offset=".8" stop-color="#0F6E56"/><stop offset="1" stop-color="#04342C"/></radialGradient>
+          <radialGradient id="eco-pG" cx=".32" cy=".28" r=".75"><stop offset="0" stop-color="#E7E4FB"/><stop offset=".35" stop-color="#8F87E6"/><stop offset=".8" stop-color="#4A41A8"/><stop offset="1" stop-color="#1E1A4D"/></radialGradient>
+          <radialGradient id="eco-pR" cx=".32" cy=".28" r=".75"><stop offset="0" stop-color="#E3F0FC"/><stop offset=".35" stop-color="#5A9FE6"/><stop offset=".8" stop-color="#185FA5"/><stop offset="1" stop-color="#062447"/></radialGradient>
+          <radialGradient id="eco-aS"><stop offset=".7" stop-color="#5DCAA5" stop-opacity="0"/><stop offset=".85" stop-color="#5DCAA5" stop-opacity=".35"/><stop offset="1" stop-color="#5DCAA5" stop-opacity="0"/></radialGradient>
+          <radialGradient id="eco-aG"><stop offset=".7" stop-color="#AFA9EC" stop-opacity="0"/><stop offset=".85" stop-color="#AFA9EC" stop-opacity=".25"/><stop offset="1" stop-color="#AFA9EC" stop-opacity="0"/></radialGradient>
+          <radialGradient id="eco-aR"><stop offset=".7" stop-color="#85B7EB" stop-opacity="0"/><stop offset=".85" stop-color="#85B7EB" stop-opacity=".25"/><stop offset="1" stop-color="#85B7EB" stop-opacity="0"/></radialGradient>
+        </defs>
+        <ellipse cx="${CX}" cy="${CY}" rx="220" ry="130" fill="none" stroke="#3B82F6" stroke-opacity=".28"/>
+        <ellipse cx="${CX}" cy="${CY}" rx="400" ry="232" fill="none" stroke="#8fa3c4" stroke-opacity=".18" stroke-dasharray="2 6"/>
+        <g class="eco-linhas"></g><g class="eco-tras"></g>
+        <circle cx="${CX}" cy="${CY}" r="120" fill="url(#eco-halo)"/>
+        <g transform="translate(${CX - 48} ${CY - 48})">
+          <rect width="96" height="96" rx="23" fill="url(#eco-lg)"/>
+          <circle cx="44" cy="45" r="23" fill="none" stroke="#fff" stroke-width="7"/>
+          <path d="M33 45l9 9 16.5-18.5" fill="none" stroke="#fff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M62 63l12 12" stroke="#fff" stroke-width="8" stroke-linecap="round"/>
+          <path d="M77 12l2.2 5.5 5.5 2.2-5.5 2.2-2.2 5.5-2.2-5.5-5.5-2.2 5.5-2.2z" fill="#fff"/>
+        </g>
+        <text x="${CX}" y="${CY + 76}" text-anchor="middle" fill="#fff" font-size="17" font-weight="700">Plataforma QSmart</text>
+        <text x="${CX}" y="${CY + 96}" text-anchor="middle" fill="#8fa3c4" font-size="13">núcleo comum</text>
+        <g class="eco-frente"></g>
+      </svg>
+      <div class="eco-info">Selecione um ambiente. O Sicoob leva você de volta à plataforma.</div>`;
+    document.body.appendChild(raiz);
+    const svg = raiz.querySelector("svg"), L = svg.querySelector(".eco-linhas"), TR = svg.querySelector(".eco-tras"), FR = svg.querySelector(".eco-frente"), info = raiz.querySelector(".eco-info");
+    const A = [
+      { k: "sicoob", n: "Sicoob", st: "Em operação · entrar", rx: 220, ry: 130, r: 40, a: -0.4, v: .00007, g: "pS", at: "aS", ativo: true,
+        mods: ["One a One", "Férias", "Day off", "Radar Smart360", "Mr. Smart"] },
+      { k: "gedau", n: "Gedau", st: "Compatível", rx: 400, ry: 232, r: 31, a: 2.2, v: .00004, g: "pG", at: "aG",
+        txt: "<b>Gedau · ambiente compatível.</b> Mesmo núcleo de segurança, regras e relatórios; implantação sob demanda." },
+      { k: "sicredi", n: "Sicredi", st: "Compatível", rx: 400, ry: 232, r: 34, a: 4.4, v: .00004, g: "pR", at: "aR", anel: true,
+        txt: "<b>Sicredi · ambiente compatível.</b> A arquitetura permite novos ambientes sem refazer a plataforma." }];
+    let fechado = false;
+    const fechar = () => {
+      if (fechado) return; fechado = true;
+      raiz.classList.add("sai"); document.removeEventListener("keydown", tecla);
+      setTimeout(() => raiz.remove(), 450);
+    };
+    const tecla = e => { if (e.key === "Escape") fechar(); };
+    document.addEventListener("keydown", tecla);
+    raiz.querySelector(".eco-x").onclick = fechar;
+    A.forEach(p => {
+      p.l = el("line", { stroke: p.ativo ? "#1D9E75" : "#8fa3c4", "stroke-opacity": p.ativo ? .7 : .35, "stroke-width": p.ativo ? 2 : 1.2, "stroke-dasharray": p.ativo ? "" : "5 5" }, L);
+      if (p.ativo) p.pulso = el("circle", { r: 4, fill: "#5DCAA5" }, L);
+      p.G = el("g", { class: "eco-mundo", tabindex: "0", role: "button", "aria-label": p.n + ", " + p.st });
+      const ir = () => { if (p.ativo) fechar(); else info.innerHTML = p.txt; };
+      p.G.addEventListener("click", ir);
+      p.G.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); ir(); } });
+      if (p.ativo) {
+        p.G.addEventListener("mouseenter", () => info.innerHTML = "<b>Sicoob · ambiente em operação.</b> Módulos ativos: " + p.mods.join(", ") + " e outros. Clique para voltar à plataforma.");
+      }
+      el("circle", { r: p.r * 1.45, fill: `url(#eco-${p.at})` }, p.G);
+      if (p.anel) el("ellipse", { rx: p.r * 1.8, ry: p.r * .42, fill: "none", stroke: "#85B7EB", "stroke-opacity": .55, "stroke-width": 3, transform: "rotate(-14)" }, p.G);
+      el("circle", { class: "eco-esfera", r: p.r, fill: `url(#eco-${p.g})` }, p.G);
+      el("path", { d: `M${-p.r * .85} ${-p.r * .15} Q0 ${p.r * .2} ${p.r * .85} ${-p.r * .25}`, fill: "none", stroke: "#fff", "stroke-opacity": .12, "stroke-width": 4 }, p.G);
+      el("path", { d: `M${-p.r * .75} ${p.r * .35} Q0 ${p.r * .65} ${p.r * .7} ${p.r * .3}`, fill: "none", stroke: "#fff", "stroke-opacity": .08, "stroke-width": 3 }, p.G);
+      if (p.anel) el("path", { d: `M${-p.r * 1.75} ${p.r * .45} A${p.r * 1.8} ${p.r * .42} -14 0 0 ${p.r * 1.75} ${-p.r * .45}`, fill: "none", stroke: "#85B7EB", "stroke-opacity": .75, "stroke-width": 3 }, p.G);
+      if (p.mods) p.luas = p.mods.map(m => { const c = el("circle", { r: 5, fill: "#9FE1CB" }, p.G); el("title", {}, c).textContent = m; return c; });
+      const w = p.ativo ? 176 : 140;
+      el("rect", { x: -w / 2, y: p.r + 20, width: w, height: 52, rx: 10, fill: "#111c31", stroke: p.ativo ? "#1D9E75" : "#2a3a58" }, p.G);
+      el("text", { x: 0, y: p.r + 42, "text-anchor": "middle", fill: "#fff", "font-size": 16, "font-weight": 700 }, p.G).textContent = p.n;
+      el("text", { x: 0, y: p.r + 61, "text-anchor": "middle", fill: p.ativo ? "#5DCAA5" : "#8fa3c4", "font-size": 13 }, p.G).textContent = p.st;
+    });
+    const parado = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const t0 = performance.now();
+    const quadro = agora => {
+      if (fechado && !raiz.isConnected) return;
+      const dt = parado ? 0 : agora - t0;
+      A.forEach(p => {
+        const a = p.a + dt * p.v, x = CX + p.rx * Math.cos(a), y = CY + p.ry * Math.sin(a);
+        const atras = Math.sin(a) < -0.35; (atras ? TR : FR).appendChild(p.G);
+        p.G.setAttribute("transform", `translate(${x.toFixed(1)} ${y.toFixed(1)}) scale(${atras ? .85 : 1})`);
+        p.l.setAttribute("x1", CX); p.l.setAttribute("y1", CY); p.l.setAttribute("x2", x.toFixed(1)); p.l.setAttribute("y2", y.toFixed(1));
+        if (p.pulso) { const f = (dt / 1800) % 1; p.pulso.setAttribute("cx", (CX + (x - CX) * f).toFixed(1)); p.pulso.setAttribute("cy", (CY + (y - CY) * f).toFixed(1)); }
+        if (p.luas) p.luas.forEach((m, i) => { const b = dt * .0012 + i * 2 * Math.PI / p.luas.length; m.setAttribute("cx", (Math.cos(b) * (p.r + 17)).toFixed(1)); m.setAttribute("cy", (Math.sin(b) * (p.r * .45 + 8)).toFixed(1)); });
+      });
+      if (!parado) requestAnimationFrame(quadro);
+    };
+    requestAnimationFrame(quadro);
+    raiz.querySelector(".eco-x").focus();
+  }
+
+  window.qsmart = { festa, ecossistema, armazenamento, downloads, chatFim, kv, cofre, rolar, ia, get, getH, req, reduzirImagem, imagem, nota, doc, grade, tela, lsGet, lsSet, lsDel, colarImagens, clicar, trocarUrl, pasta, baixar, abrir, copiar, abrirUrl, pdfPaginas, pdfJuntar, pdfLinhas, tema, aoOcultar, focar, rolarLinha, pronto };
 })();
