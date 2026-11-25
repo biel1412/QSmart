@@ -88,21 +88,40 @@ public sealed class EvolucaoAnalise
         return (i.PorTipo.Select(v => v / ti).ToArray(), TotalPorTipo.Select(v => v / tt).ToArray());
     }
 
-    /// <summary>Diagnóstico em texto simples para o inspetor escolhido.</summary>
+    /// <summary>Nome curto do tipo para os cabeçalhos do mapa (o nome completo fica na dica).</summary>
+    public static string Abreviar(string tipo)
+    {
+        var chave = Texto.SemAcento(tipo).ToLowerInvariant().Trim();
+        var fixos = new Dictionary<string, string>
+        {
+            ["fonte de renda"] = "F. Renda", ["relacionamento"] = "Relac.", ["endereco"] = "Ender.", ["bem novo"] = "B. Novo",
+            ["bem usado"] = "B. Usado", ["produtor"] = "Produt.", ["certidao"] = "Certid.", ["nao informado"] = "N/inf.", ["pessoa"] = "Pessoa", ["outros"] = "Outros",
+        };
+        if (fixos.TryGetValue(chave, out var f)) return f;
+        if (tipo.Length <= 7) return tipo;
+        var p = tipo.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (p.Length > 1) { var ult = p[^1]; return $"{p[0][0]}. {(ult.Length > 5 ? ult[..5] + "." : ult)}"; }
+        return tipo[..6] + ".";
+    }
+
+    /// <summary>Diagnóstico das avaliações feitas pelo inspetor. O inspetor encontra os desvios dos times:
+    /// a sugestão é o que ele pode reforçar com os times.</summary>
     public string Diagnostico(Insp i, IReadOnlyList<string> origens)
     {
-        if (i.Desv == 0) return Origem == null ? "Nenhum desvio no período. Bom trabalho para destacar." : $"Nenhum desvio de origem {Origem} no período.";
+        var quem = i.Nome;
+        if (i.Desv == 0) return Origem == null ? $"Nenhum desvio encontrado nas avaliações de {quem} no período." : $"Nenhum desvio de origem {Origem} nas avaliações de {quem} no período.";
         var partes = new List<string>();
         double media = TaxaTime;
-        if (media > 0 && i.Taxa >= media * 1.5) partes.Add($"Taxa de desvio {Texto.F(i.Taxa / media, 1)}× a média do time ({Texto.F(i.Taxa, 1)}% contra {Texto.F(media, 1)}%).");
-        else if (media > 0 && i.Taxa <= media * 0.6) partes.Add($"Taxa abaixo da média do time ({Texto.F(i.Taxa, 1)}% contra {Texto.F(media, 1)}%).");
-        else partes.Add($"Taxa próxima da média do time ({Texto.F(i.Taxa, 1)}% contra {Texto.F(media, 1)}%).");
-        if (i.Aval < 50) partes.Add($"Atenção: só {i.Aval} avaliações no período, a taxa pode variar muito.");
+        if (media > 0 && i.Taxa >= media * 1.5) partes.Add($"Nas avaliações de {quem}, a taxa de desvio foi {Texto.F(i.Taxa / media, 1)}× a média geral ({Texto.F(i.Taxa, 1)}% contra {Texto.F(media, 1)}%).");
+        else if (media > 0 && i.Taxa <= media * 0.6) partes.Add($"Nas avaliações de {quem}, a taxa de desvio ficou abaixo da média geral ({Texto.F(i.Taxa, 1)}% contra {Texto.F(media, 1)}%).");
+        else partes.Add($"Nas avaliações de {quem}, a taxa de desvio ficou próxima da média geral ({Texto.F(i.Taxa, 1)}% contra {Texto.F(media, 1)}%).");
+        if (i.Aval < 50) partes.Add($"Atenção: só {i.Aval} avaliações no período, então a taxa pode variar muito.");
 
         var (pi, pt) = Perfil(i);
         int k = Array.IndexOf(pi, pi.Max());
+        var tipo = Tipos[k];
         var dif = (pi[k] - pt[k]) * 100;
-        partes.Add($"Concentra {Math.Round(pi[k] * 100)}% dos desvios em {Tipos[k]}" + (dif >= 5 ? $" ({Math.Round(dif)} p.p. acima do time)." : "."));
+        partes.Add($"Os desvios encontrados se concentram em {tipo} ({Math.Round(pi[k] * 100)}%" + (dif >= 5 ? $", {Math.Round(dif)} p.p. acima do geral)." : ")."));
 
         string? principal = Origem;
         if (principal == null && i.PorOrigem.Count > 0)
@@ -111,11 +130,14 @@ public sealed class EvolucaoAnalise
             principal = top.Key;
             partes.Add($"A maior parte é de origem {top.Key} ({top.Value} de {i.Desv}).");
         }
-        partes.Add(principal != null && Texto.SemAcento(principal).ToLowerInvariant().StartsWith("intern")
-            ? "Sugestão: reforçar o checklist interno desse tipo com o inspetor."
-            : principal != null && Texto.SemAcento(principal).ToLowerInvariant().StartsWith("chamad")
-                ? "Sugestão: revisar os chamados abertos e alinhar o critério com quem abre."
-                : "Sugestão: revisar a orientação com a cooperativa sobre esse tipo.");
+        var o = principal == null ? "" : Texto.SemAcento(principal).ToLowerInvariant();
+        partes.Add(o.StartsWith("intern")
+            ? $"Sugestão: {quem} pode reforçar com os times o checklist interno de {tipo}."
+            : o.StartsWith("chamad")
+                ? $"Sugestão: {quem} pode alinhar com os times o critério de abertura dos chamados de {tipo}."
+                : o.StartsWith("extern")
+                    ? $"Sugestão: {quem} pode reforçar com os times a orientação às cooperativas sobre {tipo}."
+                    : $"Sugestão: {quem} pode reforçar com os times os pontos de atenção de {tipo}.");
         return string.Join(" ", partes);
     }
 }

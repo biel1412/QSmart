@@ -41,7 +41,7 @@
                 </defs>
                 @for (int t = 0; t < nT; t++)
                 {
-                    <g><text x="@N(x0 + passo * (t + .5))" y="16" text-anchor="middle" class="ev-cab"><title>@a.Tipos[t]</title>@Curto(a.Tipos[t])</text></g>
+                    <g><text x="@N(x0 + passo * (t + .5))" y="16" text-anchor="middle" class="ev-cab"><title>@a.Tipos[t]</title>@EvolucaoAnalise.Abreviar(a.Tipos[t])</text></g>
                 }
                 <text x="552" y="16" text-anchor="end" class="ev-cab">taxa</text>
                 @for (int r = 0; r < a.Inspetores.Count; r++)
