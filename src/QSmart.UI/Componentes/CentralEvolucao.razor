@@ -1,0 +1,148 @@
+@using System.Globalization
+@using QSmart.Core
+
+@if (Dados != null)
+{
+    var a = Analise();
+    var sel = a.Inspetores.FirstOrDefault(i => i.Nome == _sel) ?? a.Inspetores.FirstOrDefault();
+    int nT = a.Tipos.Count;
+    double x0 = 196, x1 = 506, passo = nT > 0 ? (x1 - x0) / nT : 0;
+    double altura = 34 + a.Inspetores.Count * 38;
+    var tc = a.TipoCritico; var mt = a.MaiorTaxa;
+<section class="ev-central" aria-label="Central de análise da Evolução">
+    <div class="ev-topo">
+        <span class="ev-rot">CENTRAL DE ANÁLISE · @Texto.Fmt(a.Avaliacoes) AVALIAÇÕES</span>
+        <button class="ev-chip @(_origem == null ? "on" : "")" style="--c:#6D28D9" @onclick="() => Filtrar(null)">Todas</button>
+        @foreach (var o in Dados.Origens)
+        {
+            var oo = o;
+            <button class="ev-chip @(_origem == oo ? "on" : "")" style="--c:@CorChip(oo)" @onclick="() => Filtrar(oo)">@oo</button>
+        }
+    </div>
+
+    <div class="ev-kpis">
+        <div class="ev-k" style="--c:#F43F5E"><small>DESVIOS@(_origem != null ? " · " + _origem.ToUpperInvariant() : "")</small>
+            <b>@Texto.Fmt(a.Desvios)</b><span>@Texto.F(a.TaxaTime, 1)% das avaliações</span></div>
+        <div class="ev-k" style="--c:#F59E0B"><small>TIPO CRÍTICO</small>
+            <b class="@(tc?.nome.Length > 12 ? "menor" : "")">@(tc?.nome ?? "—")</b><span>@(tc is { } tk ? $"{Texto.Fmt(tk.n)} desvios · {Pct(tk.n, a.Desvios)}%" : "sem desvios")</span></div>
+        <div class="ev-k" style="--c:#8B5CF6"><small>MAIOR TAXA</small>
+            <b class="@(mt?.Nome.Length > 12 ? "menor" : "")">@(mt?.Nome ?? "—")</b><span>@(mt != null ? $"{Texto.F(mt.Taxa, 1)}% de desvio · {mt.Desv} em {Texto.Fmt(mt.Aval)}" : "ninguém com desvio")</span></div>
+        <div class="ev-k" style="--c:#10B981"><small>DENTRO DA META</small>
+            <b>@a.DentroDaMeta de @a.Inspetores.Count</b><span>inspetores com até @EvolucaoAnalise.Ok.ToString(CultureInfo.InvariantCulture)% de desvio</span></div>
+    </div>
+
+    <div class="ev-grade">
+        <div class="ev-p">
+            <div class="ev-pt"><b>Onde estão os desvios</b><small>inspetor × tipo de autorização · clique num inspetor</small></div>
+            <svg class="ev-mapa" viewBox="0 0 560 @N(altura)" role="img" aria-label="Mapa de desvios por inspetor e tipo de autorização">
+                <defs>
+                    <radialGradient id="ev-bolha"><stop offset="0" stop-color="#fff" stop-opacity=".95" /><stop offset=".35" stop-color="#F43F5E" stop-opacity=".9" /><stop offset="1" stop-color="#7C3AED" stop-opacity=".18" /></radialGradient>
+                    <filter id="ev-brilho" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="3" result="b" /><feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge></filter>
+                </defs>
+                @for (int t = 0; t < nT; t++)
+                {
+                    <g><text x="@N(x0 + passo * (t + .5))" y="16" text-anchor="middle" class="ev-cab"><title>@a.Tipos[t]</title>@Curto(a.Tipos[t])</text></g>
+                }
+                <text x="552" y="16" text-anchor="end" class="ev-cab">taxa</text>
+                @for (int r = 0; r < a.Inspetores.Count; r++)
+                {
+                    var ins = a.Inspetores[r]; double y = 44 + r * 38; bool on = ins == sel;
+                    <g class="ev-linha @(on ? "on" : "")" @onclick="() => _sel = ins.Nome">
+                        <rect x="2" y="@N(y - 17)" width="556" height="34" rx="10" class="ev-fundo" />
+                        <text x="12" y="@N(y + 4)" class="ev-nome">@Curto(ins.Nome, 22)</text>
+                        @for (int t = 0; t < nT; t++)
+                        {
+                            var v = ins.PorTipo[t]; double cx = x0 + passo * (t + .5);
+                            <line x1="@N(cx)" x2="@N(cx)" y1="@N(y - 12)" y2="@N(y + 12)" class="ev-guia" />
+                            if (v > 0 && a.Maximo > 0)
+                            {
+                                double p = v / (double)a.Maximo, raio = 3 + Math.Sqrt(p) * 13;
+                                <circle cx="@N(cx)" cy="@N(y)" r="@N(raio)" fill="url(#ev-bolha)" filter="url(#ev-brilho)" opacity="@N(.35 + .65 * p)" class="@(p > .6 ? "pulsa" : "")"><title>@ins.Nome · @a.Tipos[t]: @v</title></circle>
+                                if (raio > 8.5) { <g><text x="@N(cx)" y="@N(y + 4)" text-anchor="middle" class="ev-num">@v</text></g> }
+                            }
+                        }
+                        <text x="552" y="@N(y + 4)" text-anchor="end" class="ev-taxa @EvolucaoAnalise.Nivel(ins.Taxa)">@Texto.F(ins.Taxa, 1)%</text>
+                    </g>
+                }
+            </svg>
+        </div>
+
+        <div class="ev-p ev-lado">
+            @if (sel != null)
+            {
+                var (pi, pt) = a.Perfil(sel);
+                double mx = Math.Max(.01, pi.Concat(pt).DefaultIfEmpty(0).Max());
+                <div class="ev-pt"><b>@sel.Nome</b><small>@sel.Desv desvios em @Texto.Fmt(sel.Aval) avaliações · <span class="ev-taxa @EvolucaoAnalise.Nivel(sel.Taxa)">@Texto.F(sel.Taxa, 1)%</span></small></div>
+                @if (nT >= 3)
+                {
+                    <svg class="ev-radar" viewBox="0 0 260 220" role="img" aria-label="Perfil do inspetor comparado com a média do time">
+                        @foreach (var k in new[] { .25, .5, .75, 1 })
+                        {
+                            <polygon points="@Poligono(Enumerable.Repeat(k, nT).ToArray(), 1)" class="ev-teia" />
+                        }
+                        @for (int t = 0; t < nT; t++)
+                        {
+                            var (ex, ey) = Ponto(t, nT, 1); var (lx, ly) = Ponto(t, nT, 1.2);
+                            <line x1="130" y1="112" x2="@N(ex)" y2="@N(ey)" class="ev-teia" />
+                            <g><text x="@N(lx)" y="@N(ly + 3)" text-anchor="middle" class="ev-cab"><title>@a.Tipos[t]</title>@Curto(a.Tipos[t], 11)</text></g>
+                        }
+                        <polygon points="@Poligono(pt, mx)" class="ev-time" />
+                        <polygon points="@Poligono(pi, mx)" class="ev-insp" />
+                        @for (int t = 0; t < nT; t++)
+                        {
+                            var (px, py) = Ponto(t, nT, pi[t] / mx);
+                            <circle cx="@N(px)" cy="@N(py)" r="3" fill="#fff"><title>@a.Tipos[t]: @Math.Round(pi[t] * 100)% (time: @Math.Round(pt[t] * 100)%)</title></circle>
+                        }
+                    </svg>
+                    <div class="ev-leg"><span><i class="a"></i> inspetor</span><span><i class="b"></i> média do time</span></div>
+                }
+                else
+                {
+                    <div class="ev-poucos">
+                        @for (int t = 0; t < nT; t++)
+                        {
+                            <div><span>@a.Tipos[t]</span><b>@sel.PorTipo[t]</b></div>
+                        }
+                    </div>
+                }
+                <div class="ev-diag"><b>Diagnóstico.</b> @a.Diagnostico(sel, Dados.Origens)</div>
+            }
+            else
+            {
+                <p class="ev-vazio">Nenhum inspetor na planilha.</p>
+            }
+        </div>
+    </div>
+</section>
+}
+
+@code {
+    [Parameter] public ResultadoInspecao? Dados { get; set; }
+
+    string? _origem, _sel;
+    EvolucaoAnalise? _cache; ResultadoInspecao? _cacheDe; string? _cacheOrigem = "\u0001";
+
+    EvolucaoAnalise Analise()
+    {
+        if (_cache != null && ReferenceEquals(_cacheDe, Dados) && _cacheOrigem == _origem) return _cache;
+        if (!ReferenceEquals(_cacheDe, Dados)) _sel = null;
+        _cacheDe = Dados; _cacheOrigem = _origem;
+        return _cache = EvolucaoAnalise.Montar(Dados!, _origem);
+    }
+
+    void Filtrar(string? o) => _origem = o;
+
+    static string CorChip(string o) => o switch { "Interno" => "#0284C7", "Externo" => "#D97706", "Chamados" => "#7C3AED", _ => "#475569" };
+    static string N(double v) => v.ToString("0.##", CultureInfo.InvariantCulture);
+    static string Pct(long n, long tot) => tot > 0 ? Math.Round(n * 100.0 / tot).ToString(CultureInfo.InvariantCulture) : "0";
+    static string Curto(string s, int max = 13) => s.Length <= max ? s : s[..(max - 1)].TrimEnd() + "…";
+
+    static (double x, double y) Ponto(int i, int n, double k)
+    {
+        double ang = -Math.PI / 2 + i * 2 * Math.PI / n;
+        return (130 + 82 * k * Math.Cos(ang), 112 + 82 * k * Math.Sin(ang));
+    }
+
+    static string Poligono(double[] v, double mx) =>
+        string.Join(" ", v.Select((x, i) => { var (px, py) = Ponto(i, v.Length, x / mx); return $"{N(px)},{N(py)}"; }));
+}

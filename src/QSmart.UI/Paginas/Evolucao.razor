@@ -12,6 +12,7 @@
     </Acoes>
     <Kpis><KpisOrigem Dados="E.Evolucao" RotuloAval="@($"em {N} {(N == 1 ? "aba" : "abas")} de inspetor")" /></Kpis>
     <ChildContent>
+        <CentralEvolucao Dados="E.Evolucao" />
         <div class="grade-32">
             <Painel Titulo="Por tipo de autorização" Estilo="min-height:460px">
                 <BarrasEmpilhadas Linhas="LinhasAut(E.Evolucao)" Legenda="Legenda(E.Evolucao)" Vazio="@(E.Evolucao == null ? "Abra a planilha de inspeção" : "Sem desvios")" />
