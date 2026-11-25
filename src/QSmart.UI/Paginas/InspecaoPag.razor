@@ -37,7 +37,6 @@
                 @foreach (var n in E.IntRes?.Inspetores ?? new()) { <option value="@n">@n</option> }
             </select>
         </div>
-        @if (E.IntRes != null) { <p class="muted">Conta só as linhas com “INTERNO OU EXTERNO” = Interno em cada aba de inspetor, com ou sem desvio. Duplo clique num inspetor filtra o gráfico.</p> }
         <Painel Titulo="Inspeções internas por dia" Estilo="min-height:320px">
             <Colunas Cols="_cols" Legenda="_legenda" Altura="260px" Vazio="@(E.IntRes == null ? "Abra a planilha de inspeção" : "Nenhuma inspeção interna com data")" />
         </Painel>
