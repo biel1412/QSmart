@@ -15,7 +15,6 @@
             <button class="ch-x" title="Fechar" @onclick="Fechar"><Icone Nome="x" Tamanho="18" /></button>
         </div>
         <div class="ch-msgs" @ref="_lista">
-            <div class="ch-aviso"><Icone Nome="relogio" Tamanho="13" /> As mensagens se apagam sozinhas @E.Chat.Dias dias depois de enviadas.</div>
             @if (E.Chat.Msgs.Count == 0)
             {
                 <div class="ch-vazio conv"><span class="ch-av gg" style="background:@Cor(ct.Nome)">@if (ct.Foto != "") { <img src="@ct.Foto" alt="" /> } else { @Ini(ct.Nome) }</span>
