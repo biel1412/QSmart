@@ -3393,29 +3393,3 @@ html:has(.app.recolhido) .fx-bola.lat { display: none; }
 .tm2-termo button { border: 0; background: none; color: var(--muted); cursor: pointer; display: grid; padding: 3px; border-radius: 6px; }
 .tm2-termo button:hover { color: #DC2626; background: color-mix(in srgb, #DC2626 10%, transparent); }
 .tm2-duas.so-um { grid-template-columns: 1fr; }
-
-/* Ecossistema QSmart (tela de entrada) */
-.ac-eco { position: fixed; left: 22px; bottom: 20px; z-index: 5; display: flex; align-items: center; gap: 8px; padding: 9px 15px; border-radius: 999px;
-  background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.14); color: #C5D1E6; font-family: inherit; font-weight: 700; font-size: 12.5px; cursor: pointer; transition: background .2s, color .2s, border-color .2s; }
-.ac-eco:hover, .ac-eco:focus-visible { background: rgba(59,130,246,.18); border-color: rgba(94,234,212,.5); color: #fff; }
-.eco { position: fixed; inset: 0; z-index: 9999; display: flex; flex-direction: column; color: #E6EDF7;
-  background: radial-gradient(60% 55% at 50% 52%, rgba(59,130,246,.12), transparent 70%), radial-gradient(circle at 1px 1px, rgba(91,107,140,.35) .8px, transparent 1px) 0 0/22px 22px, #0c1424;
-  animation: eco-entra .5s cubic-bezier(.2,.8,.2,1); }
-.eco.sai { animation: eco-sai .45s ease forwards; }
-@keyframes eco-entra { from { opacity: 0; transform: scale(1.06); } }
-@keyframes eco-sai { to { opacity: 0; transform: scale(.94); } }
-.eco-topo { display: flex; align-items: center; gap: 18px; padding: 20px 28px; }
-.eco-rot { font-size: 12px; letter-spacing: .16em; color: #8FA3C4; font-weight: 700; }
-.eco-leg { margin-left: auto; display: flex; align-items: center; gap: 8px; font-size: 12px; color: #C5D1E6; }
-.eco-leg i { width: 9px; height: 9px; border-radius: 50%; border: 1.5px solid #8FA3C4; margin-left: 10px; }
-.eco-leg i.on { background: #1D9E75; border-color: #1D9E75; margin-left: 0; }
-.eco-x { width: 38px; height: 38px; border-radius: 50%; border: 1px solid rgba(255,255,255,.16); background: rgba(255,255,255,.05); color: #E6EDF7; font-size: 15px; cursor: pointer; }
-.eco-x:hover { background: rgba(255,255,255,.12); }
-.eco-svg { flex: 1; width: 100%; min-height: 0; }
-.eco-mundo { cursor: pointer; outline: none; }
-.eco-mundo .eco-esfera { transition: filter .2s; }
-.eco-mundo:hover .eco-esfera, .eco-mundo:focus-visible .eco-esfera { filter: brightness(1.18) drop-shadow(0 0 14px rgba(255,255,255,.25)); }
-.eco-info { align-self: center; margin: 0 20px 26px; max-width: 640px; padding: 13px 18px; border-radius: 14px; text-align: center;
-  background: rgba(17,28,49,.85); border: 1px solid #2A3A58; font-size: 14px; color: #C5D1E6; }
-.eco-info b { color: #fff; }
-@media (prefers-reduced-motion: reduce) { .eco, .eco.sai { animation: none; } }
