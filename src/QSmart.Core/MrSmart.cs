@@ -140,8 +140,8 @@ public static class MrSmart
             "Recarregue a página com Ctrl+F5 para baixar a versão mais nova do QSmart."),
         new("De onde vêm a data, a hora e os feriados do Início?", new[] { "feriado", "feriados", "relogio", "hora", "data", "amanha e feriado" },
             "Ao lado da saudação aparecem o dia, a data e a hora do seu computador. Os feriados nacionais vêm da BrasilAPI (e de uma lista própria quando sem internet). Quando há feriado nos próximos 7 dias, aparece o aviso; passe o mouse na data para ver os próximos 3 feriados."),
-        new("O que é o InsiTalent e a Mesa de Inspeção?", new[] { "insitalent", "talent", "mesa", "pulso" },
-            "São outros sistemas da Insi. Em Ferramentas há atalhos para eles: ao clicar, abrem em uma nova aba do navegador."),
+        new("O que é o InsiTalent, a Mesa de Inspeção e o Selo Qualidade?", new[] { "insitalent", "talent", "mesa", "pulso", "selo qualidade", "certificado", "certificados" },
+            "São outros sistemas da Insi (o Selo Qualidade gera certificados). Em Ferramentas há atalhos para eles: ao clicar, abrem em uma nova aba do navegador."),
     };
 
     public static readonly string[] Sugestoes = { "O que é o Radar Smart360?", "O Mr. Smart escreve a estratégia do dia?", "O que é o SLA do dia?", "O que é o One a One?", "O que precisa da chave do Groq?" };

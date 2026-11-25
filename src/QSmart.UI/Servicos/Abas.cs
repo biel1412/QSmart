@@ -55,6 +55,8 @@ public static class Abas
             "Abre o InsiTalent em uma nova aba.", "https://biel1412.github.io/insimatch/"),
         new("mesa", "Mesa de Inspeção", "Mesa de Inspeção", "mesa", "Ferramentas",
             "Abre o Pulso · Mesa de Inspeção em uma nova aba.", "https://biel1412.github.io/healthcoop/"),
+        new("seloqualidade", "Selo Qualidade", "Selo Qualidade", "certificado", "Ferramentas",
+            "Abre o Selo de Qualidade, o gerador de certificados, em uma nova aba.", "https://biel1412.github.io/selo_qualidade/"),
     };
 
     /// <summary>Ferramentas que vivem dentro de outra (o Pacote Smart): não aparecem no menu, abrem pela tela do pacote.</summary>
@@ -76,7 +78,7 @@ public static class Abas
     public static Aba? PorRota(string rota) => Todas.FirstOrDefault(a => a.Rota == rota) ?? Internas.FirstOrDefault(a => a.Rota == rota);
 
     /// <summary>Ordem da lista de abas nas Configurações (igual ao original).</summary>
-    public static readonly string[] OrdemConfig = { "resumo", "usuarios", "evolucao", "inspecao", "volume", "monitor", "corredor", "estrategia", "dayoffpedir", "historico", "pareceres", "dayoff", "ferias", "pontos", "oneaone", "servicos3069", "radar360", "pacote", "downloads", "depurador", "insitalent", "mesa" };
+    public static readonly string[] OrdemConfig = { "resumo", "usuarios", "evolucao", "inspecao", "volume", "monitor", "corredor", "estrategia", "dayoffpedir", "historico", "pareceres", "dayoff", "ferias", "pontos", "oneaone", "servicos3069", "radar360", "pacote", "downloads", "depurador", "insitalent", "mesa", "seloqualidade" };
 
     public static readonly string[] Grupos = { "Decisões", "Inspeção", "Conformidade", "Operação", "Coordenação", "Relacionamento e cooperativas", "Extensão", "Ferramentas" };
 
