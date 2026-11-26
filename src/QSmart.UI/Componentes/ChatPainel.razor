@@ -341,17 +341,27 @@
     protected override async Task OnAfterRenderAsync(bool primeiro)
     {
         if (E.Chat.Com == null) return;
-        // Enter sem Shift nunca quebra linha (a mensagem é enviada); evita sobrar texto no campo
-        try { await JS.InvokeVoidAsync("qsmart.travarEnter", _caixa); } catch { }
         if (_rolar || E.Chat.Msgs.Count != _qtdAntes)
         {
-            try { await JS.InvokeVoidAsync("qsmart.chatFim", _lista, _rolar); } catch { }
-            if (_rolar) { try { await _caixa.FocusAsync(); } catch { } }
-            _rolar = false; _qtdAntes = E.Chat.Msgs.Count;
+            // decide tudo antes de qualquer await (vários renders podem chegar juntos)
+            int qtd = E.Chat.Msgs.Count;
+            bool forcar = _rolar || _qtdAntes == 0, focar = _rolar;
+            if (qtd > 0) _rolar = false; // só considera feito quando as mensagens já apareceram
+            _qtdAntes = qtd;
+            try { await JS.InvokeVoidAsync("qsmart.chatFim", _lista, forcar); } catch { }
+            if (focar) { try { await _caixa.FocusAsync(); } catch { } }
         }
+        // Enter sem Shift nunca quebra linha (a mensagem é enviada); evita sobrar texto no campo
+        try { await JS.InvokeVoidAsync("qsmart.travarEnter", _caixa); } catch { }
     }
 
-    async Task Abrir(int id) { _rolar = true; _erro = ""; _texto = ""; _gInfo = false; _confirmar = false; E.Chat.Aviso = ""; await E.Chat.AbrirConversa(id); }
+    async Task Abrir(int id)
+    {
+        _rolar = true; _qtdAntes = 0; _erro = ""; _texto = ""; _gInfo = false; _confirmar = false; E.Chat.Aviso = "";
+        await E.Chat.AbrirConversa(id);
+        _rolar = true; // mensagens carregadas: vai para a última
+        StateHasChanged();
+    }
     void Voltar() { E.Chat.Com = null; _texto = ""; _gInfo = false; _confirmar = false; _erro = ""; _ = E.Chat.AtualizarResumo(); }
 
     static string Restante(DateTime exp)

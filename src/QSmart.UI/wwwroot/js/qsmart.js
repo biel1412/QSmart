@@ -1276,7 +1276,14 @@
   };
   const downloads = { capa, arqInfo, enviarArq, baixarArq };
   // chat: rola até a última mensagem só se a pessoa já estava perto do fim (ou se pedir)
-  const chatFim = (el, forcar) => { if (!el) return; if (forcar || el.scrollHeight - el.scrollTop - el.clientHeight < 140) el.scrollTop = el.scrollHeight; };
+  const chatFim = (el, forcar) => {
+    if (!el) return;
+    if (forcar || el.scrollHeight - el.scrollTop - el.clientHeight < 140) {
+      el.scrollTop = el.scrollHeight;
+      // de novo no próximo quadro: fotos e quebras de linha podem aumentar a altura depois
+      if (forcar) requestAnimationFrame(() => { el.scrollTop = el.scrollHeight; });
+    }
+  };
   // painel de uso: quanto este navegador guarda do QSmart (armazenamento local + cofre/IndexedDB)
   const armazenamento = async () => {
     let local = 0;
